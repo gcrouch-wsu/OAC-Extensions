@@ -1,0 +1,133 @@
+
+{
+    "module" : "com-wsu-lattice-scatter/wsuLatticeScatterdatamodelhandler",
+    "method" : "getHandler",
+    "config" : {
+        "vizPreference" : 50,
+        "measureLabelConfig": {
+           "supportedEdges": [],
+           "defaultEdge": "row",
+           "visibility": "hidden"
+        },
+        "edgeConfig" : {
+            "measures" : {
+                "contentType": "measures",
+                "global": {
+                    "minCount": 0,
+                    "maxCount": 1,
+                    "priority": 10
+                },
+                "ui": {
+                    "customName": { "key": "WSULATTICE_MEASURE", "default": "Class Grade Points" },
+                    "_forceCustomName": true,
+                    "order": 3
+                }
+            },
+            "row" : {
+                "contentType": "categorical",
+                "global": {
+                    "minCount": 1,
+                    "maxCount": 1,
+                    "priority": 1,
+                    "preferredMax": 1
+                },
+                "ui": {
+                    "customName": { "key": "WSULATTICE_COURSE", "default": "Subject Catalog Number" },
+                    "_forceCustomName": true,
+                    "order": 2
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
+            },
+            "item" : {
+                "contentType": "categorical",
+                "global": {
+                    "minCount": 1,
+                    "maxCount": 1,
+                    "priority": 1
+                },
+                "ui": {
+                    "customName": { "key": "WSULATTICE_TERM", "default": "Term (X Axis)" },
+                    "_forceCustomName": true,
+                    "order": 1
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
+            },
+            "color" : {
+                "contentType": "categorical",
+                "global": {
+                    "minCount": 0,
+                    "maxCount": 1,
+                    "priority": 1
+                },
+                "ui": {
+                    "customName": { "key": "WSULATTICE_STUDENT", "default": "Student ID" },
+                    "_forceCustomName": true,
+                    "order": 4
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
+            },
+            "glyph" : {
+                "contentType": "categorical",
+                "global": {
+                    "minCount": 0,
+                    "maxCount": 1,
+                    "priority": 1
+                },
+                "ui": {
+                    "customName": { "key": "WSULATTICE_GRADE", "default": "Course Grade Official" },
+                    "_forceCustomName": true,
+                    "order": 5
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
+            },
+            "detail" : {
+                "contentType": "both",
+                "global": {
+                    "minCount": 0,
+                    "maxCount": 20,
+                    "priority": 1
+                },
+                "measures": {
+                    "minCount": 0,
+                    "maxCount": 20
+                },
+                "ui": {
+                    "customName": { "key": "WSULATTICE_DETAIL", "default": "Tooltip Detail" },
+                    "_forceCustomName": true,
+                    "order": 6
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
+            },
+            "size" : {
+                "contentType": "both",
+                "global": {
+                    "minCount": 0,
+                    "maxCount": 1,
+                    "priority": 1
+                },
+                "measures": {
+                    "minCount": 0,
+                    "maxCount": 1
+                },
+                "ui": {
+                    "customName": { "key": "WSULATTICE_TERM_CODE", "default": "Sorting Term Code (optional)" },
+                    "_forceCustomName": true,
+                    "order": 6
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
+            }
+        }
+    }
+}

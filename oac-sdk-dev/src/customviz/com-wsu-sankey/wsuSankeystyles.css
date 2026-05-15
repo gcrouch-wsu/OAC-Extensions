@@ -1,0 +1,95 @@
+.wsu-sankey {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.wsu-sankey svg {
+  display: block;
+}
+
+.wsu-sankey .node-rect {
+  stroke: #ffffff;
+  stroke-width: 1px;
+  cursor: pointer;
+}
+
+.wsu-sankey .node-label {
+  fill: #202124;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.wsu-sankey .link-path {
+  fill: none;
+  cursor: pointer;
+}
+
+.wsu-sankey .link-label {
+  fill: #4a4f55;
+  font-size: 10px;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.wsu-sankey .legend text {
+  fill: #4a4f55;
+  font-size: 11px;
+}
+
+.wsu-sankey .legend-item.legend-active text {
+  font-weight: 700;
+}
+
+.wsu-sankey .legend-item.legend-inactive {
+  opacity: 0.35;
+}
+
+.wsu-sankey .stage-title {
+  letter-spacing: 0;
+  pointer-events: none;
+}
+
+.wsu-sankey .warning-text {
+  fill: #9c2f2f;
+  font-size: 10px;
+}
+
+.wsu-sankey .empty-state {
+  color: #4a4f55;
+  font-size: 13px;
+  padding: 12px;
+}
+
+.wsu-sankey-tooltip {
+  position: absolute;
+  display: none;
+  max-width: 460px;
+  max-height: 70vh;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid #bfc4c8;
+  border-radius: 5px;
+  background: #fff;
+  color: #202124;
+  font: 12px Arial, Helvetica, sans-serif;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.wsu-sankey-tooltip table {
+  border-collapse: collapse;
+}
+
+.wsu-sankey-tooltip td {
+  padding: 2px 6px;
+  vertical-align: top;
+}
+
+.wsu-sankey-tooltip td.tthead {
+  color: #626a73;
+  font-weight: 600;
+}

@@ -1,0 +1,63 @@
+import org.gradle.internal.os.OperatingSystem
+
+def sdkDir = project.getProperty('sdkDir')
+def desktopDir = project.getProperty('desktopDir')
+
+buildscript { 
+  dependencies { 
+    classpath fileTree(dir: sdkDir + '/lib', include: '*.jar')
+  }
+}
+
+apply plugin: 'oracle.bi.tech.gradle.plugins.bitechplugin'
+
+bitechplugins { 
+  pluginsAnt fileTree(dir: sdkDir + '/lib', include: '*.jar')
+
+  devTree {
+   include "**/*.js"
+   exclude "**/*.min.js"
+   exclude "**/*-min.js"
+  }
+  prodTree {
+   include "**/*.min.js"
+   include "**/*-min.js"
+  }
+  skipTests true
+  buildPackage true
+  optimize false
+  perPluginPackage true
+  init()
+}
+
+task validate(type: Exec) {
+   if(OperatingSystem.current().isWindows()) {
+      executable "${sdkDir}\\bin\\bivalidate.bat"
+   }
+   else {
+      executable "${sdkDir}/bin/bivalidate"
+   }
+   args '-devDir', "${projectDir}"
+}
+
+
+task run(type: Exec, dependsOn: validate) {
+   if(OperatingSystem.current().isWindows()) {
+      executable "${desktopDir}\\dvdesktop.exe"
+   }
+   else if(OperatingSystem.current().isMacOsX()) {
+      executable "${desktopDir}/../../MacOS/dvdesktop"
+   }
+   else {
+      executable "${desktopDir}/dv-desktop"
+   }
+   args '-sdk', "-pluginDevDir=${projectDir}${File.separator}src"
+   ignoreExitValue true
+   doFirst {
+     mkdir "${buildDir}"
+     def log = new FileOutputStream("${buildDir}/run.log")
+     standardOutput log
+     errorOutput log
+  }
+}
+

@@ -1,0 +1,329 @@
+.wsu-line {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+.wsu-line svg {
+  display: block;
+}
+
+.wsu-line-chart svg {
+  cursor: zoom-in;
+}
+
+/* E3: while a zoom drag is active, switch to crosshair so the user sees
+   the gesture is being captured. Class is added in _installZoomBox on
+   mousedown and removed in endDrag. */
+.wsu-line-chart svg.wsu-dragging,
+.wsu-line-chart svg.wsu-dragging .x-hit {
+  cursor: crosshair;
+}
+
+.wsu-line-header {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-bottom: 1px solid #d8dde3;
+  background: #f7f8fa;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 11px;
+  color: #202124;
+  min-height: 26px;
+  max-height: 25%;
+  overflow-y: auto;
+  align-items: center;
+}
+
+.wsu-line-header .wsu-v-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid #d8dde3;
+  border-radius: 12px;
+  padding: 2px 8px;
+}
+
+.wsu-line-header .wsu-v-chip-label {
+  color: #626a73;
+  font-weight: 600;
+}
+
+.wsu-line-header .wsu-v-chip-value {
+  color: #202124;
+  font-weight: 600;
+}
+
+.wsu-line-header .wsu-v-chip-value + .wsu-v-chip-value::before {
+  content: ", ";
+  color: #9aa0a6;
+  font-weight: 400;
+}
+
+.wsu-line-header .wsu-v-chip-value.muted {
+  color: #9aa0a6;
+  font-weight: 400;
+}
+
+.wsu-line-header .wsu-v-chip-more {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #e5e8eb;
+  color: #4a4f55;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: help;
+}
+
+.wsu-line-chart {
+  flex: 1 1 auto;
+  position: relative;
+  min-height: 0;
+}
+
+.wsu-line-reset {
+  /* E1: positioned top-left so it never collides with a right-side legend.
+     Sits past the chart's left margin (~62px) and just inside the header. */
+  position: absolute;
+  top: 8px;
+  left: 70px;
+  z-index: 5;
+  background: #fff;
+  border: 1px solid #bfc4c8;
+  border-radius: 3px;
+  padding: 4px 10px;
+  font: 11px Arial, Helvetica, sans-serif;
+  color: #202124;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.wsu-line-reset:hover {
+  background: #f1f3f4;
+}
+
+.wsu-line .axis path,
+.wsu-line .axis line {
+  stroke: #9aa0a6;
+  shape-rendering: crispEdges;
+}
+
+.wsu-line .axis text {
+  fill: #4a4f55;
+  font-size: 10px;
+}
+
+.wsu-line .grid line {
+  stroke: #d8dde3;
+  stroke-opacity: 0.75;
+  shape-rendering: crispEdges;
+}
+
+.wsu-line .grid path {
+  display: none;
+}
+
+.wsu-line .series-line {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  transition: opacity 0.15s ease-out;
+  /* The CSS variable is set inline by _drawLines from Config.backgroundOpacity.
+     Using a variable here (rather than inline opacity) lets the .wsu-faded
+     legend-click class win on the cascade without needing !important. */
+  opacity: var(--bg-opacity, 1);
+}
+
+.wsu-line .series-point {
+  stroke: #fff;
+  stroke-width: 1px;
+  cursor: pointer;
+  transition: opacity 0.15s ease-out;
+}
+
+.wsu-line .x-hit {
+  fill: transparent;
+  cursor: zoom-in;
+}
+
+.wsu-line .guide-line {
+  stroke: #202124;
+  stroke-width: 1px;
+  stroke-opacity: 0.55;
+  pointer-events: none;
+}
+
+.wsu-line .x-highlight {
+  fill: #1e88e5;
+  fill-opacity: 0.08;
+  pointer-events: none;
+}
+
+.wsu-line .active-at-x {
+  stroke: #202124;
+  stroke-width: 2px;
+}
+
+.wsu-line .wsu-selected {
+  stroke: #000;
+  stroke-width: 2.5px;
+}
+
+.wsu-line .wsu-faded {
+  opacity: 0.18;
+}
+
+/* L7: active legend selection elevates the matching series to fully
+   opaque so it's visually distinct from default (backgroundOpacity ~0.45)
+   and from faded (0.18). Three clearly-different states. */
+.wsu-line .wsu-legend-active {
+  opacity: 1;
+}
+
+.wsu-line .axis-label {
+  fill: #202124;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wsu-line .legend text {
+  fill: #202124;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.wsu-line .legend-item {
+  cursor: pointer;
+}
+
+.wsu-line .legend-item.legend-active text {
+  font-weight: 700;
+}
+
+.wsu-line .legend-item.legend-inactive text {
+  fill: #9aa0a6;
+}
+
+.wsu-line .legend-item.legend-inactive path {
+  opacity: 0.45;
+}
+
+.wsu-line .legend-bottom text {
+  font-size: 10px;
+}
+
+.wsu-line .zoom-rect {
+  fill: #1e88e5;
+  fill-opacity: 0.12;
+  stroke: #1e88e5;
+  stroke-width: 1px;
+  stroke-dasharray: 3 2;
+  pointer-events: none;
+}
+
+.wsu-line .empty-state {
+  color: #4a4f55;
+  font-size: 13px;
+  padding: 12px;
+}
+
+.wsu-line-tooltip {
+  position: absolute;
+  display: none;
+  max-width: 720px;
+  max-height: 70vh;
+  overflow: hidden;
+  padding: 7px 8px;
+  border: 1px solid #bfc4c8;
+  border-radius: 2px;
+  background: #fff;
+  color: #202124;
+  font: 12px Arial, Helvetica, sans-serif;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.wsu-line-tooltip .title {
+  margin-bottom: 5px;
+  font-weight: 700;
+}
+
+/* E2: overflow warning sticks to the bottom edge of the (clipped) tooltip
+   viewport so the user always sees that more rows are hidden. */
+.wsu-line-tooltip .wsu-overflow-warning {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  border-top: 1px solid #d9dcdf;
+  padding-top: 3px;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.wsu-line-tooltip .subtle {
+  color: #626a73;
+  font-size: 11px;
+}
+
+.wsu-line-tooltip table {
+  border-collapse: collapse;
+  width: 100%;
+  border: 1px solid #d0d3d6;
+}
+
+.wsu-line-tooltip th,
+.wsu-line-tooltip td {
+  padding: 3px 6px;
+  border-bottom: 1px solid #d9dcdf;
+  border-right: 1px solid #d9dcdf;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.wsu-line-tooltip th {
+  background: #f6f6f6;
+  color: #626a73;
+  font-weight: 600;
+}
+
+.wsu-line-tooltip th:last-child,
+.wsu-line-tooltip td:last-child {
+  border-right: 0;
+}
+
+.wsu-line-tooltip td.value,
+.wsu-line-tooltip td.delta,
+.wsu-line-tooltip td.rank {
+  text-align: right;
+}
+
+.wsu-line-tooltip td.delta.delta-up { color: #1b8b3a; }
+.wsu-line-tooltip td.delta.delta-down { color: #c62828; }
+.wsu-line-tooltip td.delta.delta-flat { color: #777f87; }
+
+.wsu-line-tooltip table.zebra tr.alt td {
+  background: #fafbfc;
+}
+
+.wsu-line-tooltip tr.active td {
+  background: #f4f8fb;
+  font-weight: 700;
+}
+
+.wsu-line-tooltip .swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border-radius: 50%;
+  vertical-align: middle;
+}

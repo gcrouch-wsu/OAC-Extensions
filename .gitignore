@@ -1,0 +1,28 @@
+# Build output
+oac-sdk-dev/build/
+oac-sdk-dev/.gradle/
+**/build/
+**/dist/
+*.zip
+
+# Machine-specific OAC/OAD SDK config
+oac-sdk-dev/gradle.properties
+
+# Real/source data: keep public repo synthetic-only
+math.csv
+SDW DATA DICTONARY.csv
+CAHNRS First Year Student with Acad Plan Initial to Graduation.csv
+*.xlsx
+*.xls
+
+# Local/editor files
+.claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Python local artifacts
+__pycache__/
+*.pyc
+.pytest_cache/

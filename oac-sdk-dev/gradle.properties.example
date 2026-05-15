@@ -1,0 +1,8 @@
+# Oracle BI Tech SDK Tools Configuration
+#
+# Copy this file to gradle.properties and update the local paths.
+# gradle.properties is ignored because these paths are workstation-specific.
+
+sdkDir=C\:\\Program Files\\Oracle Analytics Desktop\\tools
+devMode=NEW
+desktopDir=C\:\\Program Files\\Oracle Analytics Desktop

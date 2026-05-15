@@ -1,0 +1,283 @@
+.wsu-dumbbell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+.wsu-dumbbell svg {
+  display: block;
+}
+
+.wsu-dumbbell .chart-area {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Cursor feedback so users know drag-to-zoom is available. Endpoints and
+   connector hits override back to pointer/crosshair. Brush mode wins. */
+.wsu-dumbbell[data-zoom-mode="x"] .chart-area svg,
+.wsu-dumbbell[data-zoom-mode="y"] .chart-area svg,
+.wsu-dumbbell[data-zoom-mode="xy"] .chart-area svg {
+  cursor: zoom-in;
+}
+.wsu-dumbbell[data-brush-mode="on"] .chart-area svg {
+  cursor: crosshair;
+}
+
+.wsu-dumbbell .axis path,
+.wsu-dumbbell .axis line {
+  stroke: #9aa0a6;
+  shape-rendering: crispEdges;
+}
+
+.wsu-dumbbell .axis text {
+  fill: #4a4f55;
+  font-size: 10px;
+}
+
+.wsu-dumbbell .grid line {
+  stroke: #d8dde3;
+  stroke-opacity: 0.75;
+  shape-rendering: crispEdges;
+}
+
+.wsu-dumbbell .grid path {
+  display: none;
+}
+
+.wsu-dumbbell .panel-title {
+  fill: #202124;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wsu-dumbbell .axis-label {
+  fill: #202124;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wsu-dumbbell .connector {
+  stroke-linecap: round;
+  transition: opacity 0.15s ease-out;
+}
+
+.wsu-dumbbell .connector-hit {
+  stroke: transparent;
+  stroke-width: 16px;
+  cursor: pointer;
+}
+
+.wsu-dumbbell .endpoint {
+  stroke: #fff;
+  stroke-width: 1px;
+  cursor: pointer;
+  transition: opacity 0.15s ease-out;
+}
+
+.wsu-dumbbell .student-dumbbell.outlier .endpoint {
+  stroke: #202124;
+  stroke-width: 1.5px;
+}
+
+.wsu-dumbbell .student-dumbbell.outlier .connector {
+  stroke-opacity: 0.92;
+}
+
+.wsu-dumbbell .wsu-faded {
+  opacity: 0.18;
+}
+
+.wsu-dumbbell .wsu-selected {
+  stroke: #000;
+  stroke-width: 2.5px;
+}
+
+.wsu-dumbbell .reference-line {
+  stroke: #f9ab00;
+  stroke-width: 1.2px;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+.wsu-dumbbell .reference-label {
+  fill: #806100;
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.wsu-dumbbell .annotation text {
+  fill: #4a4f55;
+  font-size: 10px;
+  font-style: italic;
+  pointer-events: none;
+}
+
+.wsu-dumbbell .legend text {
+  fill: #202124;
+  font-size: 11px;
+}
+
+.wsu-dumbbell .legend-item {
+  cursor: pointer;
+}
+
+.wsu-dumbbell .legend-item.legend-active text {
+  font-weight: 700;
+}
+
+.wsu-dumbbell .legend-item.legend-inactive text {
+  fill: #9aa0a6;
+}
+
+.wsu-dumbbell .legend-item.legend-inactive path {
+  opacity: 0.45;
+}
+
+.wsu-dumbbell .legend-bottom text {
+  font-size: 10px;
+}
+
+.wsu-dumbbell .summary-strip {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  background: #f7f8fa;
+  border-bottom: 1px solid #d8dde3;
+  font-size: 11px;
+  color: #202124;
+  display: flex;
+  gap: 18px;
+}
+
+.wsu-dumbbell .summary-strip span {
+  white-space: nowrap;
+}
+
+.wsu-dumbbell .summary-strip b {
+  margin-left: 3px;
+  color: #202124;
+}
+
+.wsu-dumbbell .in-chart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 4px 8px;
+  background: #fafbfc;
+  border-bottom: 1px solid #e1e4e7;
+  font-size: 11px;
+}
+
+.wsu-dumbbell .in-chart-controls.spacing-tight {
+  padding: 2px 6px;
+  gap: 4px 8px;
+}
+
+.wsu-dumbbell .in-chart-controls.spacing-loose {
+  padding: 8px 14px;
+  gap: 10px 18px;
+}
+
+.wsu-dumbbell .in-chart-controls .control-label {
+  color: #626a73;
+  font-weight: 600;
+}
+
+.wsu-dumbbell .in-chart-controls select,
+.wsu-dumbbell .in-chart-controls button {
+  font: 11px Arial, Helvetica, sans-serif;
+  color: #202124;
+  background: #fff;
+  border: 1px solid #bfc4c8;
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+.wsu-dumbbell .in-chart-controls button {
+  cursor: pointer;
+}
+
+.wsu-dumbbell .in-chart-controls.style-expanded select,
+.wsu-dumbbell .in-chart-controls.style-expanded button {
+  padding: 4px 10px;
+}
+
+.wsu-dumbbell-reset {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 5;
+  background: #fff;
+  border: 1px solid #bfc4c8;
+  border-radius: 3px;
+  padding: 4px 10px;
+  font: 11px Arial, Helvetica, sans-serif;
+  color: #202124;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.wsu-dumbbell-reset:hover {
+  background: #f1f3f4;
+}
+
+.wsu-dumbbell .zoom-rect {
+  fill: #1e88e5;
+  fill-opacity: 0.12;
+  stroke: #1e88e5;
+  stroke-width: 1px;
+  stroke-dasharray: 3 2;
+  pointer-events: none;
+}
+
+.wsu-dumbbell .empty-state {
+  color: #4a4f55;
+  font-size: 13px;
+  padding: 12px;
+}
+
+.wsu-dumbbell-tooltip {
+  position: absolute;
+  display: none;
+  max-width: 480px;
+  max-height: 70vh;
+  overflow: hidden;
+  padding: 7px 8px;
+  border: 1px solid #bfc4c8;
+  border-radius: 2px;
+  background: #fff;
+  color: #202124;
+  font: 12px Arial, Helvetica, sans-serif;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.wsu-dumbbell-tooltip table {
+  border-collapse: collapse;
+}
+
+.wsu-dumbbell-tooltip td {
+  padding: 2px 6px;
+  vertical-align: top;
+}
+
+.wsu-dumbbell-tooltip td.tthead {
+  color: #626a73;
+  font-weight: 600;
+}
+
+.wsu-dumbbell-tooltip td.ttval {
+  color: #202124;
+}
+
+.wsu-dumbbell-tooltip .compact-tip span {
+  margin-right: 10px;
+  white-space: nowrap;
+}

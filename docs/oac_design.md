@@ -1,0 +1,1440 @@
+# Oracle Analytics (OAC/OAD) Custom Visualization Master Spec
+
+This document provides high-level architectural guidance for building custom
+visualization plugins. It separates the "Art of the Possible" (Scope) from
+the "Reality of the Platform" (Constraints).
+
+---
+
+## 1. Scope — The Art of the Possible
+
+Custom plugins in OAC allow for visual and interactive experiences that the
+stock visualizations cannot provide.
+
+### Advanced Interactivity
+- **Complex Tooltips**: You can render full HTML tables inside tooltips,
+  including custom calculations, Sparklines (mini-charts), and Year-over-Year
+  comparisons.
+- **Bucket-driven UI**: You can use OAC data buckets to drive interactive
+  elements *inside* the chart, such as dropdown menus for sorting or
+  filtering.
+- **Shared-X Banding**: You can implement vertical banding where hovering
+  anywhere on an X-position activates all related data series simultaneously.
+- **Custom Zoom/Pan**: While OAC provides basic zoom, D3 allows for sophisticated
+  geometric zooming and "Click-to-Reset" resets.
+
+### Dynamic Data Mapping
+- **Custom Logic Translation**: You can map OAC's multi-layered data model into
+  any structure required by D3.
+- **Client-side Aggregation**: You can merge data rows on-the-fly (e.g.,
+  First/Max/Avg) if multiple rows map to the same visual point.
+
+---
+
+## 2. Constraints — Hard Limitations & Vulnerabilities
+
+### Hard Limitations (Avoid Wasting Time)
+- **External Data Fetching**: Plugins cannot fetch data from external APIs
+  or unrelated OAC datasets. All data must be bound to the visualization's
+  bucket configuration.
+- **Fixed Property Panel**: The layout of the right-hand property panel is
+  locked. You can add gadgets (sliders, switchers, text fields), but you
+  cannot change the overall panel hierarchy or add complex React/HTML widgets
+  there.
+- **UI Metadata**: OAC does not pass rich metadata (Currency, Percentage,
+  Prefixes) cleanly through the `oDataLayout`. The renderer must often "guess"
+  the format or use text overrides in the property panel.
+
+### Vulnerabilities (OAC Update Risks)
+- **Brittle Mixins**: Avoid the native `legendandvizcontainer`. It frequently
+  breaks during OAC minor updates because it relies on semi-private framework
+  APIs.
+- **Module Renames**: Oracle sometimes renames internal AMD modules (e.g.,
+  the path to `datavisualization` or `gadgetdialog`).
+
+### Solid Workarounds
+- **SVG Legends**: Draw your own legend inside the SVG. It is more stable
+  than the native container and survives OAC updates.
+- **Symbol Pinning**: Cache and assert internal constants at the module top
+  to provide named error messages if OAC changes them.
+- **Additive Bisection**: If a plugin is "uploaded but hidden," use the
+  step-by-step metadata hardening recipe to identify the specific blocker.
+
+---
+
+## 3. Identifiers and Registration
+
+### The id permanence rule
+- **Root id** is permanent. Workbooks reference it by `viz:chart.type`.
+- **`viz:chart.type`** MUST equal the root id. Mismatch → silent drop.
+
+### Troubleshooting Ladder (Restart -> Collision -> ID Match -> Rename)
+1. **Restart OAD.** Flushes registry cache.
+2. **Check Type Collisions.** Inspect `unpacked/` for duplicate `viz:chart.type`.
+3. **Open OAD DevTools.** Filter for `[CUSTOM_VIZ]` to find registration errors.
+4. **Last resort: rename root id.** Bypasses "poisoned" registry entries.
+
+---
+
+## 4. AI Build Recipe (The "Golden Path")
+
+1.  **Phase 1: Metadata Foundation** (Buckets & Handler mapping).
+2.  **Phase 2: Hello World Stub** (Verify registration with `console.log`).
+3.  **Phase 3: Data Flow** (Implement `_generateData`).
+4.  **Phase 4: Visual Iteration** (D3 logic).
+
+---
+
+## 5. Technical Reference (SDK Rules)
+
+### JDK Requirements
+The SDK is built against a JDK 17. Two viable paths:
+
+```powershell
+# Option A — bundled OAD JDK (recommended in Oracle docs)
+$env:JAVA_HOME = 'C:\Program Files\Oracle Analytics Desktop\OracleBI1\jdk'
+
+# Option B — standalone JDK 17 (what `oac-sdk-dev/build-sdk.ps1` uses today)
+$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot'
+$env:JAVA_OPTS = '--add-opens java.base/java.lang=ALL-UNNAMED'
+```
+
+Either works. The Adoptium path is set in this repo because OAD's bundled JDK isn't always present on a developer machine.
+
+### Pre-upload Checklist
+- [ ] `node --check` passes for every JS file.
+- [ ] `Get-Content <file> -Raw | ConvertFrom-Json -ErrorAction Stop` passes for every JSON manifest.
+- [ ] `.\build-sdk.ps1` produces `oac-sdk-dev\build\distributions\customviz_<root-id>.zip`.
+- [ ] OAD restarted before testing (registry cache flush).
+- [ ] DevTools console filtered for `[CUSTOM_VIZ]` shows no registration errors.
+
+---
+
+## 6. Patterns & Gotchas (Build Guide)
+
+This section is a recipe book for future plugins. Each entry is something we
+hit in prior builds and want every future agent to know without re-discovering.
+
+### 6.1 CSV measure-vs-attribute classification
+When OAC ingests a CSV, every all-numeric column is auto-classified as a
+**Measure**. Plugin buckets typed `contentType: "categorical"` will refuse to
+accept measures, so a numeric attribute (e.g. `Weeks from Start`, `Day of Term`,
+`Year`) cannot be dropped on the X bucket until you change the column.
+
+**Fix in OAC**: open the dataset → click the column header → change *Treat As*
+from **Measure** to **Attribute** → save. Production datasets that already
+declare these columns as Attributes work without intervention; the gotcha
+only bites with ad-hoc CSV uploads used for testing.
+
+### 6.2 Side-by-side install rename checklist
+To run two versions of the same plugin family on the same OAD instance,
+every one of these names must differ. Missing any one of them → silent
+collisions, lost state, or the wrong plugin renders.
+
+| What | Where |
+|------|-------|
+| Directory name | `src/customviz/<root-id>/` |
+| AMD module ids | `define([...], 'skin!css!<root-id>/<viz>styles')` and the prefix on every internal `define`-able resource |
+| `viz:chart.type` | visualization JSON manifest |
+| `host.script.module` and `dataModelHandler` | visualization JSON manifest |
+| datamodelHandler extension JSON filename | `<root-id>.visualizationDatamodelHandler.json` |
+| CSS class root selector | every selector below it must be namespaced (e.g., `.plugin-a` vs `.plugin-b`) |
+| DOM ids | derived from the root id with sanitized container id |
+| NLS bundle keys | unique prefix per plugin (e.g., `PLUGINA_*` vs `PLUGINB_*`) |
+| `displayName` / `shortDisplayName` / `category` | NLS root + JSON defaults |
+| Icon filename | per-plugin (e.g., `pluginAIcon.png` vs `pluginBIcon.png`) |
+
+`viewConfigJSON` settings storage namespaces automatically per viz instance, so
+two plugins do not stomp on each other's saved Configs.
+
+### 6.3 Symbol pinning — concrete list
+Pin every internal constant your plugin reaches into. If OAC renames one in a
+future release, the assertion throws a named error at module-load time instead
+of letting the renderer fail with an opaque undefined-property:
+
+```js
+jsx.assertObject(datamodelshapes.Physical, MODULE_NAME + " datamodelshapes.Physical");
+jsx.assertObject(datamodelshapes.Logical, MODULE_NAME + " datamodelshapes.Logical");
+jsx.assertObject(dataviz.SettingsNS, MODULE_NAME + " dataviz.SettingsNS");
+jsx.assertObject(dataviz.DataContextProperty, MODULE_NAME + " dataviz.DataContextProperty");
+jsx.assertObject(data.LayerMetadata, MODULE_NAME + " data.LayerMetadata");
+var PHYS_DATA = datamodelshapes.Physical.DATA;
+var PHYS_ROW = datamodelshapes.Physical.ROW;
+var PHYS_COLUMN = datamodelshapes.Physical.COLUMN;
+var LOGICAL_COLOR = datamodelshapes.Logical.COLOR;
+var LAYER_DISPLAY_NAME = data.LayerMetadata.LAYER_DISPLAY_NAME;
+var SETTINGS_CHART = dataviz.SettingsNS.CHART;
+var DCP_DATA_LAYOUT = dataviz.DataContextProperty.DATA_LAYOUT;
+var DCP_DATA_LAYOUT_HELPER = dataviz.DataContextProperty.DATA_LAYOUT_HELPER;
+```
+
+After this block, use the local constants everywhere — never reach back into
+the framework objects again. This both documents the dependency surface and
+fails fast if any of it changes.
+
+### 6.4 Drag-to-zoom over a shared-X hover tooltip
+`d3.brush()` puts a permanent overlay rect on top that captures `mousemove`,
+which kills shared-X hover. Hand-roll the gesture instead:
+
+- `mousedown` on the chart background (within the inner-chart bounds) starts a
+  drag; remember `startX/startY`.
+- `mousemove` while dragging redraws a translucent rect.
+- `mouseup` with displacement ≥ 5px applies a new domain; `<` 5px is a click,
+  preserving normal mark behavior.
+- `mouseleave` cancels (drops the rect).
+- `dblclick` resets zoom (when state exists).
+- Listen for `Escape` on `document.keydown` while dragging; remove the listener
+  on drag end. Track the listener variable in closure so re-renders don't leak
+  it.
+
+For a Tableau-style line chart, X-only zoom is the usable default — Y rescales
+automatically to the visible rows. X+Y is available as an option but causes
+"off page" weirdness when the user zooms into a sparse region. Reference
+implementation: a line-chart `Interaction: Zoom Mode` switcher.
+
+### 6.5 Tooltip viewport clipping
+Floating tooltips that follow the cursor will overflow off the right of the
+viewport. Measure the rendered tooltip and flip:
+
+```js
+var ttW = node.offsetWidth;
+var winW = window.innerWidth;
+var left = event.pageX + 12;
+if (ttW && (event.clientX + 12 + ttW + pad) > winW) {
+   left = event.pageX - 12 - ttW;
+   if (left < pageOffsetX + pad) left = pageOffsetX + pad;
+}
+// also clamp top by tooltip offsetHeight
+```
+
+### 6.6 Header frame layout
+For a fixed header strip above the chart that auto-collapses when empty:
+
+```css
+.custom-root { display: flex; flex-direction: column; height: 100%; }
+.custom-header { flex: 0 0 auto; max-height: 25%; overflow-y: auto; }
+.custom-chart { flex: 1 1 auto; min-height: 0; position: relative; }
+.custom-reset { position: absolute; top: 8px; right: 12px; z-index: 5; }
+```
+
+The header's actual rendered height is read at draw time and subtracted from
+the SVG's height budget. When the header has no values (no GLYPH bucket fields
+dropped), the div is omitted entirely.
+
+### 6.7 Format-as-Config pattern
+A general-purpose viz must support multiple number formats per use case
+(counts, percentages, currency, compact). Don't bake formatting into the
+renderer; put it in Config:
+
+```js
+this.Config = {
+   ...,
+   numberFormat: "auto",       // auto | number | percent | currency | compact
+   decimalPlaces: "auto",      // auto | "0" | "1" | "2" | "3" | "4"
+   valuePrefix: "",
+   valueSuffix: ""
+};
+// Then a single formatValue(value, opts) helper used at every render site.
+```
+
+**Caveat**: a global `valueSuffix` will appear on the Y axis as well as
+tooltip cells. Per-column suffixes (e.g. only on a delta column) must be
+either pre-formatted in the source data or rendered with a column-specific
+code path (see `_tooltipHtml` rendering of `previousPercent` for a pre-baked
+example).
+
+### 6.8 Missing-data strategy
+Three modes a numeric measure can be in: hidden, zeroed, or gapped. Bake them
+into the data-shaping path, not the rendering path:
+
+| Mode | Behavior in `_generateData` |
+|------|------------------------------|
+| `hide` (default) | Skip the source row entirely on `isNaN(value)`. |
+| `zero` | Substitute 0 for NaN. Aggregations behave like the row was a real zero. |
+| `gap` | Keep the row with `value: NaN`. Lines use `.defined()` to break; bars filter NaN before `data()` binding. |
+
+Aggregation must mark all-NaN groups as NaN rather than `d3.sum`-ing to 0:
+```js
+var hasNumeric = row.values.some(function(v) { return !isNaN(v); });
+if (!hasNumeric) row.value = NaN; else row.value = d3.sum(row.values);
+```
+
+### 6.9 Property panel grouping convention
+Use stable label prefixes to make a flat panel scannable. Don't change gadget
+IDs (saved Configs use them as keys):
+
+- `Chart:` Type, Aggregation
+- `Tooltip:` Mode, Compare, Sort Column, Sort Direction, Row Limit, etc.
+- `Format:` Number Format, Decimal Places, Value Prefix, Value Suffix, Missing Data
+- `Axis:` X Sort, X Labels, Gridlines, Guide Line, X Title, Y Title
+- `Interaction:` Zoom Mode, Click Marks, Privacy Mode
+- `Style:` Show Points, Line Width, Point Size, Palette, etc.
+- `Legend:` Show, Position
+
+Use 100-unit gaps between groups in the gadget order index so future additions
+slot in without renumbering:
+```js
+var base = euidef.GD_FIELD_ORDER_GENERAL_LINE_TYPE;
+var ord = {CHART: base+100, TOOLTIP: base+200, FORMAT: base+300, ...};
+var nx = function(g){ return ord[g]++; };
+addSwitcher(panel, "chartTypeGadget", "Chart: Type", ..., nx("CHART"));
+```
+
+### 6.10 Caching dataset metadata for dynamic dropdowns
+The property dialog (`doAddVizSpecificPropsDialog`) doesn't receive a clean
+rendering context, so it can't read the data layout directly. Cache the most
+recent dataset's labels on the viz instance:
+
+```js
+// In the constructor:
+var lastDatasetMeta = null;
+this.getLastDatasetMeta = function() { return lastDatasetMeta; };
+this.setLastDatasetMeta = function(m) { lastDatasetMeta = m; };
+
+// In _render after _generateData succeeds:
+this.setLastDatasetMeta({
+   detailLabels: dataset.detailLabels.slice(),
+   seriesLabel: dataset.seriesLabel,
+   valueLabel: dataset.valueLabel,
+   xLabel: dataset.xLabel
+});
+
+// In doAddVizSpecificPropsDialog:
+var meta = this.getLastDatasetMeta();
+var options = [...]; // build from meta
+addSwitcher(panel, "myGadget", "...", currentValue, options, ord);
+```
+
+Always include a fallback when `meta` is null (first dialog open before any
+render). When the saved value is no longer in the bucket data, surface it as a
+disabled-looking option labeled `"<value> (not in current data)"` so the user
+can see and re-pick.
+
+### 6.11 Parameter-mirroring for parameter-driven measures
+When the workbook's primary measure is a `CASE @parameter(...)` switch (e.g.
+`Admission Status (Selected)` flipping between Applied / Admitted / Confirmed
+/ Enrolled), any derived measure needed in the tooltip must mirror the **same
+parameter and the same CASE keys**:
+
+```
+CASE @parameter("Admissions Status Selector")('Applied')
+WHEN 'Applied'   THEN <derived_for_applied>
+WHEN 'Admitted'  THEN <derived_for_admitted>
+WHEN 'Confirmed' THEN <derived_for_confirmed>
+WHEN 'Enrolled'  THEN <derived_for_enrolled>
+END
+```
+
+Otherwise the parameter switch will desynchronize: the chart shows one metric
+while the tooltip shows another. **Never** push parameter-evaluation into the
+plugin — that ties the plugin to one workbook's parameters and breaks
+generality.
+
+### 6.12 CSS namespacing
+Every selector must start with the root class (`.custom-tooltip`,
+`.custom-tooltip-v2`, etc.). Two plugins from the same family rendering on
+the same dashboard will leak styles otherwise — typography, table borders,
+swatch sizes will collide.
+
+When forking a plugin, do a global find-and-replace on the root class as the
+first step.
+
+### 6.13 Domain-aware logic — when to bake it in vs push to data layer
+Default: push to OAC dataset/workbook calculations. The plugin should be
+domain-agnostic and presentational.
+
+Exception: when a domain-aware feature provides large interpretation value AND
+the data layer is locked (read-only XSA, no SQL access). A chronology-aware
+trend comparison is such a case: it can parse term keys (Fall/Spring/Summer/
+Winter) to find prior 3 same-season years. Justified because:
+- Source-side window functions weren't available.
+- The chronological-fallback path keeps it useful for non-academic data.
+- The parse helper (`academicTermKey`) was already in the plugin.
+
+Document the tradeoff in the plugin's spec doc when you do this.
+
+### 6.14 Multi-panel property dialog with try/catch fallback
+The OAC SDK uses `gadgetdialog.forcePanelByID` to place gadgets into named
+panels (which become tabs in the property dialog). `GD_PANEL_ID_GENERAL` is
+the universally-supported one. Other panel IDs (custom strings or framework
+constants) **may or may not work** depending on the OAC version — and the
+codebase has no working examples of multi-panel use.
+
+Solution: try the custom panel ID, catch any throw, fall back to General.
+Build always succeeds; UX is "four tabs if SDK supports, one tab if not":
+
+```js
+var pGen = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, euidef.GD_PANEL_ID_GENERAL);
+function tryPanel(id) {
+   try {
+      var p = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, id);
+      return p || pGen;
+   } catch (e) {
+      return pGen;
+   }
+}
+var pStyle = tryPanel("wsuLineStyle");
+var pHeader = tryPanel("wsuLineHeader");
+var pAxisLegend = tryPanel("wsuLineAxisLegend");
+// Add gadgets to whichever panel reference came back. If everything fell
+// back to pGen, all gadgets land in the General tab as a single-panel
+// layout. The prefix-grouping convention (§6.9) keeps the fallback usable.
+```
+
+Reference pattern: a current multi-panel property-dialog implementation in this
+repo follows this fallback shape.
+
+### 6.15 `d3.symbol()` for matching legend markers
+When the chart uses `d3.symbol()` to render data points (circle / square /
+triangle / etc), the legend should use the same symbol generator so chart
+and legend never diverge. Single source of truth for shape:
+
+```js
+function symbolType(name) {
+   switch (name) {
+      case "square":   return d3.symbolSquare;
+      case "triangle": return d3.symbolTriangle;
+      // ... etc
+      default:         return d3.symbolCircle;
+   }
+}
+
+// Chart points
+var pointArea = Math.PI * Math.pow(this.Config.pointSize, 2);
+var symGen = d3.symbol().type(symbolType(this.Config.pointShape)).size(pointArea);
+g.selectAll(".series-point")
+   .data(rows)
+   .enter().append("path")
+   .attr("d", symGen());
+
+// Legend marker (same `symGen` if shape matches; else build new generator)
+var legendMarker = d3.symbol()
+   .type(symbolType(legendShape))
+   .size(Math.PI * legendRadius * legendRadius)();
+legendItems.append("path").attr("d", legendMarker);
+```
+
+Note that `d3.symbol().size(...)` interprets size as **area**, not radius.
+Convert: `area = π × r²` if you want a `pointSize` slider that feels like a
+radius.
+
+### 6.16 Color Source switching pattern
+A general-purpose plugin has two color sources: the OAC color service
+(`getDataItemColorInfo` driven by workbook themes) and a local palette
+config. Don't merge them silently — give the user explicit control:
+
+```js
+this.Config.colorSource = "oac"; // or "custom"
+
+var useOacColors = this.Config.colorSource !== "custom";
+var oColorContext = null;
+var oColorInterpolator = null;
+var colorServiceAvailable = useOacColors;
+if (useOacColors) {
+   try {
+      oColorContext = this.getColorContext(oTransientRenderingContext);
+      oColorInterpolator = this.getCachedColorInterpolator(oTransientRenderingContext, LOGICAL_COLOR);
+   } catch (e) {
+      colorServiceAvailable = false;
+   }
+}
+
+// In the row loop:
+if (colorServiceAvailable) {
+   try {
+      var info = this.getDataItemColorInfo(helper, oColorContext, oColorInterpolator, rowIndex, 0);
+      seriesColors.set(meta.series, info.sColor || info.sSeriesColor || null);
+   } catch (e) { colorServiceAvailable = false; seriesColors.set(meta.series, null); }
+}
+else {
+   seriesColors.set(meta.series, null); // forces palette fallback below
+}
+```
+
+Default to `"oac"`. Workbook themes drive colors out of the box.
+
+### 6.17 Header preset + override pattern
+When a styled element (header strip, banner, footer) has 5+ stylable
+properties, don't expose all of them as raw fields. Provide a small set of
+presets for the common cases plus individual overrides for the most-tweaked
+ones. Overrides win:
+
+```js
+function buildInlineStyle() {
+   var preset = Config.headerPreset || "default";
+   var fontSize = Number(Config.headerFontSize) || 11;
+   var bgOverride = str(Config.headerBackgroundColor).trim();
+   var bold = Config.headerFontBold === "on";
+   var styles = ["font-size:" + fontSize + "px"];
+   // Preset baseline
+   if (preset === "compact") {
+      styles.push("background:transparent");
+      styles.push("border-bottom:1px solid #d8dde3");
+   } else if (preset === "prominent") {
+      styles.push("background:#fff8e1");
+      styles.push("font-weight:700");
+   }
+   // Overrides win — strip preset's value, append override's
+   if (bgOverride) {
+      styles = styles.filter(function(s) { return s.indexOf("background") !== 0; });
+      styles.push("background:" + bgOverride);
+   }
+   if (bold) {
+      styles = styles.filter(function(s) { return s.indexOf("font-weight") !== 0; });
+      styles.push("font-weight:700");
+   }
+   return styles.join(";");
+}
+```
+
+Reference: `wsuLine.js` `_headerInlineStyle`.
+
+### 6.18 Color management — defer to OAC's color service
+
+**The principle (palettes only)**: Plugin Config defaults must not contain
+hardcoded color hex values for the **series palette** — the comma-separated
+list that OAC's color service is responsible for distributing across
+categories. The general palette field defaults to `""`; the platform drives
+series colors.
+
+**Why this matters**: OAC ships a stack of color management features that
+all depend on the platform color service deciding series colors:
+
+- **Workbook themes** — assign a palette to the whole workbook.
+- **Stretch Palette** — extend a small palette to fit many series.
+- **Include Measure Color** — apply measure-level color overrides.
+- **Manage Assignment** — pin specific series to specific colors.
+- **Reset Visualization Colors** — clear all overrides.
+
+A plugin that ships with hardcoded hex defaults *bypasses* every one of
+these. Authors get confused why themes aren't applying. "Reset
+Visualization Colors" looks broken because there's nothing to reset *to* —
+the plugin keeps reasserting its branded default.
+
+**The implementation**:
+
+```js
+this.Config = {
+   ...,
+   palette: "",          // empty default — OAC theme drives
+   colorSource: "oac"    // "oac" (default) or "custom"
+};
+
+// In _generateData:
+var useOacColors = this.Config.colorSource !== "custom";
+if (useOacColors) {
+   try {
+      oColorContext = this.getColorContext(...);
+      oColorInterpolator = this.getCachedColorInterpolator(...);
+   } catch (e) { colorServiceAvailable = false; }
+}
+
+// Per-row:
+if (colorServiceAvailable) {
+   var info = this.getDataItemColorInfo(...);
+   seriesColors.set(meta.series, info.sColor || info.sSeriesColor || null);
+}
+
+// Fallback _palette() (when both OAC returns nothing AND custom palette empty):
+return parsed.length ? parsed : d3.schemeCategory10.slice();
+```
+
+**Not governed by this rule**: feature-specific color slots that encode
+*meaning*, not category. Examples:
+
+- Direction encoding (improve/worse/same).
+- Threshold lines (warning/critical color).
+- Annotation accent colors.
+- Status flags (on/off/error).
+
+These have sensible feature-appropriate defaults. They are not palettes,
+they don't compete with theme assignment, and stripping them would just
+break the feature. Document each in the plugin's spec doc so reviewers
+know they're intentional.
+
+**Anti-example (lesson from earlier convention)**: an early plugin
+shipped with `palette: "#981e32,#1e88e5,#6a8f3a,..."` — a hardcoded branded
+string baked into the Config default. That broke Reset Visualization
+Colors and led authors to think OAC themes were ignored. The fix is the
+empty-default + `colorSource` switcher pattern above.
+
+**Migration path when retrofitting an existing plugin**: detect "this
+workbook existed before the strip" via heuristic (any saved Config keys at
+all, but no explicit `palette` and no explicit `colorSource`) and pin the
+old palette into the user's saved Config as `colorSource: "custom"` so
+existing dashboards don't visually shift on first render after upgrade.
+New workbooks created after the upgrade pick up the OAC theme.
+
+**Test**: Reset Visualization Colors in OAC must restore the plugin to
+theme-default state. If it doesn't, you have a hardcoded default that
+needs to go.
+
+### 6.18.1 Grammar-first tooltips and separate sort metadata
+
+For plugins that display human-friendly labels but also need deterministic
+ordering, keep display labels and ordering inputs separate:
+
+- Put human-friendly labels (for example `Term Description`) in visible
+  category roles.
+- Put machine-sortable chronology (for example `STRM`, `term_code`) in a
+  dedicated grammar sort bucket.
+- Use sort bucket values for ordering only; do not parse display labels to
+  infer chronology.
+- When a derived calculation claims a calendar meaning such as `Delta 1 Year`
+  or `Delta 3 Years`, require the explicit chronology bucket instead of
+  guessing from display text. If the chronology bucket is absent, suppress the
+  calendar-specific derived output.
+
+Tooltip construction should prioritize grammar content:
+
+- Render Tooltip Detail fields first.
+- Treat plugin-derived rows (percent-of-stage, repeats, inferred attempts,
+  thresholds) as optional supplemental rows controlled by a property toggle.
+- Default derived rows to off when user-authored tooltip detail should be the
+  primary contract.
+- For authored-only tooltip contracts, render exactly the grammar detail rows
+  supplied by the workbook and avoid hidden fallback rows when the bucket is
+  empty.
+
+### 6.18.2 Canonical missing-state routing and dense multistage layouts
+
+For flow, pathway, and other multistage visualizations, do not force report
+authors to build workbook calculations just to represent incomplete or
+still-in-progress outcomes. When the missing state has stable business meaning,
+the plugin can own that grammar:
+
+- Detect missing End values from nulls, empty/whitespace strings, and safe
+  null-like literals such as `null`, `(null)`, `n/a`, and `na`.
+- Route missing terminals to a canonical property-driven label when routing and
+  inclusion are enabled.
+- If a workbook already emits that same canonical label through its own
+  calculation, preserve deterministic behavior by treating it as the same
+  semantic terminal rather than as a normal completed outcome.
+- Give incomplete-path highlighting first color precedence over OAC theme and
+  custom color modes, while leaving theme assignment untouched for complete
+  flows.
+
+Dense pathway views need frame-aware layout, not just more pixels:
+
+- Compute the node layout against the same inner chart frame the SVG actually
+  renders after legend and margins are reserved.
+- Provide right/bottom padding controls so end-stage labels and low-positioned
+  terminals do not clip.
+- Use auto-tightened node gaps, a configurable minimum node height, stage
+  padding, and label truncation with native title/tooltips for crowded views.
+- Keep Node/Edge tooltip grammar intact; readability fixes should not replace
+  the existing tooltip contract.
+
+Stage-frame titles should be treated like axis titles, not data marks:
+
+- Provide explicit chart-frame titles for directional sides or stages when the
+  business question needs that annotation.
+- Keep them outside the node graph with style controls for text, color, size,
+  weight, italics, orientation, and offset.
+- Reserve enough left/right chart padding so the titles do not compete with node
+  labels or get clipped by the viewport.
+
+Interaction should match directional path questions:
+
+- Start nodes focus downstream outcomes.
+- End nodes focus upstream origins.
+- Intermediate nodes show both sides of the path.
+- Custom legends should be click-active focus controls when the chart draws
+  them, following the same focus-state pattern used elsewhere in this repo.
+
+Tooltip guidance for grammar-driven detail roles:
+
+- Tooltip Detail remains the supported grammar role. Prefer
+  `contentType: "categorical"` for authored tooltip-detail buckets so the
+  authoring contract is predictable across OAC/OAD hosts.
+- If a plugin intentionally uses a mixed `contentType: both` tooltip bucket,
+  the current grammar pane may accept either attributes or measures, but not
+  both families together once populated.
+- Keep Tooltip Detail visible when plugin-derived metrics are disabled, and do
+  not add unsupported pseudo-buckets that appear in the UI but reject drops.
+- Do not assume a failed drop means the bucket rejects that data family. OAC/OAD
+  may reject reusing the exact same data element in multiple grammar buckets in
+  one visualization. Test with an unused field first; if the same value must
+  drive more than one role, use a separate aliased/copied source field.
+- When a measure-like value needs to appear in an authored categorical tooltip
+  bucket, expose an upstream formatted attribute rather than relying on
+  mixed-family grammar behavior.
+- Derived percentages, weights, or contributing-row counts are optional and
+  must remain opt-in.
+- Edge-like mark tooltips are the right place for authored row-level detail.
+  Aggregate mark tooltips should stay concise by default because aggregating
+  row-level detail across a many-to-many node produces noisy comma-separated
+  rollups that are hard to interpret.
+
+### 6.18.3 vis-network self-loop stability
+
+For `vis-network` graphs, self-loop edges are fragile when multiple mechanisms
+try to control loop geometry at once. The stable pattern is one deterministic
+self-loop strategy:
+
+- Let `vis-network` use its `selfReference` renderer for self-loop geometry.
+- Do not also apply dynamic edge smoothing to self-loops.
+- Use a fixed loop angle unless there is a proven need for layout-specific
+  variation. Per-node angle jitter makes loops harder to audit and can detach
+  arrowheads from the node under zoom or layout movement.
+- Size the self-loop radius from the rendered node size, not only from a global
+  config value.
+- Enforce a minimum rendered node size for nodes with self-loops so the loop can
+  visibly attach to the node body at both ends.
+- Include loop radius, max node size, and max edge width in the initial
+  `network.fit({padding: ...})` calculation. Ordinary chart padding is often
+  not enough because the loop extends outside the node's bounding box.
+- Keep stabilized and interactive physics modes on the same self-loop geometry.
+  Physics may move the node, but it should not change the loop policy.
+
+Reference implementation: WSU Network uses node-size-aware helpers for minimum
+self-loop node size, `selfReference.size`, and fit padding; self-loop edges set
+`smooth.enabled = false` so `selfReference` owns the loop.
+
+### 6.19 Shared-X invisible hit area pattern
+
+For a multi-series chart where hovering anywhere on a vertical X column
+should highlight every series at that X position simultaneously
+(Tableau-style shared tooltip), don't attach hover events to individual
+data points or bars — they're too small a hit target and they only fire
+for one series at a time. Instead:
+
+1. Draw full-height invisible `<rect class="x-hit">` elements, one per
+   unique X value, spanning the full chart height.
+2. On `mouseover`/`mousemove`, fire a "show all rows at this X" handler
+   that pulls every series row at that X position from a precomputed
+   `byX` Map.
+3. Keep individual point/bar hover handlers too — they activate the
+   "single-series" tooltip variant when the user is over a specific point.
+
+```js
+// In _generateData:
+var byX = new Map();
+rows.forEach(function(row) {
+   if (!byX.has(row.x)) byX.set(row.x, []);
+   byX.get(row.x).push(row);
+});
+return {byX: byX, ...};
+
+// In _drawXHitAreas:
+var step = xValues.length > 1 ? innerWidth / (xValues.length - 1) : innerWidth;
+var band = Math.max(step, 14);
+g.selectAll(".x-hit")
+   .data(xValues)
+   .enter().append("rect")
+   .attr("class", "x-hit")
+   .attr("x", function(d) { return x(d) - band / 2; })
+   .attr("y", 0)
+   .attr("width", band)
+   .attr("height", innerHeight)
+   .on("mouseover", function(event, xValue) {
+      showAtX(xValue, byX.get(xValue), ...);
+   });
+```
+
+CSS: `.x-hit { fill: transparent; cursor: zoom-in; }` so the hit areas
+are invisible but capture pointer events.
+
+Reference pattern: the shared-X hit-area implementation in this repo follows
+this structure.
+
+### 6.20 Table-as-tooltip pattern
+
+A tooltip that renders multiple rows of structured data (one per series
+at the hovered X) gives users the same comparative view as a Tableau
+shared-X tooltip. Build the tooltip as a dynamic HTML `<table>` rather
+than a fixed string:
+
+- The `detail` bucket carries arbitrary additional fields (calculations,
+  attributes, dates) — iterate it in the row-render loop with no
+  hardcoded column names.
+- Provide visibility toggles for built-in columns (series, value, X-per-
+  row, comparison columns) so authors can suppress what they don't want.
+- Keep Compare modes (Vs Avg, Vs Prev, Δ% 1Y, Δ% 3Y) as separate
+  switchers that *add* columns to the table — don't bake them into the
+  primary structure.
+
+The interpretation gain is real: hovering one X position immediately
+shows every series and every detail field side-by-side, which a
+single-series tooltip can't do.
+
+Reference pattern: the table-based tooltip implementation in this repo follows
+this structure.
+
+### 6.21 Bucket-driven UI controls (in-chart Sort/Filter strips)
+
+For plugins that benefit from author-controlled sort and filter
+selections without forcing the author to drop into the property panel,
+hijack unused Logical channels (`GLYPH`, `SIZE`) to carry "intent"
+fields:
+
+- `Logical.GLYPH` → fields the author wants to **sort by**.
+- `Logical.SIZE` → fields the author wants to **filter by**.
+
+Then render a `<div>` strip above (or below) the chart with native
+`<select>` elements populated from the bucket data:
+
+```js
+// _drawControls — pseudo:
+sortFields.forEach(function(f, i) {
+   options.push({value: 'sort-' + i, label: f.label});
+});
+controls.append("select")
+   .selectAll("option").data(sortOptions).enter()
+   .append("option")
+   .attr("value", function(d) { return d.value; })
+   .text(function(d) { return d.label; });
+```
+
+The viewer (not just the author) can now re-sort and re-filter without
+opening the property panel. State persists into Config so the workbook
+saves the user's selection.
+
+Reference pattern: an in-canvas dropdown control implementation in this repo
+follows this shape. Note this is a deliberate
+re-use of channels that aren't otherwise meaningful for a dumbbell;
+plugins where SIZE or GLYPH have a visual meaning shouldn't reuse them
+this way.
+
+### 6.22 Wide vs Long data shape detection
+
+Sometimes the same plugin needs to accept two different data shapes:
+
+- **Wide format**: one row per entity, with multiple measures
+  (`first_value`, `second_value`) as separate columns.
+- **Long format**: two rows per entity, a single measure column, plus a
+  `Pair role` field that distinguishes "first" from "second".
+
+The plugin can detect which shape it's looking at and branch:
+
+```js
+if (aAllMeasures.length >= 2) {
+   rows = this._generateWideData(...);
+} else {
+   rows = this._generateLongData(...);
+}
+```
+
+For long format, role-to-position assignment can be:
+
+- **Keyword matching** on the role text (e.g., `pre`/`first`/`before` →
+  first; `target`/`second`/`after` → second). Simple but brittle in
+  non-English deployments.
+- **Bucket-order based** (1st row encountered → first, 2nd → second).
+  Locale-independent, less semantic.
+- **Configurable** — expose a `Long Format Role Mapping` switcher with
+  both options.
+
+A comparison plugin's `_resolveLongRole` exposes the configurable choice
+(default keyword, fallback bucket-order).
+
+### 6.23 Use OAC framework services instead of rolling your own
+
+Survey of the reference plugins under `plugin_training/` shows
+several OAC-provided services that many plugin teams do not
+currently use. Reach for these before writing your own equivalents.
+
+#### Logger
+```js
+define([..., 'obitech-appservices/logger', ...], function(..., logger, ...) {
+   var MODULE_NAME = 'com-org-<plugin>/<viz>';
+   var _logger = new logger.Logger(MODULE_NAME);
+
+   _logger.info("Plugin initialized");
+   _logger.warning("Color service returned null for series " + series);
+   _logger.error("Failed to compute X domain", e);
+});
+```
+
+Don't use `console.log` directly. The OAC logger:
+- Is filterable by module name from OAD/OAC DevTools.
+- Honors OAC's log level configuration.
+- Survives OAD framework rebinding.
+
+Used by every Oracle-published plugin in the library
+(`forceDirectedGraph`, `linesOnMap`, `iframeViz`, `racingBarsViz`,
+`themenubar`, `governance`, `currencyconversiondataaction`).
+
+#### Message format helper
+```js
+define([..., 'obitech-framework/messageformat', ...], function(..., msgformat, ...) {
+   // For parameterized strings; pairs with i18n bundles (§6.26).
+});
+```
+
+Useful when message strings need substitution (`"Showing {0} of {1} series"`)
+beyond simple string concatenation. Many plugins currently inline
+`replace("{0}", x)` in the LBL map; switching to messageformat would
+handle plurals and locale-specific number/date inserts cleanly.
+
+#### Oracle map library
+```js
+define([..., 'obitech-map/omaps_api_va', 'obitech-map/va_maps', ...]
+```
+
+OAC provides a built-in map library wired to the OAC server. Map plugins
+do **not** need to bundle Leaflet, Mapbox, or any third-party tile source.
+Reference: `plugin_training/com-company-linesOnMap/`.
+
+#### Knockout (KO)
+```js
+define([..., 'knockout', ...], function(..., ko, ...) { ... });
+```
+
+Available for plugins that need reactive UI binding. Used heavily by
+**data action** and **workbook** extensions (see §9.1, §9.3) for their
+property dialogs. Not needed for a typical viz extension; the property
+panel uses OAC's own gadget framework, not KO.
+
+#### OJET (Oracle JET)
+```js
+define([..., 'ojs/ojcore', 'obitech-framework/jetfactory2', ...], ...);
+```
+
+Oracle's full UI framework. Available, but overkill for visualization
+plugins. Used only by workbook extensions like `governance` for richer
+dialog/panel UIs. Don't add to a viz plugin without a concrete reason.
+
+#### Data action base classes
+```js
+define([..., 'obitech-report/dataaction', ...], function(..., dataaction, ...) {
+   // Extends dataaction.HTTPAPIDataActionKOModel — already implements
+   // the HTTP-API integration pattern for you.
+});
+```
+
+For data action extensions, OAC provides ready base classes
+(`HTTPAPIDataActionKOModel`, etc.) so a "click → call external API"
+data action is mostly schema + property panel, not network code.
+Reference: `plugin_training/_non-viz/V1033811-01_currencyconversion-dataaction.zip`.
+
+### 6.24 Gadget type selection guide
+
+OAC's gadget framework has more gadget types than many custom plugins
+currently use (`TEXT_SWITCHER`, `TEXT_FIELD`, `SLIDER`). When designing
+property panel controls, pick the most semantically correct gadget:
+
+| Gadget type | When to use | Typical usage |
+|---|---|---|
+| `TEXT_SWITCHER` (`TextSwitcherGadgetInfo`) | Multi-option choice from a fixed list (≤ ~6 options). | Used heavily for chart type, color mode, etc. |
+| `TEXT_TOGGLE` (`TextToggleGadgetInfo` + `CheckboxGadgetValueProperties`) | Boolean on/off. Renders as a checkbox-style toggle, semantically correct for true/false. | Often replaced by `TEXT_SWITCHER` with `[{value:"on"},{value:"off"}]` in legacy plugins. |
+| `TEXT_FIELD` | Free-form text input (label overrides, prefix/suffix, hex colors, custom palettes). | Used for label overrides, palette field, etc. |
+| `SLIDER` (`SliderGadgetInfo` + `SliderGadgetValueProperties`) | Bounded numeric input with min/max. | Used for line width, point size, font size, etc. |
+| Multi-select switcher | Multiple non-exclusive choices. Custom gadget; no built-in equivalent — typically composed from multiple toggles. | N/A |
+
+**Anti-pattern (common in legacy plugins)**: every on/off control uses
+`TEXT_SWITCHER` with `{value:"on", label:"On"}`/`{value:"off", label:"Off"}`.
+This works but the visual result is two side-by-side text buttons
+rather than a single checkbox. `TEXT_TOGGLE` would be one click instead
+of two. Reference for the toggle pattern:
+`plugin_training/com-company-iframeViz/iframeViz.js` lines 126-137.
+
+Migration is possible but requires per-gadget reasoning — a saved Config
+with `"on"` string value won't round-trip through a checkbox boolean
+without `loadConfig` translation. Defer until a refresh round.
+
+### 6.25 i18n bundle loader (true localization)
+
+Many plugins consolidate viewer-facing strings into a JS const named
+`LBL` at the top of each module. This is "NLS-ready" — it positions us
+to localize later — but is not actually localized.
+
+The proper OAC pattern uses the `ojL10n!` AMD loader to import the
+locale-resolved messages bundle as a function argument:
+
+```js
+define([
+   'jquery',
+   ...,
+   'ojL10n!com-org-<plugin>/nls/messages',  // ← resolves to a per-locale bundle
+   'obitech-framework/messageformat',
+   'skin!css!com-org-<plugin>/styles'
+], function(
+   $, ..., messages, msgformat
+) {
+   // messages.RESET_ZOOM, messages.AVG_PREFIX, etc — locale-resolved.
+   button.text(messages.RESET_ZOOM);
+});
+```
+
+Then `nls/root/messages.js` exports a flat object of strings:
+```js
+define({
+   RESET_ZOOM: "Reset Zoom",
+   AVG_PREFIX: "Average:",
+   COMPARE_VS_AVG: "Vs Avg",
+   ...
+});
+```
+
+And per-locale bundles (`nls/fr/messages.js`, `nls/es/messages.js`,
+etc.) override translations as the user changes language. The OAC
+framework picks the right bundle automatically based on the workbook
+locale.
+
+**When to switch from LBL const to ojL10n loader**: when a non-English
+deployment becomes a real requirement. Until then, the LBL pattern is
+fine — it isolates strings in one place so the migration is mostly
+search-and-replace.
+
+Used by every Oracle-published plugin in the library.
+
+### 6.26 Dasharray scaled by line width
+A 1-px dashed line and an 8-px dashed line need different dasharray
+patterns to look "right." Hardcoding `stroke-dasharray="5 3"` looks
+correct only at one specific width. Scale with the line width:
+
+```js
+function dashArrayFor(pattern, width) {
+   var w = Math.max(Number(width) || 2, 1);
+   switch (pattern) {
+      case "dashed":  return (w * 4) + " " + (w * 2);
+      case "dotted":  return (w * 1) + " " + (w * 2);
+      case "dashdot": return (w * 4) + " " + (w * 2) + " " + (w * 1) + " " + (w * 2);
+      default:        return null; // solid
+   }
+}
+```
+
+Reference: `wsuLine.js` `dashArrayFor` helper.
+
+### 6.27 Logger usage and module init log
+
+Use `obitech-appservices/logger` instead of `console.log`. Pin a logger
+instance at module top, log an init message, and route framework errors
+through the logger so they're filterable from OAD/OAC DevTools by module
+name and honor OAC's log-level configuration.
+
+```js
+define([..., 'obitech-appservices/logger', ...], function(..., logger, ...) {
+   var MODULE_NAME = 'com-org-<plugin>/<viz>';
+   var _logger = new logger.Logger(MODULE_NAME);
+   _logger.info("Initializing <Plugin> plugin");
+
+   // Inside try/catch blocks for framework calls:
+   try {
+      eventRouter.publish(markingEvent);
+   } catch (e) {
+      _logger.warning("Error during mark publish: " + (e && e.message ? e.message : e));
+   }
+});
+```
+
+Pattern is universal across Oracle-published reference plugins. Both
+many active plugins follow it.
+
+### 6.28 Gadget-boundary boolean translation (TEXT_TOGGLE migration)
+
+When converting on/off controls from `TEXT_SWITCHER` (two side-by-side
+text buttons) to `TEXT_TOGGLE` (a single checkbox), the cleanest
+migration keeps the internal Config schema unchanged. Translate at the
+gadget boundary only — saved workbooks load identically with zero
+migration logic.
+
+```js
+// Gadget builder — reads boolean from string Config:
+function addToggle(panel, id, labelText, configValue) {
+   var isOn = configValue !== "off";
+   var gvp = new gadgets.CheckboxGadgetValueProperties(
+      euidef.GadgetTypeIDs.TEXT_TOGGLE, id, isOn);
+   panel.addChild(new gadgets.TextToggleGadgetInfo(id, labelText, null, gvp));
+}
+
+// Inside the property panel build:
+addToggle(panel, "showSeriesColGadget", "Tooltip: Show Series Column",
+   this.Config.showSeriesCol);
+
+// Inside _handlePropChange — translate boolean back to string:
+var TOGGLE_GADGETS = {
+   showSeriesColGadget: 1, showValueColGadget: 1, /* ...etc */
+};
+if (TOGGLE_GADGETS[sGadgetID]) {
+   this.Config[key] = oPropChange.checked ? "on" : "off";
+} else {
+   this.Config[key] = oPropChange.value;
+}
+```
+
+Why string Config not boolean: Config keys saved as `"on"`/`"off"`
+already exist in workbooks. Translating the schema would force every
+saved workbook through a one-time migration on first load and create
+backwards-incompatibility risk if someone downgrades. The boundary
+translation is two-way, idempotent, and zero risk.
+
+Don't convert multi-option switchers (Off / X / Y / X+Y, etc.) — only
+true binaries. Keep `TEXT_SWITCHER` for ≥3 option choices.
+
+### 6.29 Auto-flip bottom legend → right when too tall
+
+Bottom legends consume vertical chart space. With many series, the
+bottom legend can eat 30-40% of the visible chart, leaving very little
+room for the data. When the user picked `legendPosition = "auto"`,
+detect this case at draw time and flip to right placement (which scrolls
+vertically without eating chart height):
+
+```js
+// In _draw, after computing legendBottomHeight:
+if (showLegend && legendPlacement === "bottom"
+    && this.Config.legendPosition === "auto"
+    && legendBottomHeight > height * 0.25) {
+   legendPlacement = "right";
+   legendRightWidth = this._legendRightWidth(legendItems);
+   legendBottomHeight = 0;
+}
+```
+
+The 25% threshold is arbitrary but works well in practice. Skip this
+flip when the user explicitly chose `"bottom"` — they want it there
+even if it's tall.
+
+### 6.30 Tooltip overflow post-render detection
+
+A floating tooltip with `max-height: 70vh; overflow: hidden` silently
+clips content that exceeds the viewport. Authors don't know rows are
+hidden. Detect after rendering and append a sticky-bottom warning:
+
+```js
+CustomViz.prototype._appendOverflowFooterIfClipped = function(tooltip) {
+   var node = tooltip.node();
+   if (!node) return;
+   if (node.scrollHeight > node.clientHeight + 4) {
+      var existing = tooltip.select(".custom-overflow-warning");
+      if (existing.empty()) {
+         tooltip.append("div")
+            .attr("class", "subtle custom-overflow-warning")
+            .text("Tooltip clipped — additional rows hidden");
+      }
+   }
+};
+
+// Call from _showAtX after tooltip.html(...).style("display","block")
+// and after _moveTooltip (so layout is finalized).
+```
+
+CSS pins the warning to the visible bottom edge so the user always sees
+it even though the upper rows may be clipped:
+
+```css
+.custom-tooltip .custom-overflow-warning {
+   position: sticky;
+   bottom: 0;
+   background: #fff;
+   border-top: 1px solid #d9dcdf;
+   padding-top: 3px;
+   margin-top: 4px;
+   font-style: italic;
+}
+```
+
+The 4px margin in the comparison absorbs subpixel rounding so the
+warning doesn't fire on tooltips that are exactly the right height.
+
+### 6.31 Three-state opacity for legend selection (active / default / faded)
+
+When implementing legend click-to-highlight, two opacity states (default
++ faded) is not enough. The "default" baseline is often already
+semi-transparent (e.g., `backgroundOpacity: 0.45` for soft line
+backgrounds). With only two states, clicking a legend item leaves the
+active line at the same baseline opacity it had before — the user sees
+*other* lines fade but the *clicked* line looks no different. The fade
+appears to do nothing.
+
+Add a third "active" class with `opacity: 1.0` to make the selection
+visibly elevate:
+
+```css
+.custom-viz .series-line {
+   opacity: var(--bg-opacity, 1);  /* read from inline CSS variable */
+}
+.custom-viz .custom-faded {
+   opacity: 0.18;
+}
+.custom-viz .custom-legend-active {
+   opacity: 1;
+}
+```
+
+```js
+CustomViz.prototype._applyLegendActiveSeries = function() {
+   var active = this.getLegendActiveSeries();
+   var root = d3.select(this.getContainerElem());
+   if (!active) {
+      root.selectAll(".series-line, .series-point")
+         .classed("custom-faded", false)
+         .classed("custom-legend-active", false);
+      return;
+   }
+   root.selectAll(".series-line").each(function() {
+      var match = d3.select(this).attr("data-series") === active;
+      d3.select(this).classed("custom-faded", !match)
+                     .classed("custom-legend-active", match);
+   });
+   // ...same for series-point
+};
+```
+
+Three clearly distinct visual layers: 0.18 (faded), 0.45 (default),
+1.0 (active). Tableau and Power BI both use this convention.
+
+**Related — CSS variable for inline opacity**: when JS sets an inline
+opacity (`.style("opacity", X)`), it wins on the cascade and CSS classes
+can't override it without `!important`. Move the inline value into a
+CSS variable (`.style("--bg-opacity", X)`) and read it from a CSS rule
+(`opacity: var(--bg-opacity, 1)`). Then `.custom-faded` and
+`.custom-legend-active` override cleanly.
+
+---
+
+## 7. Build & Deployment
+
+### 7.1 Project layout
+```
+oac-sdk-dev/
+  build-sdk.ps1           # gradle wrapper with JAVA_HOME setup
+  build.gradle
+  src/customviz/
+    <root-id>/
+      <viz>.js
+      <viz>datamodelhandler.js
+      <viz>styles.css
+      <viz>Icon.png
+      extensions/
+        oracle.bi.tech.plugin.visualization/
+          <root-id>.json
+        oracle.bi.tech.plugin.visualizationDatamodelHandler/
+          <root-id>.visualizationDatamodelHandler.json
+      nls/
+        messages.js
+        root/messages.js
+  build/distributions/
+    customviz_<root-id>.zip
+```
+
+### 7.2 Build pipeline
+```powershell
+.\build-sdk.ps1
+```
+which runs:
+```powershell
+$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot'
+.\gradlew.bat clean build --stacktrace
+```
+
+Gradle iterates every directory under `src/customviz/` and produces one zip
+per plugin in `build/distributions/`. Multiple plugins coexist; rebuilding one
+does not touch the others' zips (gradle's `clean` only clears its own outputs;
+the resulting zips are regenerated with current source).
+
+### 7.3 Per-file validation
+Run before every build:
+```powershell
+node --check <every .js file>
+Get-Content <every .json manifest> -Raw | ConvertFrom-Json -ErrorAction Stop
+```
+
+### 7.4 Install in OAD
+1. Open OAD.
+2. Console → Extensions → Upload → pick the zip from `build/distributions/`.
+3. Restart OAD (registry cache flush).
+4. Open a workbook → visualization gallery → confirm the plugin appears in
+   the configured `category` (for example, `Custom`).
+
+### 7.5 Troubleshooting registration
+If the plugin uploads but doesn't appear in the gallery:
+1. **Restart OAD** — flushes registry cache. Resolves most "uploaded but
+   hidden" cases.
+2. **Check for type collisions** — search `unpacked/` for duplicate
+   `viz:chart.type` values across plugins.
+3. **DevTools** → filter for `[CUSTOM_VIZ]` to find registration errors.
+4. **Last resort: rename root id** — bypasses any "poisoned" registry
+   entries. Requires updating every name in §6.2's checklist.
+
+---
+
+## 8. Project-Agnostic Build Guidance
+
+Use this document as shared architecture guidance for any custom visualization
+project in the repo.
+
+### 8.1 What belongs here vs project specs
+
+- This doc: cross-cutting architecture, platform constraints, and reusable
+  implementation patterns.
+- Project spec docs: chart-specific requirements, field mapping contracts,
+  UX decisions, and rollout scope.
+
+### 8.2 When to fork vs extend
+
+- Fork a new plugin when the data shape or interaction model is fundamentally
+  different (for example: line vs matrix vs network).
+- Extend an existing plugin when the geometry and interaction model are stable
+  and you are adding features or refinements.
+
+### 8.3 Generic source selection guidance
+
+- Select fork source by geometry/interaction model, not by business domain.
+- Prefer the closest modern plugin under `oac-sdk-dev/src/customviz/`.
+- Use `plugin_training/` examples as read-only references and rewrite patterns
+  to match current conventions.
+
+### 8.4 Capability pointers (generic)
+
+When new requirements exceed your current plugin baseline, consult
+`plugin_training/` for geometry-specific references (network, hierarchy, map,
+calendar, funnel, and non-viz extension types), then apply the guardrails in
+this doc (naming discipline, logging, safe rendering, and migration patterns).
+
+**Scope rule**: if the requested behavior manipulates workbook metadata,
+opens external URLs, injects remote scripts, calls external APIs, exports
+files, or coordinates multiple visualizations, stop treating it as "just a
+viz plugin." Re-evaluate the extension type using §9.4 before coding.
+
+**Universal guidance for any fork**:
+
+1. Apply the §6.2 rename checklist exactly. Every name changes.
+2. **Replace older conventions** the reference may use:
+   - Swap `console.log` → `obitech-appservices/logger` (§6.23)
+   - Swap any branded palette default → empty + `colorSource` (§6.18)
+   - Add symbol pinning if missing (§6.3)
+   - Add format-as-Config helpers if numeric values are rendered (§6.7)
+   - Apply property panel grouping prefixes (§6.9)
+3. **Don't carry over** older patterns modern plugin conventions have explicitly
+   moved past:
+   - `plugin.xml` registration → use `extensions/...json` SDK structure instead
+   - Hardcoded English in JS → consolidate into LBL const (or full ojL10n bundle, §6.25)
+   - Single huge property panel → use multi-panel try/catch (§6.14)
+4. **Plugin size as a signal**: reference plugins under ~500 lines tend
+   to be focused and easy to study; over ~1500 lines (`orgchartviz-v2`,
+   `network2Viz`, `motionChartViz`, `scatterPlotMatrix`, `racingBarsViz`)
+   are feature-rich but harder to lift patterns from cleanly. Start with
+   a small reference and add features rather than starting from a large
+   one and stripping.
+
+---
+
+## 9. Unexplored OAC Extension Types
+
+Many teams start with **visualization** extensions
+(`oracle.bi.tech.plugin.visualization`). OAC supports several other
+extension types that are forward-looking
+options for when a use case arises that a viz extension can't cleanly
+address.
+
+Starter reference material for each is parked in
+`plugin_training/_non-viz/` (downloaded from Oracle's Custom Extensions
+Library and intentionally not unpacked into the active reference set).
+
+### 9.1 Workbook extensions
+
+**Extension point**: `oracle.bi.tech.plugin.workbook` (and related
+`customworkbook/` directory structure).
+
+**What they do**: A workbook extension lives at the **workbook** level,
+not the viz level. It can render UI panels, control state, expose
+parameters, or run logic that affects every visualization on the
+workbook simultaneously. While a viz extension owns one chart, a
+workbook extension owns cross-viz coordination.
+
+**Capabilities a viz-only approach can't currently deliver**:
+- **Shared parameter state** across multiple custom visualizations on the same
+  dashboard. Today each viz reads OAC parameters independently — a
+  workbook extension could centralize parameter selection (e.g., one
+  "Admission Status Selector" chip in the workbook header that drives
+  every chart on the page).
+- **Workbook-level filters or governance overlays** — audit info,
+  sensitivity tags, version stamps applied uniformly to every viz.
+- **Cross-viz interactions beyond OAC marking** — e.g., custom drill
+  flows that propagate from a click on one viz to a focus change on
+  another.
+
+**Reference**:
+`plugin_training/_non-viz/customworkbook_com-company-governance_v3.zip`
+— governance pattern; tracks workbook metadata across all vizzes.
+`plugin_training/_non-viz/V1051963-01.zip` (`com-company-oglworkbookviz`)
+— workbook companion paired with a viz extension. Pattern for "viz +
+workbook extensions that work together."
+
+**When to consider**: when authors keep asking for behavior that's
+inherently dashboard-scoped, not chart-scoped. If you find yourself
+copying the same Config setting into multiple charts on a dashboard, a
+workbook extension probably belongs.
+
+### 9.2 Menubar extensions
+
+**Extension point**: custom menubar entries in OAC's main top menu.
+
+**What they do**: add custom menu items to OAC's chrome — branded
+navigation, quick links to common workbooks, launch points for
+external tools, or workflow entry points that aren't tied to a specific
+visualization.
+
+**Capabilities a viz-only approach can't currently deliver**:
+- **Branded navigation** in OAC itself (for example, a curated dashboards menu).
+- **Quick-action launchers** independent of any one chart (e.g., "Open
+  Data Quality Report" from anywhere in OAC).
+- **External tool deep-links** — open advising system, send to Slack,
+  open Tableau backup, etc.
+
+**Reference**: `plugin_training/_non-viz/menubar_readme_sample.zip` —
+sample menubar JSON + plain-text readme showing the schema.
+`plugin_training/com-oracle-themenubar/` (already unpacked) — Oracle's
+shipped theme menu bar; closest working example.
+
+**When to consider**: when navigation friction is the bottleneck — users
+spend time clicking through OAC's UI to find dashboards, or need
+recurring access to non-OAC tools.
+
+### 9.3 Data action extensions
+
+**Extension point**: `oracle.bi.tech.plugin.dataaction` (and related
+`customdataaction/` directory structure).
+
+**What they do**: define custom actions that fire when a user clicks
+data points in any visualization (not just custom plugins — any chart
+in OAC). Different from the marking system: marking propagates
+selections; data actions perform an external operation (open URL, post
+to webhook, navigate to another workbook, run a stored procedure).
+
+**Capabilities a viz-only approach can't currently deliver**:
+- **Click on a student row → open that student's record** in the
+  university's SIS or advising system.
+- **Click on a course → drill to syllabus or enrollment detail** in an
+  external system.
+- **Click on a metric → POST to a webhook** that creates a ticket,
+  notifies an advisor, or starts a workflow.
+- **Click → open a different OAC workbook** with the clicked entity
+  pre-filtered.
+
+Data actions are orthogonal to viz extensions — they work on Oracle's
+native charts as well as on custom plugins. A data action would
+be reusable across every visualization in OAC.
+
+**Reference**: `plugin_training/_non-viz/V1033811-01_currencyconversion-dataaction.zip`
+— Oracle's currencylayer integration. Canonical example of the data
+action pattern. Demonstrates extending
+`obitech-report/dataaction.HTTPAPIDataActionKOModel` (an OAC base
+class that handles the HTTP request lifecycle for you), using
+Knockout for reactive property-panel binding, and registering via
+`oracle.bi.tech.plugin.dataaction` extension point. A "click → call
+external API" data action is mostly schema + Knockout property panel,
+not network code — the base class does the heavy lifting. Also see
+Oracle's official tutorial
+[Create a Custom Data Action Plug-in](https://docs.oracle.com/en/cloud/paas/analytics-cloud/tutorial-create-custom-data-action-plugins/).
+
+**When to consider**: when chart interactions need to reach beyond OAC
+— external systems, workflows, deep-linking. Most viz plugins only
+support OAC's marking framework, which is selection-only.
+
+### 9.4 Choosing between extension types
+
+| Need | Extension type |
+|---|---|
+| Render a new kind of chart geometry | Visualization extension |
+| State or controls shared across multiple charts on a dashboard | Workbook extension |
+| Navigation / launch points outside any single chart | Menubar extension |
+| Click-to-do-something-external on chart marks | Data action extension |
+| New chart geometry **plus** cross-chart state | Pair a viz extension with a workbook extension (see V1051962/V1051963 for the OGL pattern) |
+
+When in doubt, prefer a viz extension first — this is usually the fastest
+path. The other types are deliberate
+investments when their specific capability is the actual blocker.

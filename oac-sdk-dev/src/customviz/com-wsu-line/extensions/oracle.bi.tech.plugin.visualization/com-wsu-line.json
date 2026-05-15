@@ -1,0 +1,31 @@
+
+{
+   "host": {
+      "script": {
+            "module" : "com-wsu-line/wsuLine",
+            "method" : "createClientComponent"
+      },
+      "vizSettings": {
+         "_version":"1.0.0",
+         "viewConfig":{
+            "viz:chart":{
+               "type": "com-wsu-line",
+               "dataValues": true
+            }
+         }
+      }
+   },
+   "resourceBundle": "com-wsu-line/nls/messages",
+   "properties": {
+     "displayName": { "key" : "WSULINE_DISPLAY_NAME", "default" : "WSU Line" },
+     "shortDisplayName": { "key" : "WSULINE_SHORT_DISPLAY_NAME", "default" : "WSU Line" },
+     "category": {"key":"WSULINE_CATEGORY", "default":"WSU"},
+     "customSettings":{},
+     "categoryOrder": 520,
+     "icon": "wsuLineIcon",
+    "dataModelHandler" : "com-wsu-line.visualizationDatamodelHandler",
+    "dataModelGovernor": { "dm1": { "rows": 10000, "columns": 100 } },
+    "isEmbeddable": false,
+     "isMarkingSupported": true
+   }
+}

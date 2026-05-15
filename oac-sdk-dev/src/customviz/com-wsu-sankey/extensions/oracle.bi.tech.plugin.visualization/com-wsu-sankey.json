@@ -1,0 +1,30 @@
+{
+   "host": {
+      "script": {
+            "module" : "com-wsu-sankey/wsuSankey",
+            "method" : "createClientComponent"
+      },
+      "vizSettings": {
+         "_version":"1.0.0",
+         "viewConfig":{
+            "viz:chart":{
+               "type": "com-wsu-sankey",
+               "dataValues": true
+            }
+         }
+      }
+   },
+   "resourceBundle": "com-wsu-sankey/nls/messages",
+   "properties": {
+     "displayName": { "key" : "WSUSANKEY_DISPLAY_NAME", "default" : "WSU Sankey" },
+     "shortDisplayName": { "key" : "WSUSANKEY_SHORT_DISPLAY_NAME", "default" : "WSU Sankey" },
+     "category": {"key":"WSUSANKEY_CATEGORY", "default":"WSU"},
+     "customSettings":{},
+     "categoryOrder": 550,
+     "icon": "wsuSankeyIcon",
+     "dataModelHandler" : "com-wsu-sankey.visualizationDatamodelHandler",
+     "dataModelGovernor": { "dm1": { "rows": 50000, "columns": 120 } },
+     "isEmbeddable": false,
+     "isMarkingSupported": true
+   }
+}

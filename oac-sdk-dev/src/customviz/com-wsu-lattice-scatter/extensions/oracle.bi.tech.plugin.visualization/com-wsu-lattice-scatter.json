@@ -1,0 +1,31 @@
+
+{
+   "host": {
+      "script": {
+            "module" : "com-wsu-lattice-scatter/wsuLatticeScatter",
+            "method" : "createClientComponent"
+      },
+      "vizSettings": {
+         "_version":"1.0.0",
+         "viewConfig":{
+            "viz:chart":{
+               "type": "com-wsu-lattice-scatter",
+               "dataValues": true
+            }
+         }
+      }
+   },
+   "resourceBundle": "com-wsu-lattice-scatter/nls/messages",
+   "properties": {
+     "displayName": { "key" : "WSULATTICE_DISPLAY_NAME", "default" : "WSU Lattice Scatter" },
+     "shortDisplayName": { "key" : "WSULATTICE_SHORT_DISPLAY_NAME", "default" : "WSU Lattice Scatter" },
+     "category": {"key":"WSULATTICE_CATEGORY", "default":"WSU"},
+     "customSettings":{},
+     "categoryOrder": 540,
+     "icon": "wsuLatticeScatterIcon",
+     "dataModelHandler" : "com-wsu-lattice-scatter.visualizationDatamodelHandler",
+     "dataModelGovernor": { "dm1": { "rows": 50000, "columns": 120 } },
+     "isEmbeddable": false,
+     "isMarkingSupported": true
+   }
+}

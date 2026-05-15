@@ -1,0 +1,108 @@
+{
+  "module": "com-wsu-network/wsuNetworkdatamodelhandler",
+  "method": "getHandler",
+  "config": {
+    "vizPreference": 50,
+    "measureLabelConfig": {
+      "supportedEdges": [],
+      "defaultEdge": "row",
+      "visibility": "hidden"
+    },
+    "edgeConfig": {
+      "row": {
+        "contentType": "categorical",
+        "global": {
+          "minCount": 2,
+          "maxCount": 2,
+          "priority": 1,
+          "preferredMax": 2
+        },
+        "ui": {
+          "customName": { "key": "WSUNETWORK_ROW", "default": "Source, Destination" },
+          "_forceCustomName": true,
+          "order": 1
+        },
+        "categorical": {
+          "functionalInfo": ["inner", "row", "categoricalType"]
+        }
+      },
+      "measures": {
+        "contentType": "measures",
+        "global": {
+          "minCount": 1,
+          "maxCount": 2,
+          "priority": 10
+        },
+        "ui": {
+          "customName": { "key": "WSUNETWORK_MEASURES", "default": "Edge Weight, Node Size" },
+          "_forceCustomName": true,
+          "order": 2
+        }
+      },
+      "color": {
+        "contentType": "categorical",
+        "global": {
+          "minCount": 0,
+          "maxCount": 1,
+          "priority": 1
+        },
+        "ui": {
+          "customName": { "key": "WSUNETWORK_COLOR", "default": "Node Group / Color" },
+          "_forceCustomName": true,
+          "order": 3
+        },
+        "categorical": {
+          "functionalInfo": ["inner", "row", "categoricalType"]
+        }
+      },
+      "detail": {
+        "contentType": "categorical",
+        "global": {
+          "minCount": 0,
+          "maxCount": 10,
+          "priority": 1
+        },
+        "ui": {
+          "customName": { "key": "WSUNETWORK_DETAIL", "default": "Tooltip details" },
+          "_forceCustomName": true,
+          "order": 4
+        },
+        "categorical": {
+          "functionalInfo": ["inner", "row", "categoricalType"]
+        }
+      },
+      "glyph": {
+        "contentType": "categorical",
+        "global": {
+          "minCount": 0,
+          "maxCount": 1,
+          "priority": 1
+        },
+        "ui": {
+          "customName": { "key": "WSUNETWORK_GLYPH", "default": "Link Label" },
+          "_forceCustomName": true,
+          "order": 5
+        },
+        "categorical": {
+          "functionalInfo": ["inner", "row", "categoricalType"]
+        }
+      },
+      "size": {
+        "contentType": "categorical",
+        "global": {
+          "minCount": 0,
+          "maxCount": 1,
+          "priority": 1
+        },
+        "ui": {
+          "customName": { "key": "WSUNETWORK_SIZE", "default": "Repeat Stage / Attempt Number" },
+          "_forceCustomName": true,
+          "order": 6
+        },
+        "categorical": {
+          "functionalInfo": ["inner", "row", "categoricalType"]
+        }
+      }
+    }
+  }
+}

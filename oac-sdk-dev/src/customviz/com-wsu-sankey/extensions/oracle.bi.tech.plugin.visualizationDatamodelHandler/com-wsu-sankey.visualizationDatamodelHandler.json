@@ -1,0 +1,131 @@
+{
+    "module" : "com-wsu-sankey/wsuSankeydatamodelhandler",
+    "method" : "getHandler",
+    "config" : {
+        "vizPreference" : 50,
+        "measureLabelConfig": {
+           "supportedEdges": [],
+           "defaultEdge": "row",
+           "visibility": "hidden"
+        },
+        "edgeConfig" : {
+            "row" : {
+                "contentType": "categorical",
+                "global": {
+                    "minCount": 1,
+                    "maxCount": 1,
+                    "priority": 1
+                },
+                "ui": {
+                    "customName": { "key": "WSUSANKEY_START", "default": "Start Node" },
+                    "_forceCustomName": true,
+                    "order": 1
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
+            },
+            "item" : {
+                "contentType": "categorical",
+                "global": {
+                    "minCount": 1,
+                    "maxCount": 1,
+                    "priority": 1
+                },
+                "ui": {
+                    "customName": { "key": "WSUSANKEY_END", "default": "End Node" },
+                    "_forceCustomName": true,
+                    "order": 2
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
+            },
+            "glyph" : {
+                "contentType": "categorical",
+                "global": {
+                    "minCount": 0,
+                    "maxCount": 5,
+                    "priority": 1
+                },
+                "ui": {
+                    "customName": { "key": "WSUSANKEY_INTERMEDIATE", "default": "Intermediate Nodes" },
+                    "_forceCustomName": true,
+                    "order": 3
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
+            },
+            "measures" : {
+                "contentType": "measures",
+                "global": {
+                    "minCount": 0,
+                    "maxCount": 1,
+                    "priority": 10
+                },
+                "ui": {
+                    "customName": { "key": "WSUSANKEY_WEIGHT", "default": "Flow Weight" },
+                    "_forceCustomName": true,
+                    "order": 4
+                }
+            },
+            "size" : {
+                "contentType": "both",
+                "global": {
+                    "minCount": 0,
+                    "maxCount": 1,
+                    "priority": 1
+                },
+                "measures": {
+                    "minCount": 0,
+                    "maxCount": 1
+                },
+                "ui": {
+                    "customName": { "key": "WSUSANKEY_TERM_CODE", "default": "Sorting Term Code (STRM)" },
+                    "_forceCustomName": true,
+                    "order": 5
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
+            },
+            "color" : {
+                "contentType": "categorical",
+                "global": {
+                    "minCount": 0,
+                    "maxCount": 1,
+                    "priority": 1
+                },
+                "ui": {
+                    "customName": { "key": "WSUSANKEY_COLOR_GROUP", "default": "Path Group" },
+                    "_forceCustomName": true,
+                    "order": 6
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
+            },
+            "detail" : {
+                "contentType": "both",
+                "global": {
+                    "minCount": 0,
+                    "maxCount": 20,
+                    "priority": 1
+                },
+                "measures": {
+                    "minCount": 0,
+                    "maxCount": 20
+                },
+                "ui": {
+                    "customName": { "key": "WSUSANKEY_DETAIL", "default": "Tooltip Detail" },
+                    "_forceCustomName": true,
+                    "order": 7
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
+            }
+        }
+    }
+}
