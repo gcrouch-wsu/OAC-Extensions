@@ -30,10 +30,14 @@ oac-sdk-dev/
   gradlew.bat
   src/customviz/
 docs/
+  all_plugins.md
+  oac_design.md
   project_spec_wsu_network.md
   project_spec_wsu_sankey.md
+  project_spec_wsu_line.md
   project_spec_wsu_math.md
   instructions_math.md
+  wsu-line-v2.md
 examples/
   mock_math_pathway_200_students.csv
 tools/
@@ -64,6 +68,14 @@ examples/mock_math_pathway_200_students.csv
 The mock dataset is synthetic. It is intended for OAC grammar testing and
 review of network behaviors such as self-loops, expanded repeat stages, and
 `No Further Course` terminal routing.
+
+## Current WSU Line Validation Note
+
+WSU Line v2 has local syntax/manifest/build validation, including the optional
+`Dynamic Value Label (from data)` bucket for parameter-driven labels. The
+Admissions Status Selector parameter path still needs OAC Dev validation because
+only the host workbook can prove that `@parameter(...)` works inside the
+categorical calculated attribute used for the dynamic label bucket.
 
 ## Build Notes
 

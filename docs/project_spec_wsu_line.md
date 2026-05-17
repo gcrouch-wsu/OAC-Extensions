@@ -34,7 +34,7 @@ tooltip calculations when the term-code bucket is provided.
 - **Tooltip detail bucket** — categorical-only authored fields appear
   automatically with no plugin change. Use formatted attribute copies when a
   measure-like value belongs in the tooltip. Toggle visibility per built-in
-  row (Show Series Column, Show Value Column, Show X Per Row).
+  row (Show Series Column, Show Value Column, Show X Per Row, Show X In Title).
 - **Header Attributes bucket** — drop attributes (e.g., Snapshot Date)
   to render labeled chips in a strip above the chart, with style
   presets (Default / Compact / Prominent / Hidden) and individual
@@ -50,12 +50,15 @@ tooltip calculations when the term-code bucket is provided.
   with width-scaled dasharray, line smoothing (linear / curve / step),
   legend marker shape and size.
 - **Color Source switcher** — defaults to OAC Theme (so workbook themes
-  drive colors); Custom Palette mode for explicit overrides.
+  drive colors); Custom Palette mode for explicit overrides. In OAC Theme mode,
+  the visualization exposes the host Color menu path for color assignments when
+  supported by OAC/OAD.
 - **Number formatting** — auto / number / percent / currency / compact
   with decimal places + prefix/suffix overrides.
 - **Missing-data mode** — Hide / Zero / Gap.
 - **Sort Column dropdown** — dynamic options drawn from real bucket
-  field names plus Sort Direction (auto / asc / desc).
+  field names, built-in rows, and STRM when supplied, plus Sort Direction
+  (auto / asc / desc).
 - **Four-tab property panel** — General / Style / Header / Axis & Legend
   (attempted via custom panel IDs with try/catch fallback to General;
   see `oac_design.md` §6.14).
@@ -64,7 +67,7 @@ tooltip calculations when the term-code bucket is provided.
 
 ## 2. Bucket Layout
 
-Six buckets defined in
+Seven buckets defined in
 `extensions/oracle.bi.tech.plugin.visualizationDatamodelHandler/com-wsu-line.visualizationDatamodelHandler.json`.
 
 | Bucket | Logical | Type | Min | Max | UI Label |
@@ -75,6 +78,7 @@ Six buckets defined in
 | `glyph` | `GLYPH` | categorical | 0 | 5 | Header Attributes |
 | `detail` | `CATEGORY` | categorical | 0 | 20 | Tooltip detail |
 | `size` | `SIZE` | both | 0 | 1 | Sorting Term Code (STRM) |
+| `item` | `ITEM` | categorical | 0 | 1 | Dynamic Value Label (from data) |
 
 ---
 
@@ -89,13 +93,14 @@ to safe values in `loadConfig`.
 | `tooltipMode` | `"sharedX"` | sharedX / single | |
 | `compareMode` | `"average"` | off / average / previous / previousPercent / rank | `previous` modes render only when valid STRM data is present |
 | `delta3Mode` | `"off"` | off / value / percent / valuePercent | Δ 3 Years columns render only when valid STRM data is present |
-| `tooltipSortColumn` | `""` | empty / `series` / `value` / `rank` / *any detail label* | dynamic dropdown built from real bucket labels |
+| `tooltipSortColumn` | `""` | empty / `series` / `value` / `rank` / `termCode` / *any detail label* | dynamic dropdown built from real bucket labels; `termCode` appears for Sorting Term Code (STRM) |
 | `tooltipSortDirection` | `"auto"` | auto / asc / desc | |
 | `tooltipLimit` | `20` | 5–50 | row cap |
 | `tooltipColumnLimit` | `20` | 1–20 | detail column cap |
 | `showSeriesCol` | `"on"` | on / off | |
 | `showValueCol` | `"on"` | on / off | |
 | `showXPerRow` | `"on"` | on / off | |
+| `showXInTitle` | `"on"` | on / off | controls whether the tooltip title includes the hovered X value; Privacy Mode still suppresses it |
 | `showAverage` | `"on"` | on / off | |
 
 ### Chart core
@@ -133,7 +138,7 @@ to safe values in `loadConfig`.
 | `palette` | `""` (empty) | comma-separated hex | only used when `colorSource = custom` (or as last-resort fallback). Default empty so OAC theme drives. |
 | `currentColor` | `"#1e88e5"` | reserved | |
 | `backgroundOpacity` | `0.45` | 0–1 | |
-| `valueLabel` | `""` | text override | |
+| `valueLabel` | `""` | text override | Manual fallback label for the value column; also feeds the Y-axis title unless `yAxisTitle` is set. A populated `Dynamic Value Label (from data)` bucket overrides this field. |
 | `seriesLabel` | `""` | text override | |
 
 ### Header
@@ -164,13 +169,20 @@ to safe values in `loadConfig`.
 | `showGuide` | `"on"` | on / off |
 | `xAxisTitle` | `""` | text override |
 | `yAxisTitle` | `""` | text override |
+| `yAxisTitleSource` | `"auto"` | auto / hidden |
+| `xAxisTitleFontSize` | `11` | 8–24 (slider) |
+| `yAxisTitleFontSize` | `11` | 8–24 (slider) |
+| `xAxisTitleColor` | `""` | hex text |
+| `yAxisTitleColor` | `""` | hex text |
+| `axisTitleBold` | `"on"` | on / off |
+| `axisTitleItalic` | `"off"` | on / off |
 
 ### Legend
 | Key | Default | Values |
 |-----|---------|--------|
 | `legend` | `"on"` | on / off |
 | `legendPosition` | `"auto"` | auto / right / bottom / off — when `auto`, the renderer auto-flips bottom→right when the bottom legend would consume more than 25% of available height (L4a) |
-| `legendOrder` | `"chronoAsc"` | chronoAsc / chronoDesc / nameAsc / nameDesc / colorOrder |
+| `legendOrder` | `"chronoAsc"` | chronoAsc / chronoDesc / strmAsc / strmDesc / nameAsc / nameDesc / colorOrder |
 | `legendMarkerShape` | `"match"` | match / circle / square / triangle / diamond / cross / star — `match` follows the chart's `pointShape` |
 | `legendMarkerSize` | `5` | 3–12 (slider). Visual radius; converted to symbol area the same way as `pointSize`. Default reduced from 8 to 5 so legend markers are visually proportional to default chart points (L5). |
 | `legendFontSize` | `11` | 8–18 (slider). Applied as inline `font-size` on each legend `<text>` element. Row height and column width adapt to the chosen font size. |
@@ -224,6 +236,7 @@ GENERAL TAB
   Tooltip: Show Series Column                     ☑ checkbox
   Tooltip: Show Value Column                      ☑ checkbox
   Tooltip: Show X Per Row                         ☑ checkbox
+  Tooltip: Show X In Title                        ☑ checkbox
   Tooltip: Show Average Footer                    ☑ checkbox
   Format: Number Format                           switcher
   Format: Decimal Places                          switcher
@@ -243,7 +256,8 @@ STYLE TAB
   Points: Size                                    slider
   Color: Source (OAC Theme / Custom Palette)      switcher
   Color: Custom Palette                           text (comma-separated hex)
-  Style: Value Label / Series Label               text overrides
+  Value: Display Label (axis + tooltip)           text override
+  Style: Series Label                             text override
 
 HEADER TAB
   Header: Style Preset (Default / Compact / Prominent / Hidden)  switcher
@@ -260,9 +274,15 @@ AXIS & LEGEND TAB
   Axis: Gridlines                                 ☑ checkbox
   Axis: Guide Line                                ☑ checkbox
   Axis: X Title / Y Title                         text overrides
+  Axis: Y Title Source (Auto / Hidden)            switcher
+  Axis: X Title Font Size                         slider
+  Axis: Y Title Font Size                         slider
+  Axis: X Title Color / Y Title Color             text overrides
+  Axis: Title Bold                                ☑ checkbox
+  Axis: Title Italic                              ☑ checkbox
   Legend: Show                                    ☑ checkbox
   Legend: Position (Auto / Right / Bottom / Off)  switcher
-  Legend: Order (Chrono Asc/Desc / Name Asc/Desc / Color Order)  switcher
+  Legend: Order (Chrono Asc/Desc / STRM Asc/Desc / Name Asc/Desc / Color Order)  switcher
   Legend: Marker Shape (Match / Circle / Square / Triangle / etc.)  switcher
   Legend: Marker Size (3–12)                      slider
   Legend: Font Size (8–18)                        slider
@@ -288,6 +308,16 @@ tab. The build doesn't break either way.
 - During an active drag-to-zoom gesture, the chart cursor switches
   from `zoom-in` to `crosshair`. Released on `mouseup` / `Escape` /
   `mouseleave`.
+- `Tooltip: Show X In Title` controls only the X value in the tooltip title.
+  `Tooltip: Show X Per Row` controls the X table column. Privacy Mode overrides
+  both by suppressing the X value.
+- `Dynamic Value Label (from data)` is reduced from raw row values before
+  aggregation. If exactly one non-empty value is present, it becomes the
+  tooltip value column label and Y-axis fallback title. If the bucket is empty
+  or has conflicting non-empty values, WSU Line falls back to `Value: Display
+  Label (axis + tooltip)`, then the measure display name.
+- `Legend: Order = STRM` uses the valid post-aggregation STRM value associated
+  with each series. Series with no valid STRM sort last.
 
 ---
 
@@ -329,24 +359,83 @@ Bucket binding:
 | Tooltip detail | `Date`, optionally `Day of Term` |
 | Header Attributes | `Snapshot Date` *(optional)* |
 | Sorting Term Code (STRM) | `STRM` such as `2263` *(required for Δ 1Y / Δ 3Y)* |
+| Dynamic Value Label (from data) | parameter-driven label such as `Admission Status Label` *(optional)* |
 
 Property panel:
 - `Tooltip: Compare` = `Δ 1 Year + Δ% 1 Year`
 - `Tooltip: Δ 3 Years` = `Δ 3 Years + Δ% 3 Years`
-- `Tooltip: Sort Column` = `Series (Term)`
+- `Tooltip: Sort Column` = `STRM (Sorting Term Code)` or `Series (Term)`
 - `Tooltip: Sort Direction` = `Descending`
 - `Tooltip: Show X Per Row` = `Off`
+- `Tooltip: Show X In Title` = `On` if the hovered week should remain in the title; `Off` if the X value should be suppressed entirely
 - `Format: Number Format` = `Number`, `Decimal Places` = `0`
 
 Resulting tooltip columns: `Term · Date · Applied · Δ 1 Year · Δ% 1 Year · Δ 3 Years · Δ% 3 Years`.
 
-### 6.2 OAC-theme-driven colors
+### 6.2 STRM-driven legend ordering
+
+Bucket binding:
+| Bucket | Field |
+|--------|-------|
+| Category (X-Axis) | `Weeks from Start` |
+| Series / Color | `Term` |
+| Value (Y-Axis) | selected admissions count |
+| Sorting Term Code (STRM) | numeric STRM such as `2267` |
+
+Property panel:
+- `Legend: Order` = `STRM (oldest first)` or `STRM (newest first)`
+- `Tooltip: Sort Column` = `STRM (Sorting Term Code)`
+- `Tooltip: Sort Direction` = `Ascending` or `Descending`
+
+This keeps legend and tooltip ordering tied to the authoritative term code
+rather than display-label parsing. Missing or invalid STRM values sort last.
+
+### 6.3 Parameter-driven admission status label
+
+Use this when a workbook parameter acts as a view selector for Applied,
+Admitted, Confirmed, or Enrolled.
+
+Create a calculated attribute:
+
+```sql
+CASE @parameter("Admissions Status Selector")('Applied')
+WHEN 'Applied' THEN 'Applied'
+WHEN 'Admitted' THEN 'Admitted'
+WHEN 'Confirmed' THEN 'Confirmed'
+WHEN 'Enrolled' THEN 'Enrolled'
+END
+```
+
+Bucket binding:
+| Bucket | Field |
+|--------|-------|
+| Value (Y-Axis) | parameter-driven admissions measure |
+| Dynamic Value Label (from data) | calculated attribute above |
+
+Leave `Value: Display Label (axis + tooltip)` blank unless a manual fallback is
+desired. The dynamic bucket overrides that manual fallback when exactly one
+non-empty label value is present. `Axis: Y Title (override)` still wins for the
+Y-axis only; it does not change the tooltip value column header.
+
+Status: local package validation passed, but this parameter-driven recipe still
+needs OAC Dev testing. Specifically verify that OAC accepts `@parameter(...)` in
+a categorical calculated attribute, that the calculated label can be dropped
+into `Dynamic Value Label (from data)`, and that changing the workbook parameter
+updates both the Y-axis fallback title and tooltip value column header without
+property edits.
+
+### 6.4 OAC-theme-driven colors
 
 Default behavior. Leave `Color: Source` = `OAC Theme` and `Custom Palette`
-empty. Workbook theme controls every series color. To verify: change the
-workbook theme and watch the chart re-color.
+empty. Workbook theme and OAC color assignments control every series color. To
+verify: change the workbook theme or use the visualization Color menu / Manage
+Color Assignments and watch the chart re-color.
 
-### 6.3 WSU-branded colors when needed
+Status: the WSU Line source includes the native color menu hook in OAC Theme
+mode. Final menu wording and Manage Color Assignments behavior remain
+host-controlled and should be confirmed in OAC/OAD.
+
+### 6.5 WSU-branded colors when needed
 
 `Color: Source` = `Custom Palette`, paste WSU hex codes into `Custom
 Palette`:
@@ -354,7 +443,7 @@ Palette`:
 #981e32,#5e6a71,#a60f2d,#262e30,#cdb87d,#1c2730
 ```
 
-### 6.4 Header styling combos
+### 6.6 Header styling combos
 
 | Goal | Settings |
 |------|----------|
@@ -363,7 +452,7 @@ Palette`:
 | Italic warning header | `Style Preset = Prominent`, `Italic = On` |
 | Hide header entirely | `Style Preset = Hidden` (collapses div) |
 
-### 6.5 Line pattern + smoothing combos
+### 6.7 Line pattern + smoothing combos
 
 | Goal | Settings |
 |------|----------|
@@ -371,7 +460,7 @@ Palette`:
 | Dotted comparison lines | Pattern = Dotted, Smoothing = Linear |
 | Step-style operational metrics | Pattern = Solid, Smoothing = Step |
 
-### 6.6 Legend interaction recipe
+### 6.8 Legend interaction recipe
 
 Click any legend item → all other series fade. Click again to clear.
 Multiple terms = quick way to focus on one cohort while keeping others as

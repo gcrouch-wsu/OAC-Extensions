@@ -107,6 +107,22 @@
                 "categorical": {
                     "functionalInfo": ["inner", "row", "categoricalType"]
                 }
+            },
+            "item" : {
+                "contentType": "categorical",
+                "global": {
+                    "minCount": 0,
+                    "maxCount": 1,
+                    "priority": 1
+                },
+                "ui": {
+                    "customName": { "key": "WSULINE_VALUE_LABEL", "default": "Dynamic Value Label (from data)" },
+                    "_forceCustomName": true,
+                    "order": 7
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
             }
         }
     }

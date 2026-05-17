@@ -122,12 +122,20 @@ define(['jquery',
          showGridlines: "on",
          showGuide: "on",
          showAverage: "on",
+         showXInTitle: "on",
          showXPerRow: "on",
          showSeriesCol: "on",
          showValueCol: "on",
          xLabels: "auto",
          xAxisTitle: "",
          yAxisTitle: "",
+         yAxisTitleSource: "auto",
+         xAxisTitleFontSize: 11,
+         yAxisTitleFontSize: 11,
+         xAxisTitleColor: "",
+         yAxisTitleColor: "",
+         axisTitleBold: "on",
+         axisTitleItalic: "off",
          valueLabel: "",
          seriesLabel: "",
          palette: "",
@@ -189,6 +197,11 @@ define(['jquery',
          if (isNaN(this.Config.legendLabelMaxLength) || this.Config.legendLabelMaxLength < 6) this.Config.legendLabelMaxLength = 18;
          this.Config.backgroundOpacity = Number(this.Config.backgroundOpacity);
          if (isNaN(this.Config.backgroundOpacity)) this.Config.backgroundOpacity = 0.45;
+         this.Config.xAxisTitleFontSize = Number(this.Config.xAxisTitleFontSize);
+         if (isNaN(this.Config.xAxisTitleFontSize) || this.Config.xAxisTitleFontSize < 8) this.Config.xAxisTitleFontSize = 11;
+         this.Config.yAxisTitleFontSize = Number(this.Config.yAxisTitleFontSize);
+         if (isNaN(this.Config.yAxisTitleFontSize) || this.Config.yAxisTitleFontSize < 8) this.Config.yAxisTitleFontSize = 11;
+         this.Config.yAxisTitleSource = this.Config.yAxisTitleSource === "hidden" ? "hidden" : "auto";
       };
 
       this.getSelectedRows = function() { return selectedRows; };
@@ -351,6 +364,15 @@ define(['jquery',
       return str(value || aAllMeasures[0] || "Value");
    }
 
+   function resolveDynamicValueLabel(raw) {
+      var labels = new Set();
+      (raw || []).forEach(function(row) {
+         var label = str(row.dynamicValueLabel).trim();
+         if (label !== "") labels.add(label);
+      });
+      return labels.size === 1 ? Array.from(labels)[0] : "";
+   }
+
    WsuLineViz.prototype._configText = function(key, fallback) {
       var value = str(this.Config[key]);
       return value === "" ? fallback : value;
@@ -365,6 +387,22 @@ define(['jquery',
       };
    };
 
+   WsuLineViz.prototype._axisTitleStyle = function(axis) {
+      var sizeKey = axis === "x" ? "xAxisTitleFontSize" : "yAxisTitleFontSize";
+      var colorKey = axis === "x" ? "xAxisTitleColor" : "yAxisTitleColor";
+      return {
+         size: Number(this.Config[sizeKey]) || 11,
+         color: str(this.Config[colorKey]).trim() || null,
+         bold: this.Config.axisTitleBold !== "off",
+         italic: this.Config.axisTitleItalic === "on"
+      };
+   };
+
+   WsuLineViz.prototype._resolvedYAxisTitle = function(dataset) {
+      if (this.Config.yAxisTitleSource === "hidden") return "";
+      return this._configText("yAxisTitle", dataset.valueLabel);
+   };
+
    WsuLineViz.prototype._palette = function() {
       var parsed = tokens(this.Config.palette);
       // No WSU-flavored defaults; defer to OAC themes by default. The neutral
@@ -377,6 +415,7 @@ define(['jquery',
       var meta = this.getLastDatasetMeta();
       var seriesLabel = (meta && meta.seriesLabel) ? meta.seriesLabel : "Series";
       var valueLabel = (meta && meta.valueLabel) ? meta.valueLabel : "Value";
+      var termCodeLabel = (meta && meta.termCodeLabel) ? meta.termCodeLabel : "Sorting Term Code (STRM)";
       var detailLabels = (meta && meta.detailLabels) ? meta.detailLabels : [];
       var options = [
          {value: "", label: "Value (Desc — default)"},
@@ -384,6 +423,9 @@ define(['jquery',
          {value: "value", label: "Value (" + valueLabel + ")"},
          {value: "rank", label: "Rank"}
       ];
+      if (!meta || meta.termCodeBucketPresent || meta.hasTermCode) {
+         options.push({value: "termCode", label: "STRM (" + termCodeLabel + ")"});
+      }
       detailLabels.forEach(function(lab) {
          if (str(lab).trim()) options.push({value: lab, label: "Detail: " + lab});
       });
@@ -409,6 +451,10 @@ define(['jquery',
       var layers = [];
       var xLabel = "Category";
       var seriesLabel = "Series";
+      var termCodeLabel = "Sorting Term Code (STRM)";
+      var termCodeBucketPresent = false;
+      var dynamicValueLabelBucketLabel = "Dynamic Value Label (from data)";
+      var dynamicValueLabelBucketPresent = false;
       var detailLabels = [];
       var headerLabels = [];
 
@@ -436,6 +482,14 @@ define(['jquery',
          layers.push({key: key, displayName: displayName || key, index: layerIndex});
          if (key === "row") xLabel = displayName || xLabel;
          if (key === "color") seriesLabel = displayName || seriesLabel;
+         if (key === "size") {
+            termCodeLabel = displayName || termCodeLabel;
+            termCodeBucketPresent = true;
+         }
+         if (key === "item") {
+            dynamicValueLabelBucketLabel = displayName || dynamicValueLabelBucketLabel;
+            dynamicValueLabelBucketPresent = true;
+         }
          if (key === "detail") detailLabels.push(displayName || ("Detail " + (detailLabels.length + 1)));
          if (key === "glyph") headerLabels.push(displayName || ("Header " + (headerLabels.length + 1)));
       }
@@ -446,6 +500,7 @@ define(['jquery',
       var missingMode = this.Config.missingValueMode || "hide";
       var dataRowsSeen = 0;
       var skippedNonNumeric = 0;
+      var rawMeasureLabel = measureName(oDataLayout, aAllMeasures);
 
       for (var rowIndex = 0; rowIndex < Math.max(nRows, 0); rowIndex++) {
          dataRowsSeen++;
@@ -484,15 +539,18 @@ define(['jquery',
             x: meta.x || ("Row " + (rowIndex + 1)),
             series: meta.series || this._configText("seriesLabel", "Value"),
             termCode: meta.termCode,
+            dynamicValueLabel: meta.dynamicValueLabel,
             value: value,
             details: meta.details,
             xLabel: xLabel,
             seriesLabel: seriesLabel,
-            valueLabel: this._configText("valueLabel", measureName(oDataLayout, aAllMeasures)),
+            valueLabel: this._configText("valueLabel", rawMeasureLabel),
             sourceRows: [rowIndex]
          });
       }
 
+      var dynamicValueLabel = resolveDynamicValueLabel(raw);
+      var valueLabel = dynamicValueLabel || this._configText("valueLabel", rawMeasureLabel);
       var rows = this._aggregateRows(raw);
       var hasTermCode = rows.some(function(row) { return isValidStrmTermCode(row.termCode); });
       var xValues = this._xValues(rows);
@@ -526,7 +584,12 @@ define(['jquery',
          byX: byX,
          xLabel: xLabel,
          seriesLabel: this._configText("seriesLabel", seriesLabel),
-         valueLabel: this._configText("valueLabel", measureName(oDataLayout, aAllMeasures)),
+         valueLabel: valueLabel,
+         dynamicValueLabel: dynamicValueLabel,
+         dynamicValueLabelBucketLabel: dynamicValueLabelBucketLabel,
+         dynamicValueLabelBucketPresent: dynamicValueLabelBucketPresent,
+         termCodeLabel: termCodeLabel,
+         termCodeBucketPresent: termCodeBucketPresent,
          detailLabels: detailLabels,
          headerAttrs: headerAttrs,
          hasTermCode: hasTermCode,
@@ -539,7 +602,7 @@ define(['jquery',
    };
 
    WsuLineViz.prototype._readRowMeta = function(oDataLayout, layers, rowIndex, detailLabels, headerLabels) {
-      var meta = {x: "", series: "", termCode: null, details: [], headers: []};
+      var meta = {x: "", series: "", termCode: null, dynamicValueLabel: "", details: [], headers: []};
       var detailCount = 0;
       var headerCount = 0;
       layers.forEach(function(layer) {
@@ -556,6 +619,9 @@ define(['jquery',
          }
          else if (layer.key === "size") {
             meta.termCode = parseStrmTermCode(value);
+         }
+         else if (layer.key === "item") {
+            meta.dynamicValueLabel = value.trim();
          }
       });
       return meta;
@@ -624,9 +690,34 @@ define(['jquery',
       // Apply user-chosen legend order on top of that baseline.
       var ordered = dataset.seriesValues.slice();
       var order = this.Config.legendOrder || "chronoAsc";
+      var seriesTermCodes = new Map();
+      if (order === "strmAsc" || order === "strmDesc") {
+         (dataset.rows || []).forEach(function(row) {
+            if (!isValidStrmTermCode(row.termCode)) return;
+            if (!seriesTermCodes.has(row.series)) {
+               seriesTermCodes.set(row.series, row.termCode);
+            }
+            else {
+               seriesTermCodes.set(row.series, Math.min(seriesTermCodes.get(row.series), row.termCode));
+            }
+         });
+      }
+      function compareSeriesTermCode(seriesA, seriesB, desc) {
+         var aMissing = !seriesTermCodes.has(seriesA);
+         var bMissing = !seriesTermCodes.has(seriesB);
+         if (aMissing && bMissing) return compareChronologicalLabel(seriesA, seriesB);
+         if (aMissing) return 1;
+         if (bMissing) return -1;
+         var av = seriesTermCodes.get(seriesA);
+         var bv = seriesTermCodes.get(seriesB);
+         if (av === bv) return compareChronologicalLabel(seriesA, seriesB);
+         return desc ? bv - av : av - bv;
+      }
       if (order === "chronoDesc") ordered.reverse();
       else if (order === "nameAsc") ordered.sort(function(a, b) { return compareNatural(a, b); });
       else if (order === "nameDesc") ordered.sort(function(a, b) { return compareNatural(b, a); });
+      else if (order === "strmAsc") ordered.sort(function(a, b) { return compareSeriesTermCode(a, b, false); });
+      else if (order === "strmDesc") ordered.sort(function(a, b) { return compareSeriesTermCode(a, b, true); });
       // "colorOrder" leaves dataset.seriesValues order (which reflects color
       // assignment order from the iteration that built seriesColors).
       // "chronoAsc" is the unmodified default.
@@ -901,8 +992,20 @@ define(['jquery',
          .style("text-anchor", this._shouldShowLabels(visibleXValues.length) ? "end" : "middle");
       g.append("g").attr("class", "y axis").call(d3.axisLeft(y).tickFormat(function(d) { return formatValue(d, fmtOpts); }));
 
-      g.append("text").attr("class", "axis-label").attr("x", innerWidth / 2).attr("y", innerHeight + (this._shouldShowLabels(visibleXValues.length) ? 74 : 38)).attr("text-anchor", "middle").text(this._configText("xAxisTitle", dataset.xLabel));
-      g.append("text").attr("class", "axis-label").attr("transform", "rotate(-90)").attr("x", -innerHeight / 2).attr("y", -46).attr("text-anchor", "middle").text(this._configText("yAxisTitle", dataset.valueLabel));
+      var xTitleStyle = this._axisTitleStyle("x");
+      var yTitleStyle = this._axisTitleStyle("y");
+      g.append("text").attr("class", "axis-label").attr("x", innerWidth / 2).attr("y", innerHeight + (this._shouldShowLabels(visibleXValues.length) ? 74 : 38)).attr("text-anchor", "middle")
+         .style("font-size", xTitleStyle.size + "px")
+         .style("fill", xTitleStyle.color || null)
+         .style("font-weight", xTitleStyle.bold ? "600" : "400")
+         .style("font-style", xTitleStyle.italic ? "italic" : "normal")
+         .text(this._configText("xAxisTitle", dataset.xLabel));
+      g.append("text").attr("class", "axis-label").attr("transform", "rotate(-90)").attr("x", -innerHeight / 2).attr("y", -46).attr("text-anchor", "middle")
+         .style("font-size", yTitleStyle.size + "px")
+         .style("fill", yTitleStyle.color || null)
+         .style("font-weight", yTitleStyle.bold ? "600" : "400")
+         .style("font-style", yTitleStyle.italic ? "italic" : "normal")
+         .text(this._resolvedYAxisTitle(dataset));
 
       var activeLayer = g.append("g").attr("class", "active-layer").style("display", "none");
       activeLayer.append("rect").attr("class", "x-highlight").attr("y", 0).attr("height", innerHeight);
@@ -1220,9 +1323,10 @@ define(['jquery',
             if (lcSort === "series" || lcSort === str(dataset.seriesLabel).toLowerCase()) sortKind = "series";
             else if (lcSort === "value" || lcSort === str(dataset.valueLabel).toLowerCase()) sortKind = "value";
             else if (lcSort === "rank") sortKind = "rank";
+            else if (lcSort === "termcode" || lcSort === "strm" || lcSort === "sorting term code" || lcSort === str(dataset.termCodeLabel).toLowerCase()) sortKind = "termCode";
          }
       }
-      var defaultDir = (sortKind === "series" || sortKind === "detail" || sortKind === "rank") ? "asc" : "desc";
+      var defaultDir = (sortKind === "series" || sortKind === "detail" || sortKind === "rank" || sortKind === "termCode") ? "asc" : "desc";
       var dirCfg = this.Config.tooltipSortDirection;
       var dir = (dirCfg === "asc" || dirCfg === "desc") ? dirCfg : defaultDir;
       var dirSign = dir === "asc" ? 1 : -1;
@@ -1237,11 +1341,19 @@ define(['jquery',
       }
       else if (sortKind === "series") ascCmp = function(a, b) { return compareChronologicalLabel(a.series, b.series); };
       else if (sortKind === "rank") ascCmp = function(a, b) { return a._rank - b._rank; };
+      else if (sortKind === "termCode") ascCmp = function(a, b) { return a.termCode - b.termCode; };
       else ascCmp = function(a, b) { return a.value - b.value; };
 
       rows.sort(function(a, b) {
          if (activeSeries && a.series === activeSeries) return -1;
          if (activeSeries && b.series === activeSeries) return 1;
+         if (sortKind === "termCode") {
+            var aValid = isValidStrmTermCode(a.termCode);
+            var bValid = isValidStrmTermCode(b.termCode);
+            if (!aValid && !bValid) return compareChronologicalLabel(a.series, b.series);
+            if (!aValid) return 1;
+            if (!bValid) return -1;
+         }
          return dirSign * ascCmp(a, b);
       });
 
@@ -1269,9 +1381,9 @@ define(['jquery',
       var showD3Value = d3Mode === "value" || d3Mode === "valuePercent";
       var showD3Pct = d3Mode === "percent" || d3Mode === "valuePercent";
       var fmtOpts = this._formatOpts();
-      var titleHtml = privacyOn
-         ? "<div class='title'>" + esc(dataset.xLabel) + "</div>"
-         : "<div class='title'>" + esc(dataset.xLabel) + ": " + esc(xValue) + "</div>";
+      var showXInTitle = this.Config.showXInTitle !== "off" && !privacyOn;
+      var titleText = showXInTitle ? (esc(dataset.xLabel) + ": " + esc(xValue)) : esc(dataset.xLabel);
+      var titleHtml = titleText ? "<div class='title'>" + titleText + "</div>" : "";
 
       if (this.Config.tooltipMode === "single" && activeSeries) {
          var single = (dataset.byX.get(xValue) || []).filter(function(d) { return d.series === activeSeries; })[0];
@@ -1489,6 +1601,12 @@ define(['jquery',
                headerLabels: (dataset.headerAttrs || []).map(function(h) { return h.label; }),
                seriesLabel: dataset.seriesLabel,
                valueLabel: dataset.valueLabel,
+               dynamicValueLabel: dataset.dynamicValueLabel,
+               dynamicValueLabelBucketLabel: dataset.dynamicValueLabelBucketLabel,
+               dynamicValueLabelBucketPresent: dataset.dynamicValueLabelBucketPresent,
+               termCodeLabel: dataset.termCodeLabel,
+               termCodeBucketPresent: dataset.termCodeBucketPresent,
+               hasTermCode: dataset.hasTermCode,
                xLabel: dataset.xLabel
             });
          }
@@ -1521,10 +1639,14 @@ define(['jquery',
 
    WsuLineViz.prototype._addVizSpecificMenuOptions = function(oTransientVizContext, sMenuType, aResults, contextmenu, evtParams, oTransientRenderingContext) {
       WsuLineViz.superClass._addVizSpecificMenuOptions.call(this, oTransientVizContext, sMenuType, aResults, contextmenu, evtParams, oTransientRenderingContext);
+      this.loadConfig();
       if (sMenuType === euidef.CM_TYPE_VIZ_PROPS && !this.isViewOnlyLimit()) {
          if (!oTransientRenderingContext) oTransientRenderingContext = this.createRenderingContext(oTransientVizContext);
          this._addFilterMenuOption(oTransientVizContext, aResults, null, null, oTransientRenderingContext);
          this._addRemoveSelectedMenuOption(oTransientVizContext, aResults, null, null, oTransientRenderingContext);
+         if (this.Config.colorSource !== "custom" && this._addColorMenuOption) {
+            this._addColorMenuOption(oTransientVizContext, aResults, oTransientRenderingContext);
+         }
       }
    };
 
@@ -1593,6 +1715,7 @@ define(['jquery',
       addToggle(pGen, "showSeriesColGadget", "Tooltip: Show Series Column", this.Config.showSeriesCol);
       addToggle(pGen, "showValueColGadget", "Tooltip: Show Value Column", this.Config.showValueCol);
       addToggle(pGen, "showXPerRowGadget", "Tooltip: Show X Per Row", this.Config.showXPerRow);
+      addToggle(pGen, "showXInTitleGadget", "Tooltip: Show X In Title", this.Config.showXInTitle);
       addToggle(pGen, "showAverageGadget", "Tooltip: Show Average Footer", this.Config.showAverage);
 
       addSwitcher(pGen, "numberFormatGadget", "Format: Number Format", this.Config.numberFormat, [{value: "auto", label: "Auto"}, {value: "number", label: "Number"}, {value: "percent", label: "Percent (×100)"}, {value: "currency", label: "Currency (USD)"}, {value: "compact", label: "Compact (K/M/B)"}], nx("GEN"));
@@ -1616,7 +1739,7 @@ define(['jquery',
 
       addSwitcher(pStyle, "colorSourceGadget", "Color: Source", this.Config.colorSource, [{value: "oac", label: "OAC Theme"}, {value: "custom", label: "Custom Palette"}], nx("STY"));
       addText(pStyle, factory, "paletteGadget", "Color: Custom Palette (comma-separated hex)", this.Config.palette);
-      addText(pStyle, factory, "valueLabelGadget", "Style: Value Label (override)", this.Config.valueLabel);
+      addText(pStyle, factory, "valueLabelGadget", "Value: Display Label (axis + tooltip)", this.Config.valueLabel);
       addText(pStyle, factory, "seriesLabelGadget", "Style: Series Label (override)", this.Config.seriesLabel);
 
       // ============ HEADER TAB ============
@@ -1636,10 +1759,17 @@ define(['jquery',
       addToggle(pAxisLegend, "showGuideGadget", "Axis: Guide Line", this.Config.showGuide);
       addText(pAxisLegend, factory, "xAxisTitleGadget", "Axis: X Title (override)", this.Config.xAxisTitle);
       addText(pAxisLegend, factory, "yAxisTitleGadget", "Axis: Y Title (override)", this.Config.yAxisTitle);
+      addSwitcher(pAxisLegend, "yAxisTitleSourceGadget", "Axis: Y Title Source", this.Config.yAxisTitleSource, [{value: "auto", label: "Auto"}, {value: "hidden", label: "Hidden"}], nx("AXL"));
+      pAxisLegend.addChild(new gadgets.SliderGadgetInfo("xAxisTitleFontSizeGadget", "Axis: X Title Font Size", "Axis: X Title Font Size", new gadgets.SliderGadgetValueProperties(euidef.GadgetTypeIDs.SLIDER, this.Config.xAxisTitleFontSize, 8, 24)));
+      pAxisLegend.addChild(new gadgets.SliderGadgetInfo("yAxisTitleFontSizeGadget", "Axis: Y Title Font Size", "Axis: Y Title Font Size", new gadgets.SliderGadgetValueProperties(euidef.GadgetTypeIDs.SLIDER, this.Config.yAxisTitleFontSize, 8, 24)));
+      addText(pAxisLegend, factory, "xAxisTitleColorGadget", "Axis: X Title Color (hex)", this.Config.xAxisTitleColor);
+      addText(pAxisLegend, factory, "yAxisTitleColorGadget", "Axis: Y Title Color (hex)", this.Config.yAxisTitleColor);
+      addToggle(pAxisLegend, "axisTitleBoldGadget", "Axis: Title Bold", this.Config.axisTitleBold);
+      addToggle(pAxisLegend, "axisTitleItalicGadget", "Axis: Title Italic", this.Config.axisTitleItalic);
 
       addToggle(pAxisLegend, "legendGadget", "Legend: Show", this.Config.legend);
       addSwitcher(pAxisLegend, "legendPositionGadget", "Legend: Position", this.Config.legendPosition, [{value: "auto", label: "Auto"}, {value: "right", label: "Right"}, {value: "bottom", label: "Bottom"}, {value: "off", label: "Off"}], nx("AXL"));
-      addSwitcher(pAxisLegend, "legendOrderGadget", "Legend: Order", this.Config.legendOrder, [{value: "chronoAsc", label: "Chronological (oldest first)"}, {value: "chronoDesc", label: "Chronological (newest first)"}, {value: "nameAsc", label: "Series Name A→Z"}, {value: "nameDesc", label: "Series Name Z→A"}, {value: "colorOrder", label: "Color order"}], nx("AXL"));
+      addSwitcher(pAxisLegend, "legendOrderGadget", "Legend: Order", this.Config.legendOrder, [{value: "chronoAsc", label: "Chronological (oldest first)"}, {value: "chronoDesc", label: "Chronological (newest first)"}, {value: "strmAsc", label: "STRM (oldest first)"}, {value: "strmDesc", label: "STRM (newest first)"}, {value: "nameAsc", label: "Series Name A→Z"}, {value: "nameDesc", label: "Series Name Z→A"}, {value: "colorOrder", label: "Color order"}], nx("AXL"));
       addSwitcher(pAxisLegend, "legendMarkerShapeGadget", "Legend: Marker Shape", this.Config.legendMarkerShape, [{value: "match", label: "Match Points"}, {value: "circle", label: "Circle"}, {value: "square", label: "Square"}, {value: "triangle", label: "Triangle"}, {value: "diamond", label: "Diamond"}, {value: "cross", label: "Cross"}, {value: "star", label: "Star"}], nx("AXL"));
       pAxisLegend.addChild(new gadgets.SliderGadgetInfo("legendMarkerSizeGadget", "Legend: Marker Size", "Legend: Marker Size", new gadgets.SliderGadgetValueProperties(euidef.GadgetTypeIDs.SLIDER, this.Config.legendMarkerSize, 3, 12)));
       pAxisLegend.addChild(new gadgets.SliderGadgetInfo("legendFontSizeGadget", "Legend: Font Size", "Legend: Font Size", new gadgets.SliderGadgetValueProperties(euidef.GadgetTypeIDs.SLIDER, this.Config.legendFontSize, 8, 18)));
@@ -1660,7 +1790,7 @@ define(['jquery',
          clickBehaviorGadget: "clickBehavior", aggregationGadget: "aggregation",
          xSortGadget: "xSort", xLabelsGadget: "xLabels",
          showPointsGadget: "showPoints", showGridlinesGadget: "showGridlines", showGuideGadget: "showGuide",
-         showAverageGadget: "showAverage", showXPerRowGadget: "showXPerRow",
+         showAverageGadget: "showAverage", showXPerRowGadget: "showXPerRow", showXInTitleGadget: "showXInTitle",
          showSeriesColGadget: "showSeriesCol", showValueColGadget: "showValueCol",
          privacyModeGadget: "privacyMode",
          legendGadget: "legend", legendPositionGadget: "legendPosition",
@@ -1684,7 +1814,11 @@ define(['jquery',
          headerFontItalicGadget: "headerFontItalic",
          headerFontUnderlineGadget: "headerFontUnderline",
          xAxisTitleGadget: "xAxisTitle",
-         yAxisTitleGadget: "yAxisTitle", valueLabelGadget: "valueLabel", seriesLabelGadget: "seriesLabel",
+         yAxisTitleGadget: "yAxisTitle", yAxisTitleSourceGadget: "yAxisTitleSource",
+         xAxisTitleFontSizeGadget: "xAxisTitleFontSize", yAxisTitleFontSizeGadget: "yAxisTitleFontSize",
+         xAxisTitleColorGadget: "xAxisTitleColor", yAxisTitleColorGadget: "yAxisTitleColor",
+         axisTitleBoldGadget: "axisTitleBold", axisTitleItalicGadget: "axisTitleItalic",
+         valueLabelGadget: "valueLabel", seriesLabelGadget: "seriesLabel",
          paletteGadget: "palette"
       };
       var key = map[sGadgetID];
@@ -1693,9 +1827,10 @@ define(['jquery',
       // Translate at the boundary so internal Config keeps "on"/"off" strings
       // and saved workbooks load identically (zero migration risk).
       var TOGGLE_GADGETS = {
-         showSeriesColGadget: 1, showValueColGadget: 1, showXPerRowGadget: 1, showAverageGadget: 1,
+         showSeriesColGadget: 1, showValueColGadget: 1, showXPerRowGadget: 1, showXInTitleGadget: 1, showAverageGadget: 1,
          privacyModeGadget: 1, showPointsGadget: 1,
          headerFontBoldGadget: 1, headerFontItalicGadget: 1, headerFontUnderlineGadget: 1,
+         axisTitleBoldGadget: 1, axisTitleItalicGadget: 1,
          showGridlinesGadget: 1, showGuideGadget: 1, legendGadget: 1
       };
       if (TOGGLE_GADGETS[sGadgetID]) {

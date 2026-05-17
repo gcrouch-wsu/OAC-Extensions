@@ -330,6 +330,14 @@ while the tooltip shows another. **Never** push parameter-evaluation into the
 plugin — that ties the plugin to one workbook's parameters and breaks
 generality.
 
+For dynamic labels, mirror the same parameter into a categorical calculated
+attribute and bind it to a label/metadata bucket when the plugin provides one.
+WSU Line uses `Dynamic Value Label (from data)` for this pattern: the plugin
+does not read the workbook parameter; OAC evaluates the calculated attribute and
+passes the resolved text as ordinary row data. Host-test this in OAC/OAD because
+local syntax/package validation cannot prove that a workbook permits
+`@parameter(...)` in a categorical calculated attribute.
+
 ### 6.12 CSS namespacing
 Every selector must start with the root class (`.custom-tooltip`,
 `.custom-tooltip-v2`, etc.). Two plugins from the same family rendering on

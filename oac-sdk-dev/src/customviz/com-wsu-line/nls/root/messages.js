@@ -8,5 +8,6 @@ define({
     "WSULINE_HEADER": "Header Attributes",
     "WSULINE_TOOLTIP": "Tooltip detail",
     "WSULINE_TERM_CODE": "Sorting Term Code (STRM)",
+    "WSULINE_VALUE_LABEL": "Dynamic Value Label (from data)",
     "TEXT_MESSAGE": "WSU line chart with shared-X tooltip, drag-to-zoom, header attributes, and built-in 1- and 3-year delta comparisons"
 });

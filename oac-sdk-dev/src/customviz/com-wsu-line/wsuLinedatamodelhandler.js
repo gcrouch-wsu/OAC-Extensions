@@ -30,12 +30,14 @@ define(['obitech-framework/jsx',
       oMapper.addCategoricalMapping(datamodelshapes.Logical.COLOR, oRow);
       oMapper.addCategoricalMapping(datamodelshapes.Logical.GLYPH, oRow);
       oMapper.addCategoricalMapping(datamodelshapes.Logical.SIZE, oRow);
+      oMapper.addCategoricalMapping(datamodelshapes.Logical.ITEM, oRow);
 
       oMapper.addMeasureMapping(datamodelshapes.Logical.MEASURES, oData);
       oMapper.addMeasureMapping(datamodelshapes.Logical.CATEGORY, oRow);
       oMapper.addMeasureMapping(datamodelshapes.Logical.COLOR, oRow);
       oMapper.addMeasureMapping(datamodelshapes.Logical.GLYPH, oRow);
       oMapper.addMeasureMapping(datamodelshapes.Logical.SIZE, oRow);
+      oMapper.addMeasureMapping(datamodelshapes.Logical.ITEM, oRow);
 
       oMapper.setDefaultPhysicalMeasureLabel(datamodelshapes.Physical.COLUMN, this.getMeasureLabelConfig().visibility);
       return oMapper;

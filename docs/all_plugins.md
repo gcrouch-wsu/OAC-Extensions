@@ -169,6 +169,14 @@ Implemented:
 - Display-label parsing is no longer part of the decision path for these two
   derived tooltip columns.
 
+### 4.2.1 STRM sort and legend order
+Implemented:
+- WSU Line tooltip sorting now exposes STRM as an explicit sort option when the
+  `Sorting Term Code (STRM)` bucket is supplied.
+- WSU Line legend ordering now supports STRM ascending and descending modes.
+- Missing or invalid STRM values sort last, and aggregation conflicts already
+  collapse conflicting grouped STRM values to null.
+
 ### 4.3 Field reuse should be documented
 Current behavior:
 - Line has `Series / Color`, `Header Attributes`, and `Tooltip detail` buckets.
@@ -192,6 +200,40 @@ Decision:
 - Only revisit tooltip suppression if there is a clearly empty shell with no
   meaningful title/value context left to display.
 
+### 4.5 WSU Line v2 UI controls
+Implemented:
+- Tooltip X value visibility is split between `Show X In Title` and
+  `Show X Per Row`, with Privacy Mode still taking precedence.
+- Axis title font size, title color, bold, and italic controls are available
+  for the SVG axis titles.
+- `Value: Display Label` is the user-facing label for the existing `valueLabel`
+  override. It controls the tooltip value column and also feeds the Y-axis title
+  unless a specific Y-axis title override is set.
+- `Dynamic Value Label (from data)` is an optional categorical bucket for
+  parameter-driven labels. When exactly one non-empty label value is supplied,
+  it overrides the manual `Value: Display Label` fallback for the tooltip value
+  column and Y-axis fallback title.
+- Local build/package validation passed for this bucket, but parameter behavior
+  still needs OAC Dev testing because the workbook must evaluate
+  `@parameter(...)` inside a categorical calculated attribute before WSU Line can
+  receive the resolved text.
+- The native OAC color menu hook is exposed when `Color Source = OAC Theme`.
+  Final menu wording and Manage Color Assignments behavior remain host-version
+  details to validate in OAD/OAC.
+
+### 4.6 Cross-extension color control follow-up
+Follow-up:
+- Review WSU Dumbbell, WSU Lattice Scatter, WSU Network, and WSU Sankey for the
+  same color-source pattern now used in WSU Line: default to OAC Theme, keep
+  Custom Palette as an explicit override, and expose the native color menu /
+  Manage Color Assignments path when the plugin uses OAC theme colors.
+- Do not assume the hook is copy/paste safe. Confirm each plugin's data model
+  maps `Logical.COLOR`, uses the OAC color service for series/items, and
+  subscribes to default color assignment changes before adding menu support.
+- Any plugin-specific color semantics, such as Sankey edge/node coloring or
+  Network incomplete-path highlighting, must keep their intended precedence over
+  generic color assignment.
+
 ---
 
 ## 5. Recommended Cross-Plugin Validation Order
@@ -199,9 +241,15 @@ Decision:
 1. Confirm Dumbbell aggregate-mode `Sort By` / `Filter By` behavior.
 2. Validate WSU Line `Sorting Term Code (STRM)` authoring in OAC/OAD and confirm
    `Delta 1 Year` / `Delta 3 Years` appear only when STRM is supplied.
-3. Validate categorical-only Tooltip Detail behavior in Dumbbell and WSU Line.
-4. Validate truly empty Dumbbell tooltip shells are suppressed.
-5. Keep WSU Line's richer configured tooltip model; only suppress tooltips if a
+3. Validate WSU Line `Dynamic Value Label (from data)` with the Admissions
+   Status Selector parameter in OAC Dev.
+4. Validate WSU Line native Color / Manage Color Assignments behavior in OAC
+   Theme mode.
+5. Review other WSU extensions for whether WSU Line's color-source controls and
+   native color menu hook should be implemented there.
+6. Validate categorical-only Tooltip Detail behavior in Dumbbell and WSU Line.
+7. Validate truly empty Dumbbell tooltip shells are suppressed.
+8. Keep WSU Line's richer configured tooltip model; only suppress tooltips if a
    clearly empty-shell case is proven.
-6. Update any downstream handoff notes only if host testing reveals a mismatch
+9. Update any downstream handoff notes only if host testing reveals a mismatch
    between packaged behavior and OAC/OAD rendering.
