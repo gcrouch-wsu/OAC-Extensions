@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Dumbbell
 - **Category**: WSU
 - **Root id**: `com-wsu-dumbbell`
-- **Version constant**: `WsuDumbbellViz.VERSION = "1.0.0"`
+- **Version constant**: `WsuDumbbellViz.VERSION = "1.0.1"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-dumbbell/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-dumbbell.zip`
 

@@ -203,7 +203,7 @@ define(['jquery',
       this.clearZoomState = function() { zoomState = null; };
    }
 
-   WsuDumbbellViz.VERSION = "1.0.0";
+   WsuDumbbellViz.VERSION = "1.0.1";
    jsx.extend(WsuDumbbellViz, dataviz.DataVisualization);
 
    function str(value) {
@@ -724,6 +724,7 @@ define(['jquery',
 
       var tooltip = d3.select("body").selectAll("#" + rootId + "_tooltip").data([null]);
       tooltip = tooltip.enter().append("div").attr("id", rootId + "_tooltip").attr("class", "wsu-dumbbell-tooltip").merge(tooltip);
+      this._tooltipId = rootId + "_tooltip";
 
       var svg = chartArea.append("svg")
          .attr("width", width)
@@ -1725,6 +1726,12 @@ define(['jquery',
       this.clearZoomState();
       this.setLegendActiveSeries(null);
       return true;
+   };
+
+   WsuDumbbellViz.prototype._doStopComponent = function() {
+      // Tooltips are attached to <body>; remove ours when the viz is torn down.
+      if (this._tooltipId) d3.select("#" + this._tooltipId).remove();
+      WsuDumbbellViz.superClass._doStopComponent.apply(this, arguments);
    };
 
    WsuDumbbellViz.prototype._doInitializeComponent = function() {

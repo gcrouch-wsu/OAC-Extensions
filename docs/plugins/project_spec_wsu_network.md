@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Network
 - **Category**: WSU
 - **Root id**: `com-wsu-network`
-- **Version constant**: `WsuNetworkViz.VERSION = "1.0.0"`
+- **Version constant**: `WsuNetworkViz.VERSION = "1.1.0"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-network/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-network.zip`
 
@@ -178,32 +178,6 @@ Defined in
   numeric order can be parsed from a leading integer. Leave this bucket empty
   when using self-loop repeat rendering.
 
-### 2.2 Missing Destination and Non-Progressor Routing
-
-By default, WSU Network should support explicit terminal routing for students
-who completed a source-course event but do not have a next-course destination
-in the provided pathway scope.
-
-Routing contract:
-- Missing Destination includes:
-  - null / undefined
-  - empty string
-  - whitespace-only string
-  - safe null-like literals such as `null`, `(null)`, `n/a`, and `na`
-- Literal matching is normalized in this exact order:
-  1. convert to string only after null / undefined checks
-  2. trim surrounding whitespace
-  3. compare the trimmed value case-insensitively against the supported
-     null-like literals
-- When terminal routing is enabled, missing destination values are rewritten to
-  the configured terminal label before edge aggregation.
-- When terminal routing is disabled, rows with missing Destination are dropped.
-- The terminal node participates in edge aggregation and tooltip summaries but
-  is never treated as a repeat loop.
-
-Recommended terminal label:
-- `No Further Course`
-
 ### 2.1 Input Grain and Client Aggregation
 
 WSU Network accepts raw transition rows and aggregates them client-side.
@@ -238,6 +212,32 @@ Aggregation rules:
 
 This preserves the Flask prototype's grouped-edge semantics while remaining
 usable inside OAC without requiring a pre-aggregated network payload.
+
+### 2.2 Missing Destination and Non-Progressor Routing
+
+By default, WSU Network should support explicit terminal routing for students
+who completed a source-course event but do not have a next-course destination
+in the provided pathway scope.
+
+Routing contract:
+- Missing Destination includes:
+  - null / undefined
+  - empty string
+  - whitespace-only string
+  - safe null-like literals such as `null`, `(null)`, `n/a`, and `na`
+- Literal matching is normalized in this exact order:
+  1. convert to string only after null / undefined checks
+  2. trim surrounding whitespace
+  3. compare the trimmed value case-insensitively against the supported
+     null-like literals
+- When terminal routing is enabled, missing destination values are rewritten to
+  the configured terminal label before edge aggregation.
+- When terminal routing is disabled, rows with missing Destination are dropped.
+- The terminal node participates in edge aggregation and tooltip summaries but
+  is never treated as a repeat loop.
+
+Recommended terminal label:
+- `No Further Course`
 
 ### 2.3 Dataset architecture for course-centered pathway analysis
 
@@ -450,13 +450,40 @@ Repeat-loop precedence applies to edges only. Target-node precedence applies to
 nodes only. Non-progressor precedence applies to the canonical terminal node
 and its inbound edges.
 
+### Labels and Edge Types
+| Key | Default | Values |
+|-----|---------|--------|
+| `showEdgeLabels` | `"off"` | on / off |
+| `edgeColorMode` | `"default"` | default / linkLabel |
+| `edgeTypePalette` | `""` | comma-separated hex list used when `edgeColorMode = linkLabel` |
+| `edgeLegendDescriptions` | `""` | `type=description|type=description` |
+| `showEdgeTypeLegend` | `"off"` | on / off |
+| `edgeTypeLegendPosition` | `"right"` | right / top / bottom |
+
+When `edgeColorMode = "linkLabel"`, each aggregated edge takes its color from
+its Link Label value (`Unlabeled` and `Mixed Link Labels` are synthesized when
+the bucket is empty or an aggregated edge carries more than one label). The
+optional edge-type legend is click-to-focus: selecting a type fades every
+other edge and node. Repeat-loop and non-progressor colors still take
+precedence over the edge-type color.
+
+Edge labels default to `off` because a populated Link Label bucket on a full
+network was unreadable in review; `showEdgeLabels = on` shows the authored
+Link Label when an aggregated edge has exactly one, otherwise the edge weight.
+
+### Interaction
+| Key | Default | Values |
+|-----|---------|--------|
+| `hoverEffects` | `"on"` | on / off |
+| `dragNodes` | `"on"` | on / off |
+
 ### Tooltip
 | Key | Default | Values |
 |-----|---------|--------|
 | `showNodeVolume` | `"on"` | on / off |
 | `showConnectorScore` | `"on"` | on / off |
 | `showEdgeWeight` | `"on"` | on / off |
-| `showEdgePassRateText` | `"on"` | on / off |
+| `showEdgePassRateText` | `"off"` | on / off |
 | `showTerminalEdgeText` | `"on"` | on / off |
 
 `showEdgePassRateText` refers only to an authored categorical tooltip-detail
@@ -496,16 +523,21 @@ Implemented via `gadgetdialog.forcePanelByID`:
 - **Terminal: Include Non-Progressors** (on/off).
 - **Terminal: Missing Destination Label** — text.
 - **Terminal: Highlight Non-Progressors** (on/off).
-- **Tooltip: Show Node Volume / Connector Score / Edge Weight / Edge Pass Text**
-  — checkboxes.
+- **Tooltip: Show Node Volume / Connector Score / Edge Weight / Edge Pass Text /
+  Terminal Edge Text** — checkboxes.
+- **Label: Show Edge Labels** (on/off, default off).
 
 ### STYLE TAB
 - **Nodes: Min/Max Size** — sliders for scaling.
 - **Edges: Min/Max Width** — sliders for scaling.
-- **Nodes: Shape** — switcher (dot/circle/box).
+- **Nodes: Shape** — switcher (dot/circle/box/square/triangle).
+- **Color: Source** (OAC Theme / Custom).
+- **Color: Edge Color Mode** (Default / By Link Label).
+- **Color: Edge Type Palette (hex csv)** — text.
 - **Color: Node Background / Border** — hex text.
 - **Color: Edge Default** — hex text.
 - **Color: Repeat Highlight** — hex text.
+- **Color: Target Highlight** — hex text.
 - **Color: Non-Progressor Terminal** — hex text.
 
 ### INTERACTION TAB
@@ -517,10 +549,20 @@ Implemented via `gadgetdialog.forcePanelByID`:
   `Performance Mode = Auto`.
 
 ### AXIS & LEGEND TAB (Legend only)
-- **Legend: Show** (on/off).
-- **Legend: Group Legend** (by COLOR bucket).
+- **Legend: Show Edge Type Legend** (on/off) — only rendered when
+  `Color: Edge Color Mode = By Link Label`.
+- **Legend: Edge Type Legend Position** (Right / Top / Bottom).
+- **Legend: Edge Descriptions (type=desc|...)** — text.
+
+There is no node-group legend; node color is explained by the workbook's
+OAC color assignments when `Color: Source = OAC Theme`.
 
 ### vNext property-panel reordering recommendation
+
+> **Status: proposal.** Everything from here to the end of section 4 describes
+> a *possible* reorganization and new controls (`Analysis: View Preset`,
+> `Labels: Edge Label Mode`, `Legend: Group Legend`, `Advanced: *`). None of
+> it is implemented. The tabs documented above are what ships.
 
 The current panel exposes many useful controls, but test use showed that the
 most important authoring decisions are buried among style and implementation

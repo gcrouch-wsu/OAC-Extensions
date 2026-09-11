@@ -148,9 +148,6 @@ define(['jquery',
       collapseOther: "off",
       dropOrphans: "on",
       disallowSelfLinks: "on",
-      requireMonotonicStep: "off",
-      requireUniquePathKey: "off",
-      strictStageBoundaries: "on",
       showWarnings: "on",
       tooltipPercentMode: "stage",
       valueDecimals: 1,
@@ -195,7 +192,7 @@ define(['jquery',
     };
   }
 
-  WsuSankeyViz.VERSION = "1.0.0";
+  WsuSankeyViz.VERSION = "1.0.1";
   jsx.extend(WsuSankeyViz, dataviz.DataVisualization);
 
   WsuSankeyViz.prototype._saveSettings = function() {
@@ -296,12 +293,13 @@ define(['jquery',
       orphanRows: 0,
       selfLinkEdges: 0,
       truncatedIntermediateRows: 0,
-      monotonicNotEvaluated: 0,
       thresholdDropped: 0,
       topNDropped: 0
     };
     var raw = [];
     var useOacColor = this.Config.colorSource !== "custom";
+    var weightLayer = dataMeasureLayers.filter(function(layer) { return layer.logical === "measures"; })[0];
+    var hasMeasureRoleInfo = dataMeasureLayers.some(function(layer) { return !!layer.logical; });
 
     for (var r = 0; r < nRows; r++) {
       var start = "";
@@ -366,11 +364,7 @@ define(['jquery',
         warnings.truncatedIntermediateRows += 1;
         midsClean = midsClean.slice(0, this.Config.maxIntermediateDepth);
       }
-      if (this.Config.requireMonotonicStep === "on") warnings.monotonicNotEvaluated += 1;
-
       var path = [start].concat(midsClean).concat([end]);
-      var weightLayer = dataMeasureLayers.filter(function(layer) { return layer.logical === "measures"; })[0];
-      var hasMeasureRoleInfo = dataMeasureLayers.some(function(layer) { return !!layer.logical; });
       var weight = weightLayer
         ? num(oDataLayout.getValue(PHYS_DATA, r, weightLayer.index))
         : (hasMeasureRoleInfo ? null : num(oDataLayout.getValue(PHYS_DATA, r, 0)));
@@ -729,6 +723,7 @@ define(['jquery',
     var g = svg.append("g").attr("transform", "translate(" + margin.left + "," + margin.top + ")");
     var tooltip = d3.select("body").selectAll("#" + rootId + "_tooltip").data([null]);
     tooltip = tooltip.enter().append("div").attr("id", rootId + "_tooltip").attr("class", "wsu-sankey-tooltip").merge(tooltip);
+    this._tooltipId = rootId + "_tooltip";
 
     var palette = parsePalette(this.Config.customPalette);
     var colorScale = d3.scaleOrdinal().range(palette.length ? palette : ["#1e88e5", "#43a047", "#f4511e", "#8e24aa", "#00897b", "#6d4c41"]);
@@ -1047,7 +1042,6 @@ define(['jquery',
     if (model.warnings.orphanRows > 0) warningText.push("orphans dropped: " + model.warnings.orphanRows);
     if (model.warnings.selfLinkEdges > 0) warningText.push("self-links removed: " + model.warnings.selfLinkEdges);
     if (model.warnings.truncatedIntermediateRows > 0) warningText.push("rows truncated by max depth: " + model.warnings.truncatedIntermediateRows);
-    if (model.warnings.monotonicNotEvaluated > 0) warningText.push("monotonic not evaluated: " + model.warnings.monotonicNotEvaluated);
     if (warningText.length && this.Config.showWarnings === "on") {
       g.append("text")
         .attr("class", "warning-text")
@@ -1141,9 +1135,6 @@ define(['jquery',
     addToggle(pRules, "collapseOtherGadget", "Collapse Other", this.Config.collapseOther, nx("RULE"));
     addToggle(pRules, "dropOrphansGadget", "Drop Rows Still Missing Required Nodes", this.Config.dropOrphans, nx("RULE"));
     addToggle(pRules, "disallowSelfLinksGadget", "Disallow Self Links", this.Config.disallowSelfLinks, nx("RULE"));
-    addToggle(pRules, "requireMonotonicStepGadget", "Require Monotonic Step", this.Config.requireMonotonicStep, nx("RULE"));
-    addToggle(pRules, "requireUniquePathKeyGadget", "Require Unique Path Key", this.Config.requireUniquePathKey, nx("RULE"));
-    addToggle(pRules, "strictStageBoundariesGadget", "Strict Stage Boundaries", this.Config.strictStageBoundaries, nx("RULE"));
     addToggle(pRules, "showWarningsGadget", "Show Validation Warnings", this.Config.showWarnings, nx("RULE"));
 
     pStyle.addChild(new gadgets.SliderGadgetInfo("nodeWidthGadget", "Node Width", "Node Width", new gadgets.SliderGadgetValueProperties(euidef.GadgetTypeIDs.SLIDER, this.Config.nodeWidth, 10, 60)));
@@ -1239,9 +1230,6 @@ define(['jquery',
       collapseOtherGadget: "collapseOther",
       dropOrphansGadget: "dropOrphans",
       disallowSelfLinksGadget: "disallowSelfLinks",
-      requireMonotonicStepGadget: "requireMonotonicStep",
-      requireUniquePathKeyGadget: "requireUniquePathKey",
-      strictStageBoundariesGadget: "strictStageBoundaries",
       showWarningsGadget: "showWarnings",
       showDerivedTooltipMetricsGadget: "showDerivedTooltipMetrics",
       includeIncompletePathsGadget: "includeIncompletePaths",
@@ -1301,6 +1289,12 @@ define(['jquery',
   WsuSankeyViz.prototype._doInitializeComponent = function() {
     WsuSankeyViz.superClass._doInitializeComponent.call(this);
     this.subscribeToEvent(events.types.DEFAULT_COLOR_SETTINGS_CHANGED, this._onDefaultColorsSettingsChanged, "**");
+  };
+
+  WsuSankeyViz.prototype._doStopComponent = function() {
+    // Tooltips are attached to <body>; remove ours when the viz is torn down.
+    if (this._tooltipId) d3.select("#" + this._tooltipId).remove();
+    WsuSankeyViz.superClass._doStopComponent.apply(this, arguments);
   };
 
   WsuSankeyViz.prototype._onDefaultColorsSettingsChanged = function() {

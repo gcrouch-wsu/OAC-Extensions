@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Line
 - **Category**: WSU
 - **Root id**: `com-wsu-line`
-- **Version constant**: `WsuLineViz.VERSION = "1.0.0"`
+- **Version constant**: `WsuLineViz.VERSION = "1.1.0"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-line/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-line.zip`
 
@@ -417,12 +417,8 @@ desired. The dynamic bucket overrides that manual fallback when exactly one
 non-empty label value is present. `Axis: Y Title (override)` still wins for the
 Y-axis only; it does not change the tooltip value column header.
 
-Status: local package validation passed, but this parameter-driven recipe still
-needs OAC Dev testing. Specifically verify that OAC accepts `@parameter(...)` in
-a categorical calculated attribute, that the calculated label can be dropped
-into `Dynamic Value Label (from data)`, and that changing the workbook parameter
-updates both the Y-axis fallback title and tooltip value column header without
-property edits.
+> Host validation pending — see `CHANGELOG.md` → "Known gaps" (WSU Line:
+> `@parameter(...)` inside a categorical calculated attribute).
 
 ### 6.4 OAC-theme-driven colors
 
@@ -431,9 +427,8 @@ empty. Workbook theme and OAC color assignments control every series color. To
 verify: change the workbook theme or use the visualization Color menu / Manage
 Color Assignments and watch the chart re-color.
 
-Status: the WSU Line source includes the native color menu hook in OAC Theme
-mode. Final menu wording and Manage Color Assignments behavior remain
-host-controlled and should be confirmed in OAC/OAD.
+> Host validation pending — see `CHANGELOG.md` → "Known gaps" (WSU Line:
+> native Color / Manage Color Assignments menu wording).
 
 ### 6.5 WSU-branded colors when needed
 

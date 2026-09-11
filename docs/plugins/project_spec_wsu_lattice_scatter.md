@@ -13,7 +13,7 @@ development without re-deriving decisions from the prototype.
 - **Short name**: WSU Lattice Scatter
 - **Category**: WSU
 - **Root id**: `com-wsu-lattice-scatter`
-- **Version constant**: `WsuLatticeScatterViz.VERSION = "1.0.0"`
+- **Version constant**: `WsuLatticeScatterViz.VERSION = "1.0.1"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-lattice-scatter/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-lattice-scatter.zip`
 
@@ -117,9 +117,13 @@ Use custom viz buckets to avoid stock scatter limitations:
 | `color` | `COLOR` | categorical | 0 | 1 | Student ID |
 | `glyph` | `GLYPH` | categorical | 0 | 1 | Course Grade Official |
 | `detail` | `CATEGORY` | both | 0 | 20 | Tooltip Detail |
-| `size` | `SIZE` | both | 0 | 1 | Term Code |
+| `size` | `SIZE` | both | 0 | 1 | Sorting Term Code (optional) |
 
 Notes:
+- `size` supplies a numeric sort key per term (for example SDW `STRM`). When
+  present it takes precedence over the parsed term label. As of 1.0.1 the
+  bucket is read directly; earlier builds only honored it when the field's
+  display name matched one of the tooltip-detail label heuristics.
 - `glyph` should include `target_grade_code` in v1 datasets.
 - If `measures` is absent, grade-point mode falls back to letter mapping where possible.
 
@@ -149,6 +153,11 @@ Notes:
 
 ### Progress policy
 - `progressThreshold`: decimal points (default `1.7`)
+
+### Axes
+- `xAxisTitle`: text (default empty → "Term")
+- `yAxisTitle`: text (default empty → "Course")
+- `gridlines`: `on|off` (default `on`)
 
 ---
 

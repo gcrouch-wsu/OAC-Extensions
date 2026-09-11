@@ -240,7 +240,7 @@ define(['jquery',
     };
   }
 
-  WsuLatticeScatterViz.VERSION = "1.0.0";
+  WsuLatticeScatterViz.VERSION = "1.0.1";
   jsx.extend(WsuLatticeScatterViz, dataviz.DataVisualization);
 
   WsuLatticeScatterViz.prototype._saveSettings = function() {
@@ -405,6 +405,10 @@ define(['jquery',
         else if (layer.logical === "color") p.studentId = value;
         else if (layer.logical === "glyph") {
           if (!p.gradeLetter) p.gradeLetter = value;
+        } else if (layer.logical === "size") {
+          // Dedicated "Sorting Term Code" bucket (categorical placement).
+          var sizeSort = num(value);
+          if (sizeSort !== null) p.termSort = sizeSort;
         } else {
           p.details.push({label: layer.displayName, value: value});
         }
@@ -646,6 +650,7 @@ define(['jquery',
 
     var tooltip = d3.select("body").selectAll("#" + rootId + "_tooltip").data([null]);
     tooltip = tooltip.enter().append("div").attr("id", rootId + "_tooltip").attr("class", "wsu-lattice-tooltip").merge(tooltip);
+    this._tooltipId = rootId + "_tooltip";
 
     var isGradeMarker = this.Config.markerShape === "grade-letter" || this.Config.markerShape === "grade-points";
     var labels = points.map(function(p) { return oViz._markerLabel(p); });
@@ -770,6 +775,9 @@ define(['jquery',
         return;
       }
       this._draw(elContainer, points, oDataLayout);
+    } catch (e) {
+      _logger.warning("Render failed: " + (e && e.message ? e.message : e));
+      $(this.getContainerElem()).html("<div class='wsu-lattice'><div class='empty-state'>Render failed: " + esc(e && e.message ? e.message : e) + "</div></div>");
     } finally {
       this._setIsRendered(true);
     }
@@ -910,6 +918,12 @@ define(['jquery',
   WsuLatticeScatterViz.prototype._doInitializeComponent = function() {
     WsuLatticeScatterViz.superClass._doInitializeComponent.call(this);
     this.subscribeToEvent(events.types.DEFAULT_COLOR_SETTINGS_CHANGED, this._onDefaultColorsSettingsChanged, "**");
+  };
+
+  WsuLatticeScatterViz.prototype._doStopComponent = function() {
+    // Tooltips are attached to <body>; remove ours when the viz is torn down.
+    if (this._tooltipId) d3.select("#" + this._tooltipId).remove();
+    WsuLatticeScatterViz.superClass._doStopComponent.apply(this, arguments);
   };
 
   WsuLatticeScatterViz.prototype._onDefaultColorsSettingsChanged = function() {

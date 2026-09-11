@@ -13,7 +13,7 @@ development without re-deriving design decisions from built-in Sankey limits.
 - **Short name**: WSU Sankey
 - **Category**: WSU
 - **Root id**: `com-wsu-sankey`
-- **Version constant**: `WsuSankeyViz.VERSION = "1.0.0"`
+- **Version constant**: `WsuSankeyViz.VERSION = "1.0.1"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-sankey/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-sankey.zip`
 
@@ -360,7 +360,6 @@ construct compatible datasets today.
 ## 5. Config Schema (v1, explicit mode only)
 
 ### Flow construction
-- `flowMode`: `explicit` (fixed in v1)
 - `intermediatePolicy`: `none|provided` (default `provided`)
 - `maxIntermediateDepth`: integer `0..5` (default `4`)
 - `maxIntermediateDepth` behavior: if dataset provides 5 intermediate layers and
@@ -394,10 +393,13 @@ right-to-left). It does not change logical path semantics, which remain
 
 ### Validation and governance
 - `disallowSelfLinks`: `on|off` (default `on`)
-- `requireMonotonicStep`: `on|off` (default `off`)
-- `requireUniquePathKey`: `on|off` (default `off`)
-- `strictStageBoundaries`: `on|off` (default `on`)
 - `showWarnings`: `on|off` (default `on`)
+
+Not implemented (removed from the property panel in 1.0.1): monotonic-step
+enforcement, unique-path-key enforcement, and strict stage boundaries. Stage
+order is defined by bucket position (Start → Intermediate 1..n → End), so
+out-of-order stages cannot occur in the explicit-stage grammar; the Sorting
+Term Code bucket only influences node ordering within a stage.
 
 ### Tooltip, color, and interaction
 - `tooltipPercentMode`: `off|stage|total|both` (default `stage`)
@@ -461,13 +463,6 @@ right-to-left). It does not change logical path semantics, which remain
 ### Validation definitions
 - **Self-link**: adjacent edge where normalized source and target labels match.
 - **Orphan**: row missing required Start or End value.
-- **Monotonic violation**: adjacent stages whose available numeric order keys
-  decrease.
-- **Strict stage boundaries**: when enabled, invalid or out-of-order stages are
-  dropped and counted in validation warnings.
-- **Monotonic no-evidence behavior**: if `requireMonotonicStep=on` but fewer
-  than two adjacent numeric order keys are available, monotonic evaluation is
-  skipped and counted as `not evaluated` (not pass/fail).
 
 ### Processing and aggregation order
 1. Expand each row into adjacent stage edges.
@@ -543,9 +538,6 @@ while keeping the same controls available.
 - `termCodeDirection` (switcher)
 - `disallowSelfLinks` (toggle)
 - `dropOrphans` (toggle)
-- `requireMonotonicStep` (toggle)
-- `requireUniquePathKey` (toggle)
-- `strictStageBoundaries` (toggle)
 - `showWarnings` (toggle)
 
 ### Noise Control
@@ -617,7 +609,7 @@ while keeping the same controls available.
 - [ ] STRM/Term Code behavior affects ordering evidence, not stage-layer order.
 - [ ] `flow_weight` aggregation matches expected totals.
 - [ ] Threshold and Top-N controls reduce noise deterministically.
-- [ ] Self-link/orphan/monotonic rules behave per toggle definitions.
+- [ ] Self-link and orphan rules behave per toggle definitions.
 - [ ] Tooltip percent modes (`off|stage|total|both`) are correct.
 - [ ] Edge and node marking return expected contributing rows.
 - [ ] Raw missing End values route to `No Completion` when routing/inclusion are enabled.

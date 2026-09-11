@@ -215,7 +215,7 @@ define(['jquery',
       this.setLegendActiveSeries = function(s) { legendActiveSeries = s; };
    }
 
-   WsuLineViz.VERSION = "1.0.0";
+   WsuLineViz.VERSION = "1.1.0";
    jsx.extend(WsuLineViz, dataviz.DataVisualization);
 
    function str(value) {
@@ -230,6 +230,22 @@ define(['jquery',
          .replace(/>/g, "&gt;")
          .replace(/"/g, "&quot;")
          .replace(/'/g, "&#39;");
+   }
+
+   // Accept hex, rgb()/rgba(), hsl()/hsla(), or a CSS named color the browser
+   // recognizes; anything else (including stray CSS declarations) becomes "".
+   function safeCssColor(value) {
+      var c = str(value).trim();
+      if (!c) return "";
+      if (/^#([a-f\d]{3}|[a-f\d]{6})$/i.test(c)) return c;
+      if (/^(rgb|hsl)a?\([\d.,\s%]+\)$/i.test(c)) return c;
+      if (/^[a-z]+$/i.test(c)) {
+         try {
+            if (typeof CSS !== "undefined" && CSS.supports && CSS.supports("color", c)) return c;
+         }
+         catch (e) { /* fall through */ }
+      }
+      return "";
    }
 
    function decimalsRange(opts) {
@@ -845,8 +861,8 @@ define(['jquery',
    WsuLineViz.prototype._headerInlineStyle = function() {
       var preset = this.Config.headerPreset || "default";
       var fontSize = Number(this.Config.headerFontSize) || 11;
-      var bgOverride = str(this.Config.headerBackgroundColor).trim();
-      var fgOverride = str(this.Config.headerFontColor).trim();
+      var bgOverride = safeCssColor(this.Config.headerBackgroundColor);
+      var fgOverride = safeCssColor(this.Config.headerFontColor);
       var bold = this.Config.headerFontBold === "on";
       var italic = this.Config.headerFontItalic === "on";
       var underline = this.Config.headerFontUnderline === "on";
@@ -958,6 +974,7 @@ define(['jquery',
 
       var tooltip = d3.select("body").selectAll("#" + rootId + "_tooltip").data([null]);
       tooltip = tooltip.enter().append("div").attr("id", rootId + "_tooltip").attr("class", "wsu-line-tooltip").merge(tooltip);
+      this._tooltipId = rootId + "_tooltip";
 
       var g = svg.append("g").attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
@@ -1843,6 +1860,12 @@ define(['jquery',
       this.clearZoomState();
       this.setLegendActiveSeries(null);
       return true;
+   };
+
+   WsuLineViz.prototype._doStopComponent = function() {
+      // Tooltips are attached to <body>; remove ours when the viz is torn down.
+      if (this._tooltipId) d3.select("#" + this._tooltipId).remove();
+      WsuLineViz.superClass._doStopComponent.apply(this, arguments);
    };
 
    WsuLineViz.prototype._onDefaultColorsSettingsChanged = function() {

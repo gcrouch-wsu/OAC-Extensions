@@ -93,6 +93,23 @@ define(['jquery',
     return fallback || c || ("rgba(120,120,120," + a + ")");
   }
 
+  // vis-network >= 8 renders string titles with innerText, so markup must be
+  // supplied as a DOM element. First line is bold, remaining lines are plain.
+  function makeTitle(lines) {
+    var el = document.createElement("div");
+    lines.forEach(function(line, i) {
+      if (i > 0) el.appendChild(document.createElement("br"));
+      if (i === 0) {
+        var b = document.createElement("b");
+        b.textContent = str(line);
+        el.appendChild(b);
+      } else {
+        el.appendChild(document.createTextNode(str(line)));
+      }
+    });
+    return el;
+  }
+
   function escHtml(s) {
     return str(s).replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
@@ -271,16 +288,15 @@ define(['jquery',
       showNodeVolume: "on",
       showConnectorScore: "on",
       showEdgeWeight: "on",
-      showEdgePassRateText: "on",
+      showEdgePassRateText: "off",
       showTerminalEdgeText: "on",
-      showEdgeLabels: "on",
+      showEdgeLabels: "off",
       hoverEffects: "on",
-      dragNodes: "on",
-      legend: "on"
+      dragNodes: "on"
     };
   }
 
-  WsuNetworkViz.VERSION = "1.0.0";
+  WsuNetworkViz.VERSION = "1.1.0";
   jsx.extend(WsuNetworkViz, dataviz.DataVisualization);
 
   WsuNetworkViz.prototype._saveSettings = function() {
@@ -342,7 +358,6 @@ define(['jquery',
     this.Config.showEdgeLabels = toOnOff(this.Config.showEdgeLabels);
     this.Config.hoverEffects = toOnOff(this.Config.hoverEffects);
     this.Config.dragNodes = toOnOff(this.Config.dragNodes);
-    this.Config.legend = toOnOff(this.Config.legend);
   };
 
   WsuNetworkViz.prototype._layersForRowEdge = function(oDataLayout, helper) {
@@ -372,7 +387,8 @@ define(['jquery',
     var helper = oTransientRenderingContext.get(DCP_DATA_LAYOUT_HELPER);
     var nRows = oDataLayout.getEdgeExtent(PHYS_ROW) || 0;
     var rowLayers = this._layersForRowEdge(oDataLayout, helper);
-    var detailLayers = rowLayers.filter(function(layer) { return layer.logical === "category"; });
+    // The "Tooltip details" edge maps to Logical.CATEGORY, which the host reports as "detail".
+    var detailLayers = rowLayers.filter(function(layer) { return layer.logical === "detail"; });
     var colorLayer = rowLayers.filter(function(layer) { return layer.logical === "color"; })[0];
     var glyphLayer = rowLayers.filter(function(layer) { return layer.logical === "glyph"; })[0];
     var sizeLayer = rowLayers.filter(function(layer) { return layer.logical === "size"; })[0];
@@ -574,14 +590,14 @@ define(['jquery',
         return vals.length === 1 ? {label: labelName, value: vals[0]} : null;
       }).filter(function(v) { return v !== null; });
 
-      var titleRows = ["<b>" + escHtml(edge.from) + " -> " + escHtml(edge.to) + "</b>"];
+      var titleRows = [edge.from + " -> " + edge.to];
       if (this.Config.showEdgeWeight === "on") titleRows.push("N: " + edgeWeightText);
       if (this.Config.showTerminalEdgeText === "on" && edge.isNonProgressor) {
         titleRows.push("No further course in pathway scope");
       }
       if (this.Config.showEdgePassRateText === "on") {
         detailRows.forEach(function(rowDetail) {
-          titleRows.push(escHtml(rowDetail.label) + ": " + escHtml(rowDetail.value));
+          titleRows.push(rowDetail.label + ": " + rowDetail.value);
         });
       }
 
@@ -607,7 +623,7 @@ define(['jquery',
         value: edge.weight,
         width: minEdgeWeight === maxEdgeWeight ? (this.Config.minEdgeWidth + this.Config.maxEdgeWidth) / 2 : edgeScale(edge.weight),
         label: this.Config.showEdgeLabels === "on" ? label : "",
-        title: titleRows.join("<br>"),
+        title: makeTitle(titleRows),
         color: {color: color},
         arrows: this.Config.arrows === "off" ? "" : this.Config.arrows,
         smooth: smooth,
@@ -619,20 +635,28 @@ define(['jquery',
     }, this);
 
     var nodeIds = Object.keys(nodeMeta);
-    var nodeIncident = nodeIds.map(function(id) { return nodeMeta[id].incoming + nodeMeta[id].outgoing; });
-    var minIncident = d3.min(nodeIncident);
-    var maxIncident = d3.max(nodeIncident);
+    // Node size comes from the Node Size measure when it is consistent for the
+    // node, otherwise from total incident edge weight. The scale domain must be
+    // built from the same values that are scaled, so resolve them first.
+    var nodeSizeValueById = {};
+    nodeIds.forEach(function(id) {
+      var meta = nodeMeta[id];
+      var sizeValues = meta.nodeSizeValues.filter(function(v) { return v !== null && isFinite(v); });
+      var consistent = sizeValues.length > 0 && sizeValues.every(function(v) { return v === sizeValues[0]; });
+      nodeSizeValueById[id] = consistent ? sizeValues[0] : (meta.incoming + meta.outgoing);
+    });
+    var sizeDomainValues = nodeIds.map(function(id) { return nodeSizeValueById[id]; });
+    var minSizeValue = d3.min(sizeDomainValues);
+    var maxSizeValue = d3.max(sizeDomainValues);
     var nodeScale = d3.scaleLinear()
-      .domain([minIncident, maxIncident])
-      .range([this.Config.minNodeSize, this.Config.maxNodeSize]);
+      .domain([minSizeValue, maxSizeValue])
+      .range([this.Config.minNodeSize, this.Config.maxNodeSize])
+      .clamp(true);
 
     var nodes = nodeIds.map(function(nodeId) {
       var meta = nodeMeta[nodeId];
       var connector = Math.min(meta.incoming, meta.outgoing);
-      var incident = meta.incoming + meta.outgoing;
-      var sizeValues = meta.nodeSizeValues.filter(function(v) { return v !== null && isFinite(v); });
-      var consistent = sizeValues.length > 0 && sizeValues.every(function(v) { return v === sizeValues[0]; });
-      var sizeValue = consistent ? sizeValues[0] : incident;
+      var sizeValue = nodeSizeValueById[nodeId];
       var group = "";
       if (meta.groupSet.target) group = "target";
       else if (meta.groups.length) group = meta.groups[0];
@@ -642,11 +666,11 @@ define(['jquery',
         return vals.length === 1 ? {label: labelName, value: vals[0]} : null;
       }).filter(function(v) { return v !== null; });
 
-      var titleRows = ["<b>" + escHtml(nodeId) + "</b>"];
+      var titleRows = [nodeId];
       if (this.Config.showNodeVolume === "on") titleRows.push("Node Volume: " + (Math.round(sizeValue * 100) / 100));
       if (this.Config.showConnectorScore === "on") titleRows.push("Connector Score: " + (Math.round(connector * 100) / 100));
       detailRows.forEach(function(rowDetail) {
-        titleRows.push(escHtml(rowDetail.label) + ": " + escHtml(rowDetail.value));
+        titleRows.push(rowDetail.label + ": " + rowDetail.value);
       });
 
       var fill = this.Config.nodeBackground;
@@ -660,13 +684,13 @@ define(['jquery',
         fill = groupColorMap[group];
       }
 
-      var nodeSize = minIncident === maxIncident ? (this.Config.minNodeSize + this.Config.maxNodeSize) / 2 : nodeScale(sizeValue);
+      var nodeSize = minSizeValue === maxSizeValue ? (this.Config.minNodeSize + this.Config.maxNodeSize) / 2 : nodeScale(sizeValue);
       if (selfLoopNodeIds[nodeId]) nodeSize = Math.max(nodeSize, repeatNodeMinSize(this.Config));
 
       return {
         id: nodeId,
         label: nodeId,
-        title: titleRows.join("<br>"),
+        title: makeTitle(titleRows),
         size: nodeSize,
         shape: this.Config.nodeShape,
         color: {background: fill, border: border},
@@ -725,14 +749,13 @@ define(['jquery',
   WsuNetworkViz.prototype._draw = function(elContainer, model, oDataLayout) {
     var containerId = this.getSubElementIdFromParent(elContainer, "wsuNetwork") || this.getID() || ("viz_" + Date.now());
     var rootId = "wsu_network_" + containerId.replace(/[^A-Za-z0-9_-]/g, "_");
+    this._destroyNetwork();
     $(elContainer).html("<div id='" + rootId + "' class='wsu-network'><div class='network-canvas'></div><div class='edge-legend'></div><div class='subtle-note'></div></div>");
     var root = d3.select("#" + rootId);
     var canvasSel = root.select(".network-canvas");
     var canvasNode = canvasSel.node();
     var legendNode = root.select(".edge-legend");
     var noteNode = root.select(".subtle-note");
-
-    this._destroyNetwork();
 
     if (!model.nodes.length || !model.edges.length) {
       root.append("div").attr("class", "empty-state").text(LBL.EMPTY);
@@ -1100,7 +1123,6 @@ define(['jquery',
     addSlider(pInteraction, "largeGraphEdgeCapGadget", "Interaction: Large Graph Edge Cap", this.Config.largeGraphEdgeCap, 25, 500);
     addSlider(pInteraction, "largeGraphNodeCapGadget", "Interaction: Large Graph Node Cap", this.Config.largeGraphNodeCap, 25, 500);
 
-    addToggle(pAxisLegend, "legendGadget", "Legend: Show", this.Config.legend, nx("LEG"));
     addToggle(pAxisLegend, "showEdgeTypeLegendGadget", "Legend: Show Edge Type Legend", this.Config.showEdgeTypeLegend, nx("LEG"));
     addSwitcher(pAxisLegend, "edgeTypeLegendPositionGadget", "Legend: Edge Type Legend Position", this.Config.edgeTypeLegendPosition, [
       {value: "right", label: "Right"},
@@ -1158,7 +1180,6 @@ define(['jquery',
       showEdgeLabelsGadget: "showEdgeLabels",
       hoverEffectsGadget: "hoverEffects",
       dragNodesGadget: "dragNodes",
-      legendGadget: "legend",
       showEdgeTypeLegendGadget: "showEdgeTypeLegend"
     };
     var slider = {
@@ -1216,6 +1237,11 @@ define(['jquery',
   WsuNetworkViz.prototype._doInitializeComponent = function() {
     WsuNetworkViz.superClass._doInitializeComponent.call(this);
     this.subscribeToEvent(events.types.DEFAULT_COLOR_SETTINGS_CHANGED, this._onDefaultColorsSettingsChanged, "**");
+  };
+
+  WsuNetworkViz.prototype._doStopComponent = function() {
+    this._destroyNetwork();
+    WsuNetworkViz.superClass._doStopComponent.apply(this, arguments);
   };
 
   WsuNetworkViz.prototype._onDefaultColorsSettingsChanged = function() {
