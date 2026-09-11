@@ -1,72 +1,53 @@
 # AI Handoff
 
-This repository contains public Oracle Analytics custom visualization
-extensions. The primary current collaboration target has recently included WSU
-Line v2 validation, with WSU Network still an important plugin area.
+Read this first if you are an AI coding agent (or a human in a hurry) picking
+up this repository.
 
-## Primary Files
+## What this is
 
-- Network plugin source:
-  `oac-sdk-dev/src/customviz/com-wsu-network`
-- Network design spec:
-  `docs/project_spec_wsu_network.md`
-- WSU Line source:
-  `oac-sdk-dev/src/customviz/com-wsu-line`
-- WSU Line design spec and v2 build notes:
-  `docs/project_spec_wsu_line.md`
-  `docs/wsu-line-v2.md`
-- Cross-plugin review notes:
-  `docs/all_plugins.md`
-- Math reviewer guide:
-  `docs/instructions_math.md`
-- Synthetic test data:
-  `examples/mock_math_pathway_200_students.csv`
+Five Oracle Analytics custom visualization plugins, each a folder under
+`oac-sdk-dev/src/customviz/`, packaged one-zip-per-plugin by the Oracle SDK via
+`oac-sdk-dev/build-sdk.ps1`. `README.md` explains the build/install cycle.
 
-## Ground Rules
+## Where things are
 
-- Do not commit real student data or internal institutional exports.
-- Preserve OAC grammar compatibility unless the spec is intentionally changed.
-- Keep plugin changes scoped; avoid changing other plugins unless requested.
-- When changing Network behavior, check repeat self-loops, expanded repeat
-  stages, terminal routing, edge labels, tooltips, and large-graph behavior.
-- Prefer design-spec updates before implementing major UX changes.
+| Need | File |
+|---|---|
+| How OAC plugins work; host constraints; shared patterns | `docs/oac_design.md` |
+| One plugin's buckets, config keys, defaults, panel | `docs/plugins/project_spec_wsu_<plugin>.md` |
+| What changed, what is unverified | `CHANGELOG.md` (incl. "Known gaps") |
+| Synthetic test data + how to review the Network plugin | `examples/`, `docs/guides/instructions_math.md` |
+| Past reasoning (not current guidance) | `docs/history/` |
+| Unbuilt plugin design | `docs/proposals/` |
 
-## Current WSU Line Handoff
+## Ground rules
 
-- WSU Line v2 has been built locally and packaged successfully.
-- The current package path is:
-  `oac-sdk-dev/build/distributions/customviz_com-wsu-line.zip`
-- Local validation has covered JavaScript syntax, manifest JSON parsing,
-  whitespace checks, and SDK build.
-- The remaining required validation is in OAC Dev: the
-  `Dynamic Value Label (from data)` bucket must be tested with the workbook
-  `Admissions Status Selector` parameter. Confirm the calculated categorical
-  label using `@parameter(...)` can be dropped into the bucket and updates the
-  Y-axis fallback title plus tooltip value column as the user switches Applied,
-  Admitted, Confirmed, and Enrolled.
-- Also verify WSU Line's native Color / Manage Color Assignments path in OAC
-  Theme mode. Menu text and behavior are host-controlled.
+- Never commit real student data or internal institutional exports
+  (`SECURITY.md`). Only synthetic data belongs in `examples/`.
+- Keep changes scoped to one plugin unless the task says otherwise.
+- The spec in `docs/plugins/` is the contract. If you change behavior, change
+  the spec in the same commit; if you change a default, note it in
+  `CHANGELOG.md` because saved workbooks may be affected.
+- Do not rename grammar buckets in a datamodel-handler manifest without a
+  migration note — existing workbooks bind fields by bucket name.
+- Bump `<Viz>.VERSION` (and the spec's version line) when you change behavior.
+- Prefer OAC framework services (logger, color service, marking) over
+  hand-rolled equivalents; see `docs/oac_design.md` §6.23.
+- Before claiming a change works: `node --check` both JS files, parse both
+  manifests, run `.\build-sdk.ps1`. Host behavior can only be confirmed in
+  OAD/OAC; say so if you could not.
 
-## Cross-Extension Follow-Up
+## Host facts verified against Oracle Analytics Desktop (2026-09)
 
-- Review WSU Dumbbell, WSU Lattice Scatter, WSU Network, and WSU Sankey to see
-  whether WSU Line's color controls should be applied there too:
-  `Color: Source = OAC Theme / Custom Palette`, empty palette default, and
-  native Color / Manage Color Assignments menu hook in OAC Theme mode.
-- Do this plugin by plugin. Confirm each data model's `Logical.COLOR` mapping,
-  current OAC color-service usage, and color-precedence rules before copying
-  WSU Line behavior.
-- Preserve special color semantics such as Network incomplete-path highlighting
-  or Sankey node/edge role colors if they intentionally override generic series
-  assignment.
+- `helper.getLogicalEdgeName(...)` returns the edge key from the datamodel
+  handler manifest. `Logical.CATEGORY` is the string `"detail"`.
+- vis-network 10 renders string `title` values with `innerText`; pass a DOM
+  element for formatted tooltips.
+- `_doInitializeComponent` / `_doStopComponent` are the DataVisualization
+  lifecycle hooks; both must call `superClass`.
 
-## Network Design Priorities
+## Network-specific reviewer priorities
 
-- Full unfiltered networks are exploratory, not the recommended first reviewer
-  view.
-- Scoped views should be easy: local neighborhood, repeat bottlenecks, forward
-  progression, and terminal-only.
-- Link labels should be off by default in broad views.
-- Self-loop repeat rendering should be the default bottleneck mode.
-- Expanded repeat stages should remain available as a deliberate view mode.
-- Property panel controls should be reordered around reviewer workflow.
+When touching WSU Network, check: repeat self-loops, expanded repeat stages,
+terminal routing to the missing-destination node, edge labels (off by default
+on broad views), tooltips (now DOM-built), and large-graph stabilization.

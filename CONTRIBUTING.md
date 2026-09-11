@@ -1,37 +1,56 @@
 # Contributing
 
-## Development Focus
+Thanks for looking. This repo is small and the maintainers are part-time, so
+the bar is: keep changes scoped, say what you tested, and keep real data out.
 
-The current primary development target is:
+## Before you start
+
+- Read `README.md` (build/install cycle) and `docs/oac_design.md` (how OAC
+  plugins work and the constraints the host imposes).
+- Each plugin has a spec in `docs/plugins/`. That spec is the contract; a
+  behavior change and its spec change belong in the same PR.
+- Check `CHANGELOG.md` → "Known gaps" for open items that need someone with
+  OAC access.
+
+## Pull requests
+
+- One plugin per PR unless the change is genuinely cross-cutting.
+- In the description, say:
+  - which OAC grammar you tested with (buckets and field types),
+  - whether `.\build-sdk.ps1` produced the zip,
+  - whether you verified in OAD, OAC, or neither.
+- Bump `<Viz>.VERSION` and the spec's version line for behavior changes; add
+  a `CHANGELOG.md` entry. Call out changed defaults explicitly — saved
+  workbooks keep old values, new ones get the new default.
+- Do not rename grammar buckets in a datamodel-handler manifest; existing
+  workbooks bind by bucket name.
+- Run `node --check` on both JS files and parse both manifests before pushing.
+
+## Data
+
+Only synthetic data may be committed (`examples/`). Never commit student-level
+data, production OAC/SDW exports, data dictionaries not cleared for
+publication, credentials, or internal server names. See `SECURITY.md`.
+
+## Adding a new plugin
+
+Fork the closest existing plugin by geometry (line-like, comparison, network,
+flow, grid), then follow the rename checklist in `docs/oac_design.md` §6.2
+*before* changing behavior — a missed identifier makes a plugin upload but
+never appear. Add a `docs/plugins/project_spec_wsu_<name>.md` using the
+existing specs as a template.
+
+## Branch names
 
 ```text
-oac-sdk-dev/src/customviz/com-wsu-network
+network-<topic>
+sankey-<topic>
+line-<topic>
+dumbbell-<topic>
+lattice-<topic>
+docs-<topic>
 ```
 
-Use `docs/project_spec_wsu_network.md` as the source of truth for design
-intent. Use `docs/instructions_math.md` and
-`examples/mock_math_pathway_200_students.csv` for review workflows and test
-setup.
+## Using an AI coding agent
 
-## Pull Request Expectations
-
-- Keep changes scoped to the plugin or documentation being modified.
-- Do not commit real institutional data.
-- Include a short description of the OAC grammar tested.
-- Note whether the plugin was built with `.\build-sdk.ps1`.
-- For Network changes, describe the effect on self-loops, terminal routing,
-  labels, and large-graph behavior when relevant.
-
-## Suggested Branch Names
-
-```text
-network-property-panel-vnext
-network-repeat-stage-fixes
-sankey-stage-validation
-docs-review-guide
-```
-
-## Agent Collaboration Notes
-
-If using an AI coding agent, point it to `AI_HANDOFF.md` first, then to the
-plugin-specific spec in `docs/`.
+Point it at `AI_HANDOFF.md` first, then the relevant spec.
