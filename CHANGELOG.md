@@ -3,7 +3,19 @@
 Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 `docs/plugins/`. Repository tags mark the state of all five together.
 
-## 2026-09-11 — tag `v1.1.0`
+## 2026-09-11 — tag `v1.1.1`
+
+### WSU Network 1.1.1
+- **Reverted** the two default changes from 1.1.0: *Label: Show Edge Labels*
+  and *Tooltip: Show Edge Pass Text* default to **on** again, so uploading
+  this build over 1.0.0 changes nothing an author did not set. The spec now
+  documents `off` as the *recommended* value for full networks instead of the
+  default. Decided in [#2](https://github.com/gcrouch-wsu/OAC-Extensions/issues/2).
+
+Sankey 1.0.1, Line 1.1.0, Dumbbell 1.0.1 and Lattice Scatter 1.0.1 are
+unchanged from v1.1.0 and are re-attached to this release for convenience.
+
+## 2026-09-11 — tag `v1.1.0` (superseded by v1.1.1 — do not deploy)
 
 ### WSU Network 1.1.0
 - **Fixed:** the *Tooltip details* bucket was silently ignored (host reports
@@ -15,9 +27,8 @@ Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 - **Fixed:** the vis-network instance is now destroyed before its container is
   replaced and when the viz is removed from the canvas.
 - **Removed:** *Legend: Show* toggle (it controlled nothing).
-- **Changed defaults:** *Label: Show Edge Labels* and *Tooltip: Show Edge Pass
-  Text* now default to **off**, per the spec. Workbooks that saved a value keep
-  it; workbooks that never touched these properties will change.
+- ~~Changed defaults: Show Edge Labels / Show Edge Pass Text to off.~~
+  Reverted in 1.1.1 (see above).
 
 ### WSU Line 1.1.0
 - Version stamp for the v2 feature set that shipped under 1.0.0: STRM-based
@@ -57,10 +68,9 @@ Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 ## Deployment status
 
 - **Production OAC (2026-09-11):** 1.0.0 builds of all five extensions.
-- **v1.1.0:** released on GitHub; not yet uploaded to production. Blocked on
-  [#1](https://github.com/gcrouch-wsu/OAC-Extensions/issues/1) (verification)
-  and [#2](https://github.com/gcrouch-wsu/OAC-Extensions/issues/2) (Network
-  default decision).
+- **v1.1.1:** released on GitHub; the build to take to production once
+  [#1](https://github.com/gcrouch-wsu/OAC-Extensions/issues/1) (verification
+  in OAD/OAC Dev) is done. v1.1.0 is superseded; do not deploy it.
 
 ## Known gaps
 
@@ -69,8 +79,7 @@ line pointers. This list is a summary only.
 
 | Issue | Item |
 |---|---|
-| [#1](https://github.com/gcrouch-wsu/OAC-Extensions/issues/1) | Verify v1.1.0 fixes in OAD/OAC before production upload |
-| [#2](https://github.com/gcrouch-wsu/OAC-Extensions/issues/2) | Decide Network edge-label / pass-text defaults for rollout |
+| [#1](https://github.com/gcrouch-wsu/OAC-Extensions/issues/1) | Verify v1.1.1 fixes in OAD/OAC before production upload |
 | [#3](https://github.com/gcrouch-wsu/OAC-Extensions/issues/3) | WSU Line: `@parameter(...)` in a categorical calc for Dynamic Value Label |
 | [#4](https://github.com/gcrouch-wsu/OAC-Extensions/issues/4) | WSU Line: native Color / Manage Color Assignments menu |
 | [#5](https://github.com/gcrouch-wsu/OAC-Extensions/issues/5) | Apply the Color: Source pattern to the other four plugins |

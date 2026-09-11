@@ -288,15 +288,15 @@ define(['jquery',
       showNodeVolume: "on",
       showConnectorScore: "on",
       showEdgeWeight: "on",
-      showEdgePassRateText: "off",
+      showEdgePassRateText: "on",
       showTerminalEdgeText: "on",
-      showEdgeLabels: "off",
+      showEdgeLabels: "on",
       hoverEffects: "on",
       dragNodes: "on"
     };
   }
 
-  WsuNetworkViz.VERSION = "1.1.0";
+  WsuNetworkViz.VERSION = "1.1.1";
   jsx.extend(WsuNetworkViz, dataviz.DataVisualization);
 
   WsuNetworkViz.prototype._saveSettings = function() {

@@ -12,7 +12,7 @@ data, because that is what they were built to explain.
 
 | Extension | Root id | Version | What it does |
 |---|---|---|---|
-| **WSU Network** | `com-wsu-network` | 1.1.0 | Directed, weighted transition graph (vis-network). Repeat self-loops, expanded repeat stages, terminal "no further step" routing, edge-type legend, large-graph stabilization. |
+| **WSU Network** | `com-wsu-network` | 1.1.1 | Directed, weighted transition graph (vis-network). Repeat self-loops, expanded repeat stages, terminal "no further step" routing, edge-type legend, large-graph stabilization. |
 | **WSU Sankey** | `com-wsu-sankey` | 1.0.1 | Explicit-stage Sankey: Start → up to five Intermediate → End buckets. Incomplete-path routing and highlight, threshold / Top-N noise control, click-to-focus upstream/downstream. |
 | **WSU Line** | `com-wsu-line` | 1.1.0 | Multi-series line with a shared-X tooltip table (sortable, with vs-average / rank / year-over-year deltas), drag-to-zoom, header attribute chips, parameter-driven value labels. |
 | **WSU Dumbbell** | `com-wsu-dumbbell` | 1.0.1 | Paired before/after comparison from wide (two measures) or long (role column) data. In-chart sort/filter strips, group aggregation, small multiples. |
@@ -148,9 +148,9 @@ items labeled [`needs OAC access`](../../issues?q=is%3Aopen+label%3A%22needs+OAC
 are for people who can test on a live Oracle Analytics instance.
 
 **Deployment status (2026-09-11):** production OAC runs the 1.0.0 builds of
-all five extensions. Release v1.1.0 is awaiting verification
-([#1](../../issues/1)) and a default-value decision ([#2](../../issues/2))
-before it is uploaded.
+all five extensions. Release **v1.1.1** is the candidate for production; it
+is behavior-neutral for existing workbooks (no default changes) and is
+waiting on verification in OAD/OAC Dev ([#1](../../issues/1)).
 
 ## Contributing
 

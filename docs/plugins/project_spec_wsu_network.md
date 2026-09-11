@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Network
 - **Category**: WSU
 - **Root id**: `com-wsu-network`
-- **Version constant**: `WsuNetworkViz.VERSION = "1.1.0"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuNetworkViz.VERSION = "1.1.1"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-network/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-network.zip`
 
@@ -453,7 +453,7 @@ and its inbound edges.
 ### Labels and Edge Types
 | Key | Default | Values |
 |-----|---------|--------|
-| `showEdgeLabels` | `"off"` | on / off |
+| `showEdgeLabels` | `"on"` | on / off — **recommended `off` for full networks** |
 | `edgeColorMode` | `"default"` | default / linkLabel |
 | `edgeTypePalette` | `""` | comma-separated hex list used when `edgeColorMode = linkLabel` |
 | `edgeLegendDescriptions` | `""` | `type=description|type=description` |
@@ -467,9 +467,11 @@ optional edge-type legend is click-to-focus: selecting a type fades every
 other edge and node. Repeat-loop and non-progressor colors still take
 precedence over the edge-type color.
 
-Edge labels default to `off` because a populated Link Label bucket on a full
-network was unreadable in review; `showEdgeLabels = on` shows the authored
-Link Label when an aggregated edge has exactly one, otherwise the edge weight.
+The default stays `on` so that upgrading the extension does not change
+existing workbooks that never touched the property. Authors should turn edge
+labels **off** on full networks: a populated Link Label bucket on a full
+network was unreadable in review. When on, an aggregated edge shows its
+authored Link Label if it has exactly one, otherwise the edge weight.
 
 ### Interaction
 | Key | Default | Values |
@@ -483,7 +485,7 @@ Link Label when an aggregated edge has exactly one, otherwise the edge weight.
 | `showNodeVolume` | `"on"` | on / off |
 | `showConnectorScore` | `"on"` | on / off |
 | `showEdgeWeight` | `"on"` | on / off |
-| `showEdgePassRateText` | `"off"` | on / off |
+| `showEdgePassRateText` | `"on"` | on / off — recommended `off` for first review |
 | `showTerminalEdgeText` | `"on"` | on / off |
 
 `showEdgePassRateText` refers only to an authored categorical tooltip-detail
@@ -525,7 +527,7 @@ Implemented via `gadgetdialog.forcePanelByID`:
 - **Terminal: Highlight Non-Progressors** (on/off).
 - **Tooltip: Show Node Volume / Connector Score / Edge Weight / Edge Pass Text /
   Terminal Edge Text** — checkboxes.
-- **Label: Show Edge Labels** (on/off, default off).
+- **Label: Show Edge Labels** (on/off; default on, recommended off for full networks).
 
 ### STYLE TAB
 - **Nodes: Min/Max Size** — sliders for scaling.
@@ -589,7 +591,7 @@ Put the workflow-defining controls first.
   - `Repeat Bottlenecks`
   - `Forward Progression`
   - `Terminal / No Further Course`
-- **Labels: Show Edge Labels** (default `off` for full network).
+- **Labels: Show Edge Labels** (proposed default `off` for full network; current default is `on`, see §3).
 - **Labels: Edge Label Mode**:
   - `off`
   - `weight`
