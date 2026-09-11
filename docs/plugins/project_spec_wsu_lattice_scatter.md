@@ -1,7 +1,7 @@
 # WSU Lattice Scatter — Plugin Reference
 
 Canonical reference for the **WSU Lattice Scatter** custom visualization
-(`com-wsu-lattice-scatter`). Read this plus `oac_design.md` to continue
+(`com-wsu-lattice-scatter`). Read this plus `../oac_design.md` to continue
 development without re-deriving decisions from the prototype.
 
 ---

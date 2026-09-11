@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "mock_math_pathway_200_students.csv"
+OUT = ROOT / "examples" / "mock_math_pathway_200_students.csv"
 random.seed(220)
 
 

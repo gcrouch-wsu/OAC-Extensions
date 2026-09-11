@@ -1,7 +1,7 @@
 # WSU Sankey — Plugin Reference
 
 Canonical reference for the **WSU Sankey** custom visualization
-(`com-wsu-sankey`). Read this plus `oac_design.md` to continue
+(`com-wsu-sankey`). Read this plus `../oac_design.md` to continue
 development without re-deriving design decisions from built-in Sankey limits.
 
 ---

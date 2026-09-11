@@ -1,7 +1,7 @@
 # WSU Network — Plugin Reference
 
 Canonical reference for the **WSU Network** custom visualization
-(`com-wsu-network`). Read this plus `oac_design.md` to pick up WSU Network
+(`com-wsu-network`). Read this plus `../oac_design.md` to pick up WSU Network
 development or fork it without re-deriving design decisions.
 
 ---
@@ -827,7 +827,7 @@ Default caps should mirror prototype scale expectations:
 
 ## 6. Implementation Patterns (cross-references)
 
-WSU Network will leverage patterns from `oac_design.md`:
+WSU Network will leverage patterns from `../oac_design.md`:
 
 | Pattern | Reference |
 |---------|-----------|
@@ -871,14 +871,14 @@ this document:
 
 ```powershell
 # Validate
-cd "C:\Python Projects\wsu-gradschool-oac\oac-sdk-dev\src\customviz\com-wsu-network"
+cd oac-sdk-dev\src\customviz\com-wsu-network    # from the repo root
 node --check wsuNetwork.js
 node --check wsuNetworkdatamodelhandler.js
 Get-Content extensions\oracle.bi.tech.plugin.visualization\com-wsu-network.json -Raw | ConvertFrom-Json
 Get-Content extensions\oracle.bi.tech.plugin.visualizationDatamodelHandler\com-wsu-network.visualizationDatamodelHandler.json -Raw | ConvertFrom-Json
 
 # Build
-cd "C:\Python Projects\wsu-gradschool-oac\oac-sdk-dev"
+cd ..\..\..    # back to oac-sdk-dev
 .\build-sdk.ps1
 ```
 

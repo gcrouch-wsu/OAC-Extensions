@@ -1,5 +1,9 @@
 # WSU Math Pathway Diagnostics — Plugin Spec
 
+> **STATUS: PROPOSAL — NOT BUILT.** This describes a sixth plugin that has not been
+> implemented. It is kept for design continuity. Section 16 refers to a Flask
+> prototype that is not part of this repository.
+
 Canonical planning spec for a new WSU custom visualization focused on student
 math-course journeys, progression bottlenecks, and prerequisite adequacy.
 The design should remain reusable for other course families after v1.

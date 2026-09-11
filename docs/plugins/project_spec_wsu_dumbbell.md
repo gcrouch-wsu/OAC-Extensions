@@ -1,7 +1,7 @@
 # WSU Dumbbell — Plugin Reference
 
 Canonical reference for the **WSU Dumbbell** custom visualization
-(`com-wsu-dumbbell`). Read this plus `oac_design.md` to pick up WSU Dumbbell
+(`com-wsu-dumbbell`). Read this plus `../oac_design.md` to pick up WSU Dumbbell
 development or fork it without re-deriving design decisions.
 
 ---
@@ -27,10 +27,10 @@ values per entity is the primary signal.
 ### Capabilities at a glance
 - **Wide and long data shape support** — accepts either 2 measures per
   row (wide) or 1 measure with a `Pair role` field (long); see
-  `oac_design.md` §6.22.
+  `../oac_design.md` §6.22.
 - **Bucket-driven Sort/Filter UI** — drop attributes into the Sort By and
   Filter By buckets to populate in-chart `<select>` strips for viewer-side
-  control without opening the property panel; see `oac_design.md` §6.21.
+  control without opening the property panel; see `../oac_design.md` §6.21.
 - **Three color modes** — Endpoint (first/second), Group (by Color
   bucket), or Direction (improve/worse/same).
 - **`d3.symbol()` endpoint shapes** — Circle / Square / Triangle /
@@ -63,7 +63,7 @@ values per entity is the primary signal.
   vs `target`/`second`/`after`) or Bucket Order. Locale-flexible.
 - **Four-tab property panel** — General / Style / Reference / Axis &
   Legend (attempted via custom panel IDs with try/catch fallback to
-  General; see `oac_design.md` §6.14).
+  General; see `../oac_design.md` §6.14).
 
 ---
 
@@ -200,9 +200,9 @@ tooltip is suppressed instead of rendering an empty shell.
 
 Implemented via `gadgetdialog.forcePanelByID` with custom string IDs
 (`wsuDumbbellStyle`, `wsuDumbbellReference`, `wsuDumbbellAxisLegend`) and a
-try/catch fallback. See `oac_design.md` §6.14.
+try/catch fallback. See `../oac_design.md` §6.14.
 
-**Gadget conventions** (see also `oac_design.md` §6.24, §6.28):
+**Gadget conventions** (see also `../oac_design.md` §6.24, §6.28):
 - Boolean on/off properties (Tooltip Show toggles, Stats Summary,
   Jitter, Avg Lines, Outliers, Gridlines, Legend Show, In-chart
   Controls) render as **checkboxes** (`TEXT_TOGGLE`), not paired text
@@ -273,7 +273,7 @@ If the SDK rejects custom panel IDs, every gadget falls back to the
 General tab. The label prefixes keep it scannable.
 
 **Plugin runtime services**: WSU Dumbbell uses
-`obitech-appservices/logger` (see `oac_design.md` §6.27) for init and
+`obitech-appservices/logger` (see `../oac_design.md` §6.27) for init and
 error logging. All viewer-facing strings are consolidated in the `LBL`
 const at the top of `wsuDumbbell.js` (NLS-ready per §6.25).
 
@@ -378,7 +378,7 @@ Property panel:
 
 ## 7. Implementation Patterns (cross-references)
 
-WSU Dumbbell uses these patterns from `oac_design.md`:
+WSU Dumbbell uses these patterns from `../oac_design.md`:
 
 | Pattern | Reference |
 |---------|-----------|
@@ -416,14 +416,14 @@ agents: do not propose these without re-discussing.
 
 ```powershell
 # Validate
-cd "C:\Python Projects\wsu-gradschool-oac\oac-sdk-dev\src\customviz\com-wsu-dumbbell"
+cd oac-sdk-dev\src\customviz\com-wsu-dumbbell    # from the repo root
 node --check wsuDumbbell.js
 node --check wsuDumbbelldatamodelhandler.js
 Get-Content extensions\oracle.bi.tech.plugin.visualization\com-wsu-dumbbell.json -Raw | ConvertFrom-Json
 Get-Content extensions\oracle.bi.tech.plugin.visualizationDatamodelHandler\com-wsu-dumbbell.visualizationDatamodelHandler.json -Raw | ConvertFrom-Json
 
 # Build
-cd "C:\Python Projects\wsu-gradschool-oac\oac-sdk-dev"
+cd ..\..\..    # back to oac-sdk-dev
 .\build-sdk.ps1
 
 # Output

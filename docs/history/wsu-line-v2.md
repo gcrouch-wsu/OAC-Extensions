@@ -1,5 +1,10 @@
 # WSU Line v2 Build List
 
+> **STATUS: COMPLETED WORK ORDER (historical).** The WSU Line v2 items below were
+> implemented in `oac-sdk-dev/src/customviz/com-wsu-line` (see `CHANGELOG.md`,
+> WSU Line 1.1.0). Kept as a record of the reasoning; the current reference is
+> `docs/plugins/project_spec_wsu_line.md`.
+
 This document is a build checklist for the next WSU Line iteration. It is
 intended to be detailed enough for another AI or developer to review against
 the source before implementation.

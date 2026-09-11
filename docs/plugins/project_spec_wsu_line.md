@@ -1,7 +1,7 @@
 # WSU Line — Plugin Reference
 
 Canonical reference for the **WSU Line** custom visualization
-(`com-wsu-line`). Read this plus `oac_design.md` to pick up WSU Line
+(`com-wsu-line`). Read this plus `../oac_design.md` to pick up WSU Line
 development or fork it without re-deriving design decisions.
 
 ---
@@ -27,7 +27,7 @@ tooltip calculations when the term-code bucket is provided.
 ### Capabilities at a glance
 - **Shared-X tooltip** — hovering any X position shows every series at
   that position in a tabular tooltip (full-height invisible hit areas
-  per X value; see `oac_design.md` §6.19).
+  per X value; see `../oac_design.md` §6.19).
 - **Δ% 1-year and Δ% 3-year built-in comparisons** — require a
   `Sorting Term Code (STRM)` bucket and compare same-season academic terms
   rather than guessing from display labels.
@@ -61,7 +61,7 @@ tooltip calculations when the term-code bucket is provided.
   (auto / asc / desc).
 - **Four-tab property panel** — General / Style / Header / Axis & Legend
   (attempted via custom panel IDs with try/catch fallback to General;
-  see `oac_design.md` §6.14).
+  see `../oac_design.md` §6.14).
 
 ---
 
@@ -209,9 +209,9 @@ sitting at the same baseline opacity as it had before clicking.
 ## 4. Property Panel — Four-Tab Layout
 
 Implemented via `gadgetdialog.forcePanelByID` with custom string IDs and a
-try/catch fallback. See `oac_design.md` §6.14.
+try/catch fallback. See `../oac_design.md` §6.14.
 
-**Gadget conventions** (see also `oac_design.md` §6.24, §6.28):
+**Gadget conventions** (see also `../oac_design.md` §6.24, §6.28):
 - Boolean on/off properties (`Show Series Column`, `Privacy Mode`,
   `Header: Bold`, etc.) render as **checkboxes** (`TEXT_TOGGLE`), not
   paired text buttons. Internal Config still stores `"on"`/`"off"`
@@ -296,15 +296,15 @@ tab. The build doesn't break either way.
 **Behaviors driven by panel choices**:
 - When `Legend: Position = Auto` and the bottom legend would consume
   more than 25% of the chart's vertical space, the renderer auto-flips
-  to right placement (see `oac_design.md` §6.29). User-explicit
+  to right placement (see `../oac_design.md` §6.29). User-explicit
   bottom/right choices override this.
 - A clicked legend item elevates the matching series to opacity 1.0 via
-  the `.wsu-legend-active` CSS class (see `oac_design.md` §6.31). Other
+  the `.wsu-legend-active` CSS class (see `../oac_design.md` §6.31). Other
   series fade to 0.18 via `.wsu-faded`. Click empty area or the same
   legend item again to clear.
 - Tooltip content that exceeds the visible viewport (70vh) appends a
   sticky "Tooltip clipped — additional rows hidden" footer at the
-  bottom of the visible area (see `oac_design.md` §6.30).
+  bottom of the visible area (see `../oac_design.md` §6.30).
 - During an active drag-to-zoom gesture, the chart cursor switches
   from `zoom-in` to `crosshair`. Released on `mouseup` / `Escape` /
   `mouseleave`.
@@ -471,7 +471,7 @@ faint reference lines. Marking and tooltip behavior unaffected.
 ## 7. Implementation Patterns (cross-references)
 
 WSU Line is the reference implementation for these patterns. Each links to
-`oac_design.md`:
+`../oac_design.md`:
 
 | Pattern | Reference |
 |---------|-----------|
@@ -500,14 +500,14 @@ WSU Line is the reference implementation for these patterns. Each links to
 
 ```powershell
 # 1. Validate per file
-cd "C:\Python Projects\wsu-gradschool-oac\oac-sdk-dev\src\customviz\com-wsu-line"
+cd oac-sdk-dev\src\customviz\com-wsu-line    # from the repo root
 node --check wsuLine.js
 node --check wsuLinedatamodelhandler.js
 Get-Content extensions\oracle.bi.tech.plugin.visualization\com-wsu-line.json -Raw | ConvertFrom-Json
 Get-Content extensions\oracle.bi.tech.plugin.visualizationDatamodelHandler\com-wsu-line.visualizationDatamodelHandler.json -Raw | ConvertFrom-Json
 
 # 2. Build
-cd "C:\Python Projects\wsu-gradschool-oac\oac-sdk-dev"
+cd ..\..\..    # back to oac-sdk-dev
 .\build-sdk.ps1
 
 # 3. Output
@@ -537,5 +537,5 @@ com-wsu-line/
     root/messages.js                   # root-locale strings
 ```
 
-When forking WSU Line, see `oac_design.md` §6.2 for the full rename
+When forking WSU Line, see `../oac_design.md` §6.2 for the full rename
 checklist that must be applied across every file.

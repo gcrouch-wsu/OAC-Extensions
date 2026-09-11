@@ -1,5 +1,10 @@
 # Math Pathway Dataset Requirements
 
+> **STATUS: PROPOSAL.** Dataset contract drafted for the unbuilt Math Pathway
+> Diagnostics plugin (`project_spec_wsu_math.md`). References to a "Flask
+> prototype" point to work that is not in this repository. The synthetic example
+> in `examples/` follows a subset of this contract.
+
 This document describes the analytics-ready dataset needed to support the WSU math pathway work across:
 
 - Sankey flow views
