@@ -124,7 +124,7 @@ exactly, or the plugin uploads but never appears. `docs/oac_design.md` §3 and
 | `docs/oac_design.md` | Understand how OAC custom viz plugins work, what the host does and doesn't allow, and the patterns these plugins share. Start here before writing code. |
 | `docs/plugins/project_spec_wsu_*.md` | Look up one plugin's buckets, config keys, defaults, precedence rules, and property panel. |
 | `docs/guides/instructions_math.md` | Review the Network plugin against the synthetic dataset, step by step. |
-| `CHANGELOG.md` | See what changed per plugin and what is still unverified ("Known gaps"). |
+| `CHANGELOG.md` | See what changed per plugin. Open work is on the [issue tracker](../../issues). |
 | `docs/proposals/` | Read design work for a plugin that has **not** been built (Math Pathway Diagnostics). |
 | `docs/history/` | See the reasoning behind past changes (WSU Line v2 work order, May 2026 cross-plugin review). Not current guidance. |
 | `AI_HANDOFF.md` | Point an AI coding agent at the repo. |
@@ -138,6 +138,19 @@ and the SDK's `bicreateenv` generates a starter (`sample-circlepack`). They are
 Oracle-copyrighted and **not redistributed here**; download them yourself and
 keep them in a local, non-committed folder. `docs/oac_design.md` cites several
 by name where they illustrate a pattern.
+
+## Open work
+
+Everything known to need doing is on the
+[issue tracker](../../issues). Start with
+[`good first issue`](../../issues?q=is%3Aopen+label%3A%22good+first+issue%22);
+items labeled [`needs OAC access`](../../issues?q=is%3Aopen+label%3A%22needs+OAC+access%22)
+are for people who can test on a live Oracle Analytics instance.
+
+**Deployment status (2026-09-11):** production OAC runs the 1.0.0 builds of
+all five extensions. Release v1.1.0 is awaiting verification
+([#1](../../issues/1)) and a default-value decision ([#2](../../issues/2))
+before it is uploaded.
 
 ## Contributing
 

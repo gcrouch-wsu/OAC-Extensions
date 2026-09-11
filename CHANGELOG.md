@@ -54,10 +54,31 @@ Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 
 ---
 
+## Deployment status
+
+- **Production OAC (2026-09-11):** 1.0.0 builds of all five extensions.
+- **v1.1.0:** released on GitHub; not yet uploaded to production. Blocked on
+  [#1](https://github.com/gcrouch-wsu/OAC-Extensions/issues/1) (verification)
+  and [#2](https://github.com/gcrouch-wsu/OAC-Extensions/issues/2) (Network
+  default decision).
+
 ## Known gaps
 
-Things that are implemented but not yet verified against a live OAC instance,
-or known limitations. Good first issues for contributors with OAC access.
+Each item below is tracked as a GitHub issue; the issue carries the file and
+line pointers. This list is a summary only.
+
+| Issue | Item |
+|---|---|
+| [#1](https://github.com/gcrouch-wsu/OAC-Extensions/issues/1) | Verify v1.1.0 fixes in OAD/OAC before production upload |
+| [#2](https://github.com/gcrouch-wsu/OAC-Extensions/issues/2) | Decide Network edge-label / pass-text defaults for rollout |
+| [#3](https://github.com/gcrouch-wsu/OAC-Extensions/issues/3) | WSU Line: `@parameter(...)` in a categorical calc for Dynamic Value Label |
+| [#4](https://github.com/gcrouch-wsu/OAC-Extensions/issues/4) | WSU Line: native Color / Manage Color Assignments menu |
+| [#5](https://github.com/gcrouch-wsu/OAC-Extensions/issues/5) | Apply the Color: Source pattern to the other four plugins |
+| [#6](https://github.com/gcrouch-wsu/OAC-Extensions/issues/6) | WSU Dumbbell: aggregate mode + viewer controls persisting to view settings |
+| [#7](https://github.com/gcrouch-wsu/OAC-Extensions/issues/7) | Which OAC/OAD versions honor custom property-panel tabs |
+| [#8](https://github.com/gcrouch-wsu/OAC-Extensions/issues/8) | Consolidate duplicated helper code |
+
+Details:
 
 - **WSU Line — `@parameter(...)` in a categorical calculated attribute.** The
   *Dynamic Value Label (from data)* bucket is meant to receive a calculated
