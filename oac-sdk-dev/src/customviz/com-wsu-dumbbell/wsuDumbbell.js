@@ -203,7 +203,7 @@ define(['jquery',
       this.clearZoomState = function() { zoomState = null; };
    }
 
-   WsuDumbbellViz.VERSION = "1.0.1";
+   WsuDumbbellViz.VERSION = "1.0.2";
    jsx.extend(WsuDumbbellViz, dataviz.DataVisualization);
 
    function str(value) {
@@ -460,7 +460,7 @@ define(['jquery',
    };
 
    WsuDumbbellViz.prototype._generateLongData = function(oDataLayout, helper, oColorContext, oColorInterpolator, colorServiceAvailable, measures, layers, nRows, entityLabel, roleLabel, detailLabels, groupLabel, sortLabels, filterLabels) {
-      var byEntity = {};
+      var byEntity = Object.create(null);
       var oViz = this;
       for (var rowIndex = 0; rowIndex < Math.max(nRows, 0); rowIndex++) {
          var meta = this._readRowMeta(oDataLayout, helper, oColorContext, oColorInterpolator, colorServiceAvailable, layers, rowIndex, detailLabels, sortLabels, filterLabels);
@@ -488,13 +488,18 @@ define(['jquery',
          target.sourceRows.push(rowIndex);
          var resolved = oViz._resolveLongRole(role, target.rolesSeenCount);
          target.rolesSeenCount++;
-         if (resolved === "first" && isNaN(target.first)) {
-            target.first = value;
-            target.firstName = oViz._configText("firstLabel", role || "First value");
+         if (resolved === "first") {
+            // Duplicate observations for a role never spill into the other endpoint.
+            if (isNaN(target.first)) {
+               target.first = value;
+               target.firstName = oViz._configText("firstLabel", role || "First value");
+            }
          }
-         else if (resolved === "second" && isNaN(target.second)) {
-            target.second = value;
-            target.secondName = oViz._configText("secondLabel", role || "Second value");
+         else if (resolved === "second") {
+            if (isNaN(target.second)) {
+               target.second = value;
+               target.secondName = oViz._configText("secondLabel", role || "Second value");
+            }
          }
          else if (isNaN(target.first)) {
             target.first = value;
@@ -593,7 +598,7 @@ define(['jquery',
    };
 
    WsuDumbbellViz.prototype._aggregateRows = function(rows) {
-      var groups = {};
+      var groups = Object.create(null);
       rows.forEach(function(row) {
          var key = row.group || "All";
          if (!groups[key]) groups[key] = {items: [], key: key};
@@ -617,8 +622,8 @@ define(['jquery',
             key,
             items[0].firstName,
             items[0].secondName,
-            aggFn(firstVals),
-            aggFn(secondVals),
+            firstVals.length ? aggFn(firstVals) : NaN,
+            secondVals.length ? aggFn(secondVals) : NaN,
             [],
             key,
             items[0].groupLabel,
@@ -793,7 +798,7 @@ define(['jquery',
          g.append("g").attr("class", "grid").call(d3.axisLeft(y).tickSize(-box.width).tickFormat(""));
       }
 
-      var byKey = {};
+      var byKey = Object.create(null);
       rows.forEach(function(row) { byKey[row.xKey] = row; });
       var xAxis = d3.axisBottom(x).tickValues(this._tickValues(rows)).tickFormat(function(xKey) {
          var row = byKey[xKey];
@@ -1142,12 +1147,13 @@ define(['jquery',
 
    WsuDumbbellViz.prototype._legendItems = function(sample, rows) {
       if (!sample) return [];
+      var oViz = this;
       if (this.Config.colorMode === "group" && this._hasGroups(rows)) {
          var groups = Array.from(new Set(rows.map(function(d) { return d.group || "Ungrouped"; }))).slice(0, 12);
-         return groups.map(function(group, i) {
-            var groupRow = rows.filter(function(row) { return (row.group || "Ungrouped") === group; })[0] || {};
-            return {label: group, color: groupRow.groupColor || GROUP_PALETTE[i % GROUP_PALETTE.length]};
-         });
+         return groups.map(function(group) {
+            var groupRow = rows.filter(function(row) { return (row.group || "Ungrouped") === group; })[0] || {group: group};
+            return {label: group, color: oViz._groupColor(groupRow)};
+         }, this);
       }
       if (this.Config.colorMode === "direction") {
          return [

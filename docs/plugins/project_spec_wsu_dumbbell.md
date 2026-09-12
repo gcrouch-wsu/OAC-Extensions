@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Dumbbell
 - **Category**: WSU
 - **Root id**: `com-wsu-dumbbell`
-- **Version constant**: `WsuDumbbellViz.VERSION = "1.0.1"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuDumbbellViz.VERSION = "1.0.2"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-dumbbell/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-dumbbell.zip`
 
@@ -90,6 +90,10 @@ Bucket schema:
   one per role. Role detection uses keyword matching by default
   (`pre`/`first`/`before` → first; `target`/`second`/`after` → second). Set
   `Long Format Role Mapping = Bucket Order` to fall back to row position.
+  If an entity has more than one row for the same recognised role, the first
+  row wins and the extras are ignored; a duplicate never fills the *other*
+  endpoint (1.0.2). Only rows whose role matches no keyword fall through to
+  whichever endpoint is still empty.
 
 ---
 
@@ -293,6 +297,10 @@ Per row:
 | `count` | rows aggregated into this group (only meaningful in `groupAverage` view mode) |
 
 `Group Aggregate` applies active `Filter By` selections before aggregation.
+An endpoint whose contributors are all missing stays missing in the aggregate
+(no delta is computed); it is never reported as `0` (1.0.2). In `Color By:
+Group`, legend swatches and marks resolve their color through the same path,
+so they always agree (1.0.2).
 Aggregate rows intentionally do not carry row-level `Tooltip details`; if
 aggregate-safe explanatory text is needed, provide it upstream as a field that
 is already valid at the displayed aggregate grain.
