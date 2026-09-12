@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Line
 - **Category**: WSU
 - **Root id**: `com-wsu-line`
-- **Version constant**: `WsuLineViz.VERSION = "1.1.0"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuLineViz.VERSION = "1.1.1"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-line/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-line.zip`
 
@@ -327,7 +327,7 @@ Per row:
 
 | Field | Formula | Used by |
 |-------|---------|---------|
-| `_rank` | 1-based rank by descending value within the X bucket | compareMode `rank` |
+| `_rank` | 1-based rank by descending value within the X bucket; rows with a missing value are unranked (blank cell, sorted last) — 1.1.1 | compareMode `rank` |
 | `_delta` | `value − mean(values at this X)` | compareMode `average` |
 | `_prevDelta` | `value − same-season STRM from exactly one prior academic year` | compareMode `previous` / `previousPercent` |
 | `_prevPercent` | `_prevDelta / prior.value × 100` | compareMode `previousPercent` |

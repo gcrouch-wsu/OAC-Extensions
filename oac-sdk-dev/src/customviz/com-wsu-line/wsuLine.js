@@ -215,7 +215,7 @@ define(['jquery',
       this.setLegendActiveSeries = function(s) { legendActiveSeries = s; };
    }
 
-   WsuLineViz.VERSION = "1.1.0";
+   WsuLineViz.VERSION = "1.1.1";
    jsx.extend(WsuLineViz, dataviz.DataVisualization);
 
    function str(value) {
@@ -1224,7 +1224,10 @@ define(['jquery',
 
    WsuLineViz.prototype._drawXHitAreas = function(g, dataset, x, innerWidth, innerHeight, tooltip, oDataLayout, root, activeLayer, color) {
       var oViz = this;
-      var step = dataset.xValues.length > 1 ? innerWidth / (dataset.xValues.length - 1) : innerWidth;
+      // Use the scale's own step so adjacent hit rectangles tile without
+      // overlapping (a later rectangle would otherwise capture hovers that
+      // belong to the earlier category).
+      var step = dataset.xValues.length > 1 ? x.step() : innerWidth;
       var band = Math.max(step, 14);
       g.selectAll(".x-hit")
          .data(dataset.xValues)
@@ -1282,9 +1285,9 @@ define(['jquery',
          row._prevPercent = NaN;
       });
 
-      rows.slice().sort(function(a, b) { return b.value - a.value; }).forEach(function(row, i) {
-         row._rank = i + 1;
-      });
+      rows.filter(function(row) { return isFinite(row.value); })
+         .sort(function(a, b) { return b.value - a.value; })
+         .forEach(function(row, i) { row._rank = i + 1; });
 
       if (dataset.hasTermCode) {
          rows.forEach(function(row) {
@@ -1357,7 +1360,11 @@ define(['jquery',
          };
       }
       else if (sortKind === "series") ascCmp = function(a, b) { return compareChronologicalLabel(a.series, b.series); };
-      else if (sortKind === "rank") ascCmp = function(a, b) { return a._rank - b._rank; };
+      else if (sortKind === "rank") ascCmp = function(a, b) {
+         // Unranked (missing-value) rows sort after every ranked row.
+         var ra = a._rank || Infinity, rb = b._rank || Infinity;
+         return ra === rb ? 0 : (ra - rb);
+      };
       else if (sortKind === "termCode") ascCmp = function(a, b) { return a.termCode - b.termCode; };
       else ascCmp = function(a, b) { return a.value - b.value; };
 
@@ -1449,7 +1456,7 @@ define(['jquery',
          detailLabels.forEach(function(lab, i) { html += "<td>" + esc(row.details && row.details[i] ? row.details[i].value : "") + "</td>"; });
          if (showValue) html += "<td class='value'>" + esc(formatValue(row.value, fmtOpts)) + "</td>";
          if (compareMode === "average") html += "<td class='delta " + deltaClass(row._delta) + "'>" + esc(formatDelta(row._delta, fmtOpts)) + "</td>";
-         else if (compareMode === "rank") html += "<td class='rank'>" + esc(row._rank) + "</td>";
+         else if (compareMode === "rank") html += "<td class='rank'>" + (row._rank ? esc(row._rank) : "") + "</td>";
          else if (compareMode === "previous") html += "<td class='delta " + deltaClass(row._prevDelta) + "'>" + esc(formatDelta(row._prevDelta, fmtOpts)) + "</td>";
          else if (compareMode === "previousPercent") {
             html += "<td class='delta " + deltaClass(row._prevDelta) + "'>" + esc(formatDelta(row._prevDelta, fmtOpts)) + "</td>";
