@@ -3,6 +3,54 @@
 Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 `docs/plugins/`. Repository tags mark the state of all five together.
 
+## Unreleased — branch `fix/data-correctness` (candidate v1.2.0)
+
+Data-correctness fixes from the 2026-09-12 code review. None of these change
+a default; all of them change what a chart shows for some inputs. Behavior
+below is traced in source and syntax-checked; **not yet verified in OAD**.
+
+### WSU Lattice Scatter 1.0.2
+- **Fixed:** a null/blank grade-point cell rendered as `0.0` in grade-points
+  mode (`num()` treated null as 0). It is now missing.
+- **Fixed:** every row without a letter grade was stamped `IP`, so a row with
+  real grade points but no letter showed `IP`. Marker label now uses
+  whichever evidence exists; `IP` only when there is none.
+- **Fixed:** a tooltip-detail field whose name matched the STRM heuristic
+  overwrote the sort key already read from the *Sorting Term Code* bucket.
+
+### WSU Dumbbell 1.0.2
+- **Fixed:** long format — a second row for an already-filled role spilled
+  into the other endpoint (two `before` rows produced `before → before`
+  and discarded `after`). Extras are ignored.
+- **Fixed:** Group Aggregate / Sum — an endpoint whose contributors were all
+  missing became a measured `0` with an invented delta. It stays missing.
+- **Fixed:** Color By Group — legend swatches were assigned by index, marks
+  by label hash, so they disagreed. Both use the same resolver.
+- **Fixed:** category values such as `constructor` matched inherited object
+  properties in entity/group dictionaries.
+
+### WSU Sankey 1.0.2
+- **Fixed:** a blank intermediate cell shifted later cells into an earlier
+  lane (`A, blank, C, D` and `A, B, C, D` split `C` and `D`). Stage is now
+  the bucket position; a flow may span an empty stage.
+- **Fixed:** `0` for Max Intermediate Depth, Value Decimals, Stage Padding
+  and the three chart paddings reverted to the default on every load.
+- **Fixed:** `|`-joined edge/node keys could merge unrelated flows when a
+  label contained `|`; dictionaries are null-prototype objects.
+
+### WSU Network 1.1.2
+- **Fixed:** edge items carried a vis-network `value`, so the library
+  rescaled width with its own defaults and *Min/Max Edge Width* never
+  applied.
+- **Fixed:** `||`-joined edge keys could merge unrelated edges; all
+  label-keyed dictionaries are null-prototype objects.
+
+### WSU Line 1.1.1
+- **Fixed:** shared-X hit rectangles were sized for an unpadded scale and
+  overlapped, so hovering/clicking near one category could pick the next.
+- **Fixed:** a missing measure could take a numeric tooltip rank and push
+  the real maximum down. Missing values are unranked and sort last.
+
 ## 2026-09-11 — tag `v1.1.1`
 
 ### WSU Network 1.1.1
