@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Network
 - **Category**: WSU
 - **Root id**: `com-wsu-network`
-- **Version constant**: `WsuNetworkViz.VERSION = "1.1.1"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuNetworkViz.VERSION = "1.1.2"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-network/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-network.zip`
 
@@ -396,6 +396,11 @@ the prepared dataset/workbook layer, not inferred inside the visualization.
 | `minEdgeWidth` | `1` | 0.5 to 5 |
 | `maxEdgeWidth` | `8` | 5 to 20 |
 | `arrows` | `"to"` | to / from / middle / off |
+
+Edge width is computed by the plugin from the Edge Weight measure and mapped
+linearly onto `[minEdgeWidth, maxEdgeWidth]`. As of 1.1.2 the edge item no
+longer carries a vis-network `value`, which had caused the library to rescale
+width with its own defaults and ignore these two settings.
 
 vNext visual guardrails:
 - If `minEdgeWidth > maxEdgeWidth`, clamp or swap the values and surface a

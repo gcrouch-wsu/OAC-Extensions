@@ -118,6 +118,10 @@ define(['jquery',
       .replace(/'/g, "&#39;");
   }
 
+  // Composite dictionary keys use a control character no label can contain,
+  // so "A||B" + "C" and "A" + "B||C" never collide.
+  var KEY_SEP = "";
+
   function setAdd(map, key, value) {
     if (!Object.prototype.hasOwnProperty.call(map, key)) map[key] = {};
     if (!trim(value)) return;
@@ -296,7 +300,7 @@ define(['jquery',
     };
   }
 
-  WsuNetworkViz.VERSION = "1.1.1";
+  WsuNetworkViz.VERSION = "1.1.2";
   jsx.extend(WsuNetworkViz, dataviz.DataVisualization);
 
   WsuNetworkViz.prototype._saveSettings = function() {
@@ -447,12 +451,12 @@ define(['jquery',
       note = LBL.EXPANDED_FALLBACK;
     }
 
-    var aggEdges = {};
-    var nodeMeta = {};
-    var groupColorMap = {};
+    var aggEdges = Object.create(null);
+    var nodeMeta = Object.create(null);
+    var groupColorMap = Object.create(null);
     var colorFallback = d3.scaleOrdinal(d3.schemeTableau10);
-    var edgeTypeCounts = {};
-    var edgeTypeColorMap = {};
+    var edgeTypeCounts = Object.create(null);
+    var edgeTypeColorMap = Object.create(null);
     var edgeTypeLegend = [];
     var edgeTypePalette = parseCsvColors(this.Config.edgeTypePalette);
     var edgeTypeColorScale = d3.scaleOrdinal(edgeTypePalette.length ? edgeTypePalette : d3.schemeTableau10);
@@ -487,7 +491,7 @@ define(['jquery',
         }
       }
 
-      var edgeKey = from + "||" + to;
+      var edgeKey = from + KEY_SEP + to;
       if (!aggEdges[edgeKey]) {
         aggEdges[edgeKey] = {
           key: edgeKey,
@@ -554,7 +558,7 @@ define(['jquery',
       return {nodes: [], edges: [], note: note, mode: mode, edgeTypeLegend: []};
     }
 
-    var outgoingByNode = {};
+    var outgoingByNode = Object.create(null);
     edges.forEach(function(edge) {
       if (!outgoingByNode[edge.from]) outgoingByNode[edge.from] = 0;
       outgoingByNode[edge.from] += edge.weight;
@@ -577,7 +581,7 @@ define(['jquery',
       if (!edgeTypeColorMap[type]) edgeTypeColorMap[type] = edgeTypeColorScale(type);
     });
 
-    var selfLoopNodeIds = {};
+    var selfLoopNodeIds = Object.create(null);
     edges.forEach(function(edge) {
       if (edge.isSelfLoop) selfLoopNodeIds[edge.from] = true;
     });
@@ -620,7 +624,9 @@ define(['jquery',
         id: "e_" + idx,
         from: edge.from,
         to: edge.to,
-        value: edge.weight,
+        // No `value`: vis-network would rescale width from it with its own
+        // defaults and ignore the Min/Max Edge Width settings.
+        weight: edge.weight,
         width: minEdgeWeight === maxEdgeWeight ? (this.Config.minEdgeWidth + this.Config.maxEdgeWidth) / 2 : edgeScale(edge.weight),
         label: this.Config.showEdgeLabels === "on" ? label : "",
         title: makeTitle(titleRows),
@@ -638,7 +644,7 @@ define(['jquery',
     // Node size comes from the Node Size measure when it is consistent for the
     // node, otherwise from total incident edge weight. The scale domain must be
     // built from the same values that are scaled, so resolve them first.
-    var nodeSizeValueById = {};
+    var nodeSizeValueById = Object.create(null);
     nodeIds.forEach(function(id) {
       var meta = nodeMeta[id];
       var sizeValues = meta.nodeSizeValues.filter(function(v) { return v !== null && isFinite(v); });
@@ -698,7 +704,7 @@ define(['jquery',
       };
     }, this);
 
-    var nodeById = {};
+    var nodeById = Object.create(null);
     nodes.forEach(function(n) { nodeById[n.id] = n; });
     edges.forEach(function(edge) {
       if (!edge.isSelfLoop) return;
@@ -862,8 +868,8 @@ define(['jquery',
       } catch (e) {}
     }
 
-    var baseNodesById = {};
-    var baseEdgesById = {};
+    var baseNodesById = Object.create(null);
+    var baseEdgesById = Object.create(null);
     nodeItems.forEach(function(n) { baseNodesById[n.id] = $.extend(true, {}, n); });
     edgeItems.forEach(function(e) { baseEdgesById[e.id] = $.extend(true, {}, e); });
     var activeLegendType = "";
