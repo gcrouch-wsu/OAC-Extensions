@@ -80,8 +80,9 @@ define(['jquery',
   }
 
   function num(v) {
+    if (v === null || typeof v === "undefined" || str(v).trim() === "") return null;
     var n = Number(v);
-    return isNaN(n) ? null : n;
+    return isNaN(n) || !isFinite(n) ? null : n;
   }
 
   function compareText(a, b) {
@@ -240,7 +241,7 @@ define(['jquery',
     };
   }
 
-  WsuLatticeScatterViz.VERSION = "1.0.1";
+  WsuLatticeScatterViz.VERSION = "1.0.2";
   jsx.extend(WsuLatticeScatterViz, dataviz.DataVisualization);
 
   WsuLatticeScatterViz.prototype._saveSettings = function() {
@@ -277,13 +278,20 @@ define(['jquery',
     return gp >= this.Config.progressThreshold ? LBL.ELIGIBLE : LBL.BLOCKED;
   };
 
+  // "IP" (in progress) is only shown when the row carries neither a letter nor
+  // grade points. A missing letter with real points renders the points; a
+  // missing measure with a real letter renders the letter (or its point value).
   WsuLatticeScatterViz.prototype._markerLabel = function(p) {
-    if (this.Config.markerShape === "grade-letter") return str(p.gradeLetter || "IP");
+    var l = str(p.gradeLetter).trim().toUpperCase();
+    var gp = this._gradePoints(p);
+    if (this.Config.markerShape === "grade-letter") {
+      if (l) return l;
+      return gp === null ? "IP" : gp.toFixed(1);
+    }
     if (this.Config.markerShape === "grade-points") {
-      var l = str(p.gradeLetter).toUpperCase();
-      if (l === "W" || l === "I" || l === "IP") return l || "IP";
-      var gp = this._gradePoints(p);
-      return gp === null ? (l || "IP") : gp.toFixed(1);
+      if (l === "W" || l === "I" || l === "IP") return l;
+      if (gp !== null) return gp.toFixed(1);
+      return l || "IP";
     }
     return "";
   };
@@ -424,7 +432,8 @@ define(['jquery',
         if (lab === "grade code" || lab === "target grade code" || lab === "official letter grade" || lab === "letter grade") {
           if (!p.gradeLetter) p.gradeLetter = d.value;
         }
-        if (lab === "target term sort" || lab === "target term index" || lab === "term sort key" || lab === "academic term index" || lab === "term index" || lab === "term sort" || lab === "term code" || lab === "strm") {
+        // Only a fallback: the dedicated "Sorting Term Code" bucket (size edge) wins when present.
+        if (p.termSort === null && (lab === "target term sort" || lab === "target term index" || lab === "term sort key" || lab === "academic term index" || lab === "term index" || lab === "term sort" || lab === "term code" || lab === "strm")) {
           var t = num(d.value);
           if (t !== null) p.termSort = t;
         }
@@ -441,7 +450,6 @@ define(['jquery',
       if (!p.studentId) {
         p.studentId = ("Row " + (row + 1));
       }
-      p.gradeLetter = p.gradeLetter || "IP";
       points.push(p);
     }
     return points;

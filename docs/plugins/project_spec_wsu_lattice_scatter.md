@@ -13,7 +13,7 @@ development without re-deriving decisions from the prototype.
 - **Short name**: WSU Lattice Scatter
 - **Category**: WSU
 - **Root id**: `com-wsu-lattice-scatter`
-- **Version constant**: `WsuLatticeScatterViz.VERSION = "1.0.1"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuLatticeScatterViz.VERSION = "1.0.2"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-lattice-scatter/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-lattice-scatter.zip`
 
@@ -123,7 +123,9 @@ Notes:
 - `size` supplies a numeric sort key per term (for example SDW `STRM`). When
   present it takes precedence over the parsed term label. As of 1.0.1 the
   bucket is read directly; earlier builds only honored it when the field's
-  display name matched one of the tooltip-detail label heuristics.
+  display name matched one of the tooltip-detail label heuristics. As of
+  1.0.2 a tooltip-detail field whose label matches those heuristics is used
+  **only when the `size` bucket is empty**; it never overrides it.
 - `glyph` should include `target_grade_code` in v1 datasets.
 - If `measures` is absent, grade-point mode falls back to letter mapping where possible.
 
@@ -136,6 +138,13 @@ Notes:
 - `ySortDirection`: `asc|desc` (default `asc`)
 - `markerShape`: `circle|square|triangle|diamond|cross|star|grade-letter|grade-points`
 - `markerSize`: numeric slider (default `11`)
+
+### Grade marker label resolution (1.0.2)
+- `grade-letter` mode shows the `glyph` letter; if no letter, the grade-point
+  value; if neither, `IP`.
+- `grade-points` mode shows `W`/`I`/`IP` letters as-is; otherwise the numeric
+  grade points (from `measures`, or mapped from the letter); if neither, `IP`.
+- A null or blank grade-point cell is **missing**, not `0.0`.
 
 ### Grade marker text
 - `gradeFontSize`: numeric slider (default `13`)
