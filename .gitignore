@@ -26,3 +26,8 @@ Thumbs.db
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Local-only folders (never commit). See dev/README.md.
+# data/ = real institutional extracts; dev/ = internal planning docs and notes.
+/data/
+/dev/
