@@ -13,7 +13,7 @@ development without re-deriving design decisions from built-in Sankey limits.
 - **Short name**: WSU Sankey
 - **Category**: WSU
 - **Root id**: `com-wsu-sankey`
-- **Version constant**: `WsuSankeyViz.VERSION = "1.0.1"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuSankeyViz.VERSION = "1.0.2"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-sankey/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-sankey.zip`
 
@@ -110,6 +110,11 @@ Example outbound-from-source row:
 - `End Node` is terminal stage anchor.
 - `Intermediate Nodes` are optional inserted stages between start and end.
 - Intermediate stage order in explicit mode is **bucket layer order**.
+- A node's stage is its **bucket position** (Start = stage 0, Intermediate
+  *i* = stage *i*, End = stage *n*+1). A blank intermediate cell does not
+  shift later cells into an earlier lane; the flow simply spans the empty
+  stage (1.0.2). So `A, blank, C, D` and `A, B, C, D` place the same `C`
+  and `D` in the same lanes.
 
 ### Ordering semantics
 - `Sort Key (STRM)` is ordering evidence metadata, not the display
@@ -364,6 +369,9 @@ construct compatible datasets today.
 - `maxIntermediateDepth`: integer `0..5` (default `4`)
 - `maxIntermediateDepth` behavior: if dataset provides 5 intermediate layers and
   setting is `4`, the 5th layer is ignored and counted in validation warnings.
+- Zero is a valid value for `maxIntermediateDepth`, `valueDecimals`,
+  `stagePadding`, `chartLeftPadding`, `chartRightPadding` and
+  `chartBottomPadding`; it is not reset to the default (1.0.2).
 
 ### Ordering
 - `xSortDirection`: `asc|desc` (default `asc`)

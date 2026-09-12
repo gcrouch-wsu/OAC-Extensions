@@ -47,6 +47,14 @@ define(['jquery',
     UNKNOWN_END: "(Unknown End)"
   };
 
+  // Composite dictionary keys use a control character no label can contain,
+  // so "A|B" + "C" and "A" + "B|C" never collide.
+  var KEY_SEP = "\u001f";
+
+  function edgeToStage(e) {
+    return typeof e.toStage === "number" ? e.toStage : e.stageIndex + 1;
+  }
+
   function str(v) { return jsx.isNull(v) || typeof v === "undefined" ? "" : String(v); }
   function esc(s) {
     return str(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -61,6 +69,12 @@ define(['jquery',
     return str(v).toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
   }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  // Like `Number(v) || fallback` but 0 is a real value, not a missing one.
+  function numOr(v, fallback) {
+    var n = num(v);
+    return n === null ? fallback : n;
+  }
   function addUnique(arr, val) {
     if (arr.indexOf(val) < 0) arr.push(val);
   }
@@ -192,7 +206,7 @@ define(['jquery',
     };
   }
 
-  WsuSankeyViz.VERSION = "1.0.1";
+  WsuSankeyViz.VERSION = "1.0.2";
   jsx.extend(WsuSankeyViz, dataviz.DataVisualization);
 
   WsuSankeyViz.prototype._saveSettings = function() {
@@ -204,15 +218,15 @@ define(['jquery',
     Object.keys(this.Config).forEach(function(k) {
       if (!jsx.isNull(conf[k]) && typeof conf[k] !== "undefined") this.Config[k] = conf[k];
     }, this);
-    this.Config.maxIntermediateDepth = clamp(Math.floor(Number(this.Config.maxIntermediateDepth) || 4), 0, 5);
-    this.Config.valueDecimals = clamp(Math.floor(Number(this.Config.valueDecimals) || 1), 0, 4);
+    this.Config.maxIntermediateDepth = clamp(Math.floor(numOr(this.Config.maxIntermediateDepth, 4)), 0, 5);
+    this.Config.valueDecimals = clamp(Math.floor(numOr(this.Config.valueDecimals, 1)), 0, 4);
     this.Config.nodeWidth = clamp(Number(this.Config.nodeWidth) || 24, 10, 60);
     this.Config.nodeGap = clamp(Number(this.Config.nodeGap) || 18, 4, 40);
     this.Config.minNodeHeight = clamp(Number(this.Config.minNodeHeight) || 8, 4, 24);
-    this.Config.stagePadding = clamp(Number(this.Config.stagePadding) || 18, 0, 80);
-    this.Config.chartLeftPadding = clamp(Number(this.Config.chartLeftPadding) || 72, 0, 180);
-    this.Config.chartRightPadding = clamp(Number(this.Config.chartRightPadding) || 72, 0, 180);
-    this.Config.chartBottomPadding = clamp(Number(this.Config.chartBottomPadding) || 24, 0, 120);
+    this.Config.stagePadding = clamp(numOr(this.Config.stagePadding, 18), 0, 80);
+    this.Config.chartLeftPadding = clamp(numOr(this.Config.chartLeftPadding, 72), 0, 180);
+    this.Config.chartRightPadding = clamp(numOr(this.Config.chartRightPadding, 72), 0, 180);
+    this.Config.chartBottomPadding = clamp(numOr(this.Config.chartBottomPadding, 24), 0, 120);
     this.Config.linkOpacity = clamp(Number(this.Config.linkOpacity) || 0.35, 0.05, 1);
     this.Config.linkCurve = clamp(Number(this.Config.linkCurve) || 0.5, 0.05, 0.95);
     this.Config.nodeLabelFontSize = clamp(Math.floor(Number(this.Config.nodeLabelFontSize) || 11), 9, 20);
@@ -357,29 +371,36 @@ define(['jquery',
         if (this.Config.dropOrphans === "on") continue;
       }
 
-      var midsClean = [];
-      mids.forEach(function(v) { if (str(v).trim()) midsClean.push(str(v).trim()); });
-      if (this.Config.intermediatePolicy === "none") midsClean = [];
-      if (midsClean.length > this.Config.maxIntermediateDepth) {
-        warnings.truncatedIntermediateRows += 1;
-        midsClean = midsClean.slice(0, this.Config.maxIntermediateDepth);
-      }
-      var path = [start].concat(midsClean).concat([end]);
+      // Stage index is the bucket position (Start = 0, Intermediate i = i + 1,
+      // End = last), so a blank intermediate cell never shifts later nodes
+      // into a different lane; the link simply spans the empty stage.
+      var depth = this.Config.intermediatePolicy === "none" ? 0 : Math.min(mids.length, this.Config.maxIntermediateDepth);
+      var truncated = false;
+      var path = [{stage: 0, label: str(start).trim()}];
+      mids.forEach(function(v, i) {
+        var label = str(v).trim();
+        if (!label) return;
+        if (i >= depth) { truncated = true; return; }
+        path.push({stage: i + 1, label: label});
+      });
+      if (truncated && this.Config.intermediatePolicy !== "none") warnings.truncatedIntermediateRows += 1;
+      path.push({stage: depth + 1, label: str(end).trim()});
       var weight = weightLayer
         ? num(oDataLayout.getValue(PHYS_DATA, r, weightLayer.index))
         : (hasMeasureRoleInfo ? null : num(oDataLayout.getValue(PHYS_DATA, r, 0)));
       if (weight === null || weight < 0) weight = 1;
       var color = useOacColor ? this._resolveThemeColor(oTransientRenderingContext, helper, r) : "";
       for (var s = 0; s < path.length - 1; s++) {
-        var from = str(path[s]).trim();
-        var to = str(path[s + 1]).trim();
+        var from = path[s].label;
+        var to = path[s + 1].label;
         if (!from || !to) continue;
         if (this.Config.disallowSelfLinks === "on" && normalized(from) === normalized(to)) {
           warnings.selfLinkEdges += 1;
           continue;
         }
         raw.push({
-          stageIndex: s,
+          stageIndex: path[s].stage,
+          toStage: path[s + 1].stage,
           from: from,
           to: to,
           group: group || "",
@@ -396,14 +417,15 @@ define(['jquery',
   };
 
   WsuSankeyViz.prototype._aggregateEdges = function(rawEdges, warnings) {
-    var byKey = {};
+    var byKey = Object.create(null);
     var total = 0;
     rawEdges.forEach(function(e) {
       total += e.value;
-      var key = [e.stageIndex, e.from, e.to, e.group || ""].join("|");
+      var key = [e.stageIndex, e.toStage, e.from, e.to, e.group || ""].join(KEY_SEP);
       if (!byKey[key]) {
         byKey[key] = {
           stageIndex: e.stageIndex,
+          toStage: e.toStage,
           from: e.from,
           to: e.to,
           group: e.group || "",
@@ -441,7 +463,7 @@ define(['jquery',
     }
 
     if (this.Config.topNPerStage > 0) {
-      var grouped = {};
+      var grouped = Object.create(null);
       edges.forEach(function(e) {
         if (!grouped[e.stageIndex]) grouped[e.stageIndex] = [];
         grouped[e.stageIndex].push(e);
@@ -454,7 +476,7 @@ define(['jquery',
         drop.forEach(function() { warnings.topNDropped += 1; });
         next = next.concat(keep);
         if (this.Config.collapseOther === "on" && drop.length) {
-          var other = {stageIndex: Number(sk), from: "Other", to: "Other", group: "", value: 0, rows: [], color: ""};
+          var other = {stageIndex: Number(sk), toStage: Number(sk) + 1, from: "Other", to: "Other", group: "", value: 0, rows: [], color: ""};
           drop.forEach(function(d) {
             other.value += d.value;
             d.rows.forEach(function(r) { addUnique(other.rows, r); });
@@ -470,13 +492,13 @@ define(['jquery',
 
   WsuSankeyViz.prototype._layout = function(edges, width, height) {
     if (!edges.length) return {nodes: [], edges: [], stageTotals: {}, stageCount: 0};
-    var nodesByKey = {};
-    var stageToNodes = {};
-    var stageTotals = {};
+    var nodesByKey = Object.create(null);
+    var stageToNodes = Object.create(null);
+    var stageTotals = Object.create(null);
     var maxStage = 0;
 
     function ensureNode(stage, label) {
-      var key = stage + "|" + label;
+      var key = stage + KEY_SEP + label;
       if (!nodesByKey[key]) {
         nodesByKey[key] = {
           key: key,
@@ -498,7 +520,7 @@ define(['jquery',
 
     edges.forEach(function(e) {
       var s = ensureNode(e.stageIndex, e.from);
-      var t = ensureNode(e.stageIndex + 1, e.to);
+      var t = ensureNode(edgeToStage(e), e.to);
       s.outValue += e.value;
       t.inValue += e.value;
       e.rows.forEach(function(r) { addUnique(s.rows, r); addUnique(t.rows, r); });
@@ -512,7 +534,7 @@ define(['jquery',
         if (t.sortKey === null || typeof t.sortKey === "undefined") t.sortKey = e.termCode;
         else t.sortKey = Math.min(t.sortKey, e.termCode);
       }
-      maxStage = Math.max(maxStage, e.stageIndex + 1);
+      maxStage = Math.max(maxStage, edgeToStage(e));
     });
 
     var stageCount = maxStage + 1;
@@ -582,9 +604,9 @@ define(['jquery',
       if (a.from !== b.from) return a.from.localeCompare(b.from);
       return a.to.localeCompare(b.to);
     }).map(function(e, idx) {
-      var source = nodesByKey[e.stageIndex + "|" + e.from];
-      var target = nodesByKey[(e.stageIndex + 1) + "|" + e.to];
-      var edgeScale = Math.min(stageScales[e.stageIndex] || 1, stageScales[e.stageIndex + 1] || 1);
+      var source = nodesByKey[e.stageIndex + KEY_SEP + e.from];
+      var target = nodesByKey[edgeToStage(e) + KEY_SEP + e.to];
+      var edgeScale = Math.min(stageScales[e.stageIndex] || 1, stageScales[edgeToStage(e)] || 1);
       var w = Math.max(1, e.value * edgeScale);
       var sy = source.y + source._sourceOffset + (w / 2);
       var ty = target.y + target._targetOffset + (w / 2);
@@ -593,6 +615,7 @@ define(['jquery',
       return {
         id: "e" + idx,
         stageIndex: e.stageIndex,
+        toStage: edgeToStage(e),
         from: e.from,
         to: e.to,
         value: e.value,
