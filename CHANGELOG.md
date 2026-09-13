@@ -3,6 +3,25 @@
 Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 `docs/plugins/`. Repository tags mark the state of all five together.
 
+## 2026-09-13 — tenant probe of oac.wsu.edu
+
+First verification against the production host itself (`oac-sdk-dev/tests/
+oac-probe.wsu.json`, section 0 of the verification guide). **No failures.**
+
+- Every module id in the lint allowlist is defined on the tenant; `d3v6js`
+  = D3 6.2.0; all 28 inherited host methods present (`getID` per-instance);
+  all six host panel ids present, including `AXIS` and `INTERACTION` that
+  the plugins now request.
+- `d3js` (D3 v3) is **already absent** on the tenant — Oracle's May 2026
+  deprecation has taken effect. Any installed extension that still depends
+  on it will fail to load. The probe shows `com-company-bulletViz`,
+  `com-company-dumbbellviz` and `com-company-motionChartViz` are installed
+  on the tenant; their library versions depend on `d3js`.
+- `getProjection` is absent on the cloud as well as OAD; `d3v3` / `d3v7js`
+  not defined. Tenant build number is not exposed to the page.
+- Still needed from the guide: sections 2 (replacement/cache), 3 (governor),
+  4 (interaction), 5 (panels as rendered), 7 (clients/locales).
+
 ## Unreleased (round 3) — currency claims re-based on Oracle documentation
 
 The 2026-09-13 adversarial review checked the repository's currency claims

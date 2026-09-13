@@ -20,6 +20,9 @@ var SRC = path.join(__dirname, "..", "src", "customviz");
 // grepping war/va/plugins/*/*.js. Re-verify and bump HOST_VERSION after an
 // OAD upgrade; see docs/oac_design.md "Currency policy".
 var HOST_VERSION = "26.01.0.0.0";
+// Cloud tenant where the same allowlist, methods and panel ids were probed
+// (tests/oac-probe.wsu.json via tests/compare-probe.js): no failures.
+var TENANT_VERIFIED = "oac.wsu.edu, 2026-09-13 (tenant build not exposed to the page)";
 var ALLOWED_MODULES = [
   "jquery",
   "d3v6js",
@@ -49,7 +52,7 @@ var UNVERIFIED_HOST_METHODS = ["getProjection"];
 
 // Ids the plugin family must not depend on. Never reintroduce.
 var FORBIDDEN_MODULES = {
-  "d3js": "Host-bundled D3 v3 (3.4.13). Oracle's What's New: 'planned for deprecation in May 2026'. Use d3v6js.",
+  "d3js": "Host-bundled D3 v3 (3.4.13 on OAD). Oracle's What's New: 'planned for deprecation in May 2026' — and it is already ABSENT on oac.wsu.edu (probe 2026-09-13). Use d3v6js.",
   "d3v3": "D3 v3 from cdnjs via the oracle.bi.tech.plugin.requirejsConfig extension point (Oracle's interim guidance for the d3js deprecation). It is D3 v3 and an external CDN dependency; this family uses d3v6js and makes no external calls.",
   "obitech-legend/legendandvizcontainer": "Semi-private mixin that breaks on minor updates (oac_design.md section 2). Draw legends in SVG.",
   "knockout": "Not used by this plugin family (Oracle still documents it for data-action editors, not visualizations).",
@@ -202,5 +205,5 @@ if (problems.length) {
   problems.forEach(function(p) { console.log("  - " + p); });
   process.exitCode = 1;
 } else {
-  console.log("Currency lint: clean (allowlist verified against OAD " + HOST_VERSION + ")");
+  console.log("Currency lint: clean (allowlist verified against OAD " + HOST_VERSION + "; tenant " + TENANT_VERIFIED + ")");
 }

@@ -51,10 +51,17 @@ if (!probe.d3["d3v6js"]) fail("d3v6js does not resolve — all four D3 plugins w
 Object.keys(probe.modules).filter(function (id) { return /^d3/.test(id) && probe.modules[id] && !/^(d3js|d3v3|d3v6js)$/.test(id); })
   .forEach(function (id) { note("newer D3 id available on the tenant: " + id + " — decide whether to move (oac_design 6.32)"); });
 
+// Methods the framework assigns per instance in a base constructor
+// (`e.getID = function …` in report.js), so they never appear on
+// DataVisualization.prototype. A false here is a probe limitation, not absence;
+// the 1.0.0 plugins call them on the tenant today.
+var INSTANCE_ASSIGNED = ["getID"];
+
 console.log("\nInherited host methods the plugins call:");
 var methods = probe.methods || {};
 Object.keys(methods).forEach(function (m) {
   if (m === "_error") { fail("could not inspect DataVisualization.prototype: " + methods[m]); return; }
+  if (INSTANCE_ASSIGNED.indexOf(m) >= 0 && methods[m] !== true) { note(m + " — assigned per instance by the base constructor; not visible on the prototype (expected)"); return; }
   var present = methods[m] === true;
   if (unverified.indexOf(m) >= 0) { (present ? note : ok)(m + " — " + (present ? "PRESENT on tenant (absent on OAD); guarded call can now be relied on" : "absent, as on OAD; guard stays")); return; }
   if (present) ok(m);

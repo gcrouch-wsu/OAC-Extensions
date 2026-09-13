@@ -1278,7 +1278,18 @@ withdrawn: vendor a D3 build inside the plugin folder and map an id to it
 in the D3 deprecation notice; the JSON-manifest equivalent should be
 confirmed with `bivalidate` before relying on it.
 
-#### Allowlist and its provenance [OAD]
+#### Allowlist and its provenance [OAD] — and confirmed on the tenant [tenant]
+
+**2026-09-13, https://oac.wsu.edu** (`oac-sdk-dev/tests/oac-probe.wsu.json`,
+run through `compare-probe.js`): every id in `ALLOWED_MODULES` is defined;
+`d3v6js` resolves to D3 **6.2.0**; every inherited method the plugins call
+exists on `DataVisualization` (`getID` is assigned per instance, not on the
+prototype — expected); all six `GD_PANEL_ID_*` constants are present
+including `AXIS` and `INTERACTION`. Also observed: **`d3js` is already gone
+from the tenant** (the May 2026 deprecation has landed), `d3v3` and `d3v7js`
+are not defined, and `getProjection` is absent on the cloud too — so it was
+never "cloud-only"; the MapTiler sample guards it for some other host.
+This is the fourth evidence class, and the one that counts.
 
 `ALLOWED_MODULES` in `tests/lint.js` lists the AMD ids the plugins may
 depend on. They were confirmed present in OAD 26.01.0.0.0 (2026-01-20) by:
@@ -1309,8 +1320,9 @@ sample-precedented, undocumented APIs. Treatment:
 
 #### After every OAC update, and before OAD 26.01 stops installing
 
-1. Run section 0 of `docs/guides/oac_dev_verification.md` on OAC Dev: dump
-   the tenant's defined module ids and diff against `ALLOWED_MODULES`.
+1. Run section 0 of `docs/guides/oac_dev_verification.md` on the tenant:
+   paste `tests/oac-probe.js`, save the JSON, run `compare-probe.js`.
+   Last done 2026-09-13 on oac.wsu.edu — no failures.
 2. If an id or method disappeared, fix the plugins first, then update the
    lint lists and record the tenant build next to `HOST_VERSION`.
 3. If a new versioned D3 id appears, decide whether to move; never depend on
