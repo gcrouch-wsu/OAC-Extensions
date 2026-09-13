@@ -33,9 +33,16 @@ define(['jquery',
   var _logger = new logger.Logger(MODULE_NAME);
   _logger.info("Initializing WSU Network plugin");
 
+  jsx.assertObject(datamodelshapes.Physical, MODULE_NAME + " datamodelshapes.Physical");
+  jsx.assertObject(datamodelshapes.Logical, MODULE_NAME + " datamodelshapes.Logical");
+  jsx.assertObject(dataviz.SettingsNS, MODULE_NAME + " dataviz.SettingsNS");
+  jsx.assertObject(dataviz.DataContextProperty, MODULE_NAME + " dataviz.DataContextProperty");
+  jsx.assertObject(data.LayerMetadata, MODULE_NAME + " data.LayerMetadata");
+
   var PHYS_DATA = datamodelshapes.Physical.DATA;
   var PHYS_ROW = datamodelshapes.Physical.ROW;
   var PHYS_COLUMN = datamodelshapes.Physical.COLUMN;
+  var LOGICAL_COLOR = datamodelshapes.Logical.COLOR;
   var SETTINGS_CHART = dataviz.SettingsNS.CHART;
   var DCP_DATA_LAYOUT = dataviz.DataContextProperty.DATA_LAYOUT;
   var DCP_DATA_LAYOUT_HELPER = dataviz.DataContextProperty.DATA_LAYOUT_HELPER;
@@ -120,12 +127,21 @@ define(['jquery',
 
   // Composite dictionary keys use a control character no label can contain,
   // so "A||B" + "C" and "A" + "B||C" never collide.
-  var KEY_SEP = "";
+  var KEY_SEP = "\u001f";
+
+  // Recorded in a detail's value set when a contributing row had no value, so
+  // "Pass" on some rows and blank on others is not reported as "Pass".
+  var BLANK_DETAIL = "\u0000blank";
 
   function setAdd(map, key, value) {
     if (!Object.prototype.hasOwnProperty.call(map, key)) map[key] = {};
-    if (!trim(value)) return;
-    map[key][trim(value)] = true;
+    map[key][trim(value) || BLANK_DETAIL] = true;
+  }
+
+  // The single consistent value of a detail across all contributors, or null.
+  function consistentDetail(valueSet) {
+    var vals = Object.keys(valueSet || {});
+    return vals.length === 1 && vals[0] !== BLANK_DETAIL ? vals[0] : null;
   }
 
   function firstKey(obj) {
@@ -207,7 +223,6 @@ define(['jquery',
     var out = [];
     detailLayers.forEach(function(layer) {
       var val = trim(safeGetValue(oDataLayout, PHYS_ROW, layer.index, rowIndex, false));
-      if (!val) return;
       out.push({label: layer.displayName, value: val});
     });
     return out;
@@ -271,7 +286,6 @@ define(['jquery',
       arrows: "to",
       emphasizeRepeats: "on",
       repeatColor: "#981e32",
-      repeatRoundness: 0.45,
       repeatSize: 26,
       showRepeatLoopLabels: "on",
       repeatLoopLabelMode: "count",
@@ -300,7 +314,7 @@ define(['jquery',
     };
   }
 
-  WsuNetworkViz.VERSION = "1.1.2";
+  WsuNetworkViz.VERSION = "1.2.0";
   jsx.extend(WsuNetworkViz, dataviz.DataVisualization);
 
   WsuNetworkViz.prototype._saveSettings = function() {
@@ -335,7 +349,6 @@ define(['jquery',
     this.Config.arrows = /^(to|from|middle|off)$/.test(this.Config.arrows) ? this.Config.arrows : "to";
     this.Config.emphasizeRepeats = toOnOff(this.Config.emphasizeRepeats);
     this.Config.repeatColor = sanitizeHex(this.Config.repeatColor, "#981e32");
-    this.Config.repeatRoundness = clamp(Number(this.Config.repeatRoundness) || 0.45, 0, 1);
     this.Config.repeatSize = clamp(Number(this.Config.repeatSize) || 26, 10, 50);
     this.Config.showRepeatLoopLabels = toOnOff(this.Config.showRepeatLoopLabels);
     this.Config.repeatLoopLabelMode = /^(count|percent|off)$/.test(this.Config.repeatLoopLabelMode) ? this.Config.repeatLoopLabelMode : "count";
@@ -379,7 +392,7 @@ define(['jquery',
   WsuNetworkViz.prototype._resolveOacGroupColor = function(oTransientRenderingContext, helper, rowIndex) {
     try {
       var oColorContext = this.getColorContext(oTransientRenderingContext);
-      var oColorInterpolator = this.getCachedColorInterpolator(oTransientRenderingContext, datamodelshapes.Logical.COLOR);
+      var oColorInterpolator = this.getCachedColorInterpolator(oTransientRenderingContext, LOGICAL_COLOR);
       var colorInfo = this.getDataItemColorInfo(helper, oColorContext, oColorInterpolator, rowIndex, 0);
       return colorInfo.sColor || colorInfo.sSeriesColor || "";
     } catch (e) {
@@ -590,8 +603,8 @@ define(['jquery',
       var edgeWeightText = String(Math.round(edge.weight * 100) / 100);
       var label = pickEdgeLabel(edge, this.Config, outgoingByNode, edgeWeightText);
       var detailRows = Object.keys(edge.detailValues).map(function(labelName) {
-        var vals = Object.keys(edge.detailValues[labelName] || {});
-        return vals.length === 1 ? {label: labelName, value: vals[0]} : null;
+        var v = consistentDetail(edge.detailValues[labelName]);
+        return v === null ? null : {label: labelName, value: v};
       }).filter(function(v) { return v !== null; });
 
       var titleRows = [edge.from + " -> " + edge.to];
@@ -668,8 +681,8 @@ define(['jquery',
       else if (meta.groups.length) group = meta.groups[0];
 
       var detailRows = Object.keys(meta.detailValues).map(function(labelName) {
-        var vals = Object.keys(meta.detailValues[labelName] || {});
-        return vals.length === 1 ? {label: labelName, value: vals[0]} : null;
+        var v = consistentDetail(meta.detailValues[labelName]);
+        return v === null ? null : {label: labelName, value: v};
       }).filter(function(v) { return v !== null; });
 
       var titleRows = [nodeId];
@@ -856,15 +869,15 @@ define(['jquery',
     function fitWithPadding(instance) {
       if (!instance || !instance.fit) return;
       try {
-        instance.fit({
-          animation: false,
-          padding: {
-            top: fitPadding,
-            right: fitPadding,
-            bottom: fitPadding,
-            left: fitPadding
-          }
-        });
+        instance.fit({animation: false});
+        // fit() has no padding option; shrink the scale so the requested
+        // clearance (large nodes, self-loops, wide edges) stays inside the canvas.
+        var w = canvasNode.clientWidth || 0;
+        var h = canvasNode.clientHeight || 0;
+        if (w > 0 && h > 0 && instance.getScale && instance.moveTo) {
+          var factor = Math.min(w / (w + 2 * fitPadding), h / (h + 2 * fitPadding));
+          instance.moveTo({scale: instance.getScale() * factor, animation: false});
+        }
       } catch (e) {}
     }
 
@@ -1070,7 +1083,6 @@ define(['jquery',
       {value: "stabilized", label: "Stabilized"}
     ], nx("GEN"));
     addToggle(pGen, "emphasizeRepeatsGadget", "Repeats: Emphasize Self-Loops", this.Config.emphasizeRepeats, nx("GEN"));
-    addSlider(pGen, "repeatRoundnessGadget", "Repeats: Loop Roundness", Math.round(this.Config.repeatRoundness * 100), 0, 100);
     addSlider(pGen, "repeatSizeGadget", "Repeats: Loop Size", this.Config.repeatSize, 10, 50);
     addToggle(pGen, "showRepeatLoopLabelsGadget", "Repeats: Show Loop Labels", this.Config.showRepeatLoopLabels, nx("GEN"));
     addSwitcher(pGen, "repeatLoopLabelModeGadget", "Repeats: Loop Label Mode", this.Config.repeatLoopLabelMode, [
@@ -1189,7 +1201,6 @@ define(['jquery',
       showEdgeTypeLegendGadget: "showEdgeTypeLegend"
     };
     var slider = {
-      repeatRoundnessGadget: "repeatRoundness",
       repeatSizeGadget: "repeatSize",
       maxExpandedRepeatStageGadget: "maxExpandedRepeatStage",
       minNodeSizeGadget: "minNodeSize",
@@ -1209,7 +1220,6 @@ define(['jquery',
     } else if (slider[sGadgetID]) {
       this.Config[slider[sGadgetID]] = oPropChange.value;
       if (sGadgetID === "gravityGadget") this.Config.gravity = -Math.abs(Number(oPropChange.value));
-      if (sGadgetID === "repeatRoundnessGadget") this.Config.repeatRoundness = Number(oPropChange.value) / 100;
       if (sGadgetID === "minEdgeWidthGadget") this.Config.minEdgeWidth = Number(oPropChange.value) / 10;
     } else {
       return false;
@@ -1230,6 +1240,7 @@ define(['jquery',
       this._draw(container, model, oDataLayout);
     } catch (e) {
       _logger.warning("Render failed: " + (e && e.message ? e.message : e));
+      this._destroyNetwork();
       $(this.getContainerElem()).html("<div class='wsu-network'><div class='empty-state'>Render failed: " + escHtml(e && e.message ? e.message : e) + "</div></div>");
     } finally {
       this._setIsRendered(true);

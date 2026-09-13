@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Network
 - **Category**: WSU
 - **Root id**: `com-wsu-network`
-- **Version constant**: `WsuNetworkViz.VERSION = "1.1.2"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuNetworkViz.VERSION = "1.2.0"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-network/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-network.zip`
 
@@ -187,7 +187,8 @@ Minimum usable input grain:
   fact
 - categorical `Source`
 - categorical `Destination`
-- optional numeric `Edge Weight`
+- numeric `Edge Weight` (required — the grammar needs at least one measure;
+  rows with a null weight count as 1)
 - optional numeric `Node Size`
 
 Rendering grain after plugin shaping:
@@ -418,7 +419,6 @@ vNext visual guardrails:
 |-----|---------|--------|
 | `emphasizeRepeats` | `"on"` | on / off |
 | `repeatColor` | `"#981e32"` | WSU Crimson |
-| `repeatRoundness` | `0.45` | 0 to 1 |
 | `repeatSize` | `26` | 10 to 50 |
 | `showRepeatLoopLabels` | `"on"` | on / off |
 | `repeatLoopLabelMode` | `"count"` | count / percent / off |
@@ -520,7 +520,9 @@ Implemented via `gadgetdialog.forcePanelByID`:
 - **Layout: Performance Mode** (Auto / Interactive / Stabilized) —
   large-graph behavior policy.
 - **Repeats: Emphasize Self-Loops** (on/off) — uses curved Crimson edges.
-- **Repeats: Loop Roundness / Size** — sliders for loop geometry.
+- **Repeats: Loop Size** — slider for self-loop geometry. (*Loop Roundness*
+  was removed in 1.2.0: vis-network self-loops have no roundness parameter,
+  so the control never had an effect.)
 - **Repeats: Show Loop Labels** (on/off).
 - **Repeats: Loop Label Mode** (Count / Percent / Off).
 - **Repeats: Render Mode** (Loop / Expanded Stages).
@@ -627,7 +629,6 @@ Group all repeat-specific controls together.
   - `count` (recommended review default)
   - `percent`
   - `off`
-- **Repeats: Loop Roundness**.
 - **Repeats: Loop Size**.
 - **Expanded Stages: Max Stage**.
 - **Expanded Stages: Collapse Overflow Stages**.
