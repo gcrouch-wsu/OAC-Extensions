@@ -90,6 +90,21 @@ Get-Content extensions\oracle.bi.tech.plugin.visualization\com-wsu-network.json 
 Get-Content extensions\oracle.bi.tech.plugin.visualizationDatamodelHandler\com-wsu-network.visualizationDatamodelHandler.json -Raw | ConvertFrom-Json -ErrorAction Stop
 ```
 
+### Run the model tests
+
+`oac-sdk-dev/tests/` holds a host-independent regression harness: it loads
+each plugin's AMD module in Node with the `obitech-*` framework replaced by
+stubs and exercises the model, aggregation and layout code with synthetic
+data. Every test encodes a defect found in review so it cannot return.
+
+```powershell
+cd oac-sdk-dev
+node testsun.js
+```
+
+No dependencies beyond Node. Host behavior (rendering, property panel,
+marking) still needs OAD/OAC.
+
 ### Iterate without packaging
 
 `.\run-sdk.ps1` launches OAD in SDK mode with `-pluginDevDir` pointed at

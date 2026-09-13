@@ -652,7 +652,7 @@ define(['jquery',
       var fit = Math.min(1,
         outSum[sk] > source.h ? source.h / outSum[sk] : 1,
         inSum[tk] > target.h ? target.h / inSum[tk] : 1);
-      var w = Math.max(0.5, naturalWidth[idx] * fit);
+      var w = naturalWidth[idx] * fit;
       var sy = source.y + source._sourceOffset + (w / 2);
       var ty = target.y + target._targetOffset + (w / 2);
       source._sourceOffset += w;
