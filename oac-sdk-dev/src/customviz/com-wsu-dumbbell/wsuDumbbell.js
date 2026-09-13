@@ -206,7 +206,7 @@ define(['jquery',
       this.clearZoomState = function() { zoomState = null; };
    }
 
-   WsuDumbbellViz.VERSION = "1.1.0";
+   WsuDumbbellViz.VERSION = "1.1.1";
    jsx.extend(WsuDumbbellViz, dataviz.DataVisualization);
 
    function str(value) {
@@ -947,8 +947,11 @@ define(['jquery',
       function endDrag() {
          dragging = false;
          dragRect.attr("display", "none");
-         if (escHandler) { document.removeEventListener("keydown", escHandler); escHandler = null; }
-         if (oViz._zoomEscHandler === escHandler) oViz._zoomEscHandler = null;
+         if (escHandler) {
+            document.removeEventListener("keydown", escHandler);
+            if (oViz._zoomEscHandler === escHandler) oViz._zoomEscHandler = null;
+            escHandler = null;
+         }
       }
 
       svg.on("mousedown" + ns, function(event) {
@@ -1540,6 +1543,7 @@ define(['jquery',
 
    WsuDumbbellViz.prototype._render = function(oTransientRenderingContext) {
       try {
+         this._detachZoomEsc();
          this.loadConfig();
          var oDataLayout = oTransientRenderingContext.get(DCP_DATA_LAYOUT);
          if (!oDataLayout) return;

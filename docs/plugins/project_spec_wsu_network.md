@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Network
 - **Category**: WSU
 - **Root id**: `com-wsu-network`
-- **Version constant**: `WsuNetworkViz.VERSION = "1.2.0"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuNetworkViz.VERSION = "1.2.1"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-network/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-network.zip`
 

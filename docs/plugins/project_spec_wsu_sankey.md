@@ -13,7 +13,7 @@ development without re-deriving design decisions from built-in Sankey limits.
 - **Short name**: WSU Sankey
 - **Category**: WSU
 - **Root id**: `com-wsu-sankey`
-- **Version constant**: `WsuSankeyViz.VERSION = "1.1.0"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuSankeyViz.VERSION = "1.1.1"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-sankey/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-sankey.zip`
 
@@ -486,13 +486,23 @@ Term Code bucket only influences node ordering within a stage.
 - **Orphan**: row missing required Start or End value.
 
 ### Processing and aggregation order
-1. Expand each row into adjacent stage edges.
-2. Validate edges/rows and drop invalids per toggles.
-3. Aggregate by `stage_index + from_node + to_node + color_group`.
-4. Compute totals and percent metrics.
-5. Apply threshold and top-N rules.
-6. Apply `collapseOther` (if enabled).
-7. Render.
+1. Expand each row into stage edges. Stage is the bucket position; a blank
+   intermediate cell yields one edge spanning the empty stage.
+2. Validate edges/rows and drop invalids per toggles. A row whose every
+   segment is rejected contributes nothing to the path-weight total.
+3. Aggregate by
+   `from_stage + to_stage + from_node + to_node + color_group + incomplete_status`.
+4. Compute totals (path weight, one per emitting row) and percent metrics.
+5. Apply threshold and top-N rules. Top N counts status-separated edges, so a
+   mixed complete/incomplete route is two candidates; after upgrading from
+   1.0.x a saved Top N can therefore drop the minority-status portion of a
+   route it used to keep whole.
+6. Apply `collapseOther` (if enabled): one `Other` per (status, destination
+   stage), carrying details and earliest term code.
+7. Lay out. Spanning edges get an invisible *transit* node in every stage they
+   cross, so real nodes are placed around the link rather than under it;
+   transit flow is excluded from `% of Stage`.
+8. Render.
 
 ### Aggregation semantics
 - Sum `flow_weight` when provided.

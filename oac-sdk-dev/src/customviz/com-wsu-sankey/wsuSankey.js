@@ -42,6 +42,7 @@ define(['jquery',
   var PHYS_DATA = datamodelshapes.Physical.DATA;
   var PHYS_ROW = datamodelshapes.Physical.ROW;
   var PHYS_COLUMN = datamodelshapes.Physical.COLUMN;
+  var LOGICAL_COLOR = datamodelshapes.Logical.COLOR;
   var SETTINGS_CHART = dataviz.SettingsNS.CHART;
   var DCP_DATA_LAYOUT = dataviz.DataContextProperty.DATA_LAYOUT;
   var DCP_DATA_LAYOUT_HELPER = dataviz.DataContextProperty.DATA_LAYOUT_HELPER;
@@ -53,9 +54,14 @@ define(['jquery',
     UNKNOWN_END: "(Unknown End)"
   };
 
-  // Composite dictionary keys use a control character no label can contain,
-  // so "A|B" + "C" and "A" + "B|C" never collide.
-  var KEY_SEP = "\u001f";
+  // Composite dictionary keys are JSON tuples, so no label content can make
+  // two different tuples produce the same key.
+  function tupleKey() {
+    return JSON.stringify(Array.prototype.slice.call(arguments));
+  }
+  function nodeKey(stage, label) {
+    return tupleKey(stage, label);
+  }
 
   function edgeToStage(e) {
     return typeof e.toStage === "number" ? e.toStage : e.stageIndex + 1;
@@ -212,7 +218,7 @@ define(['jquery',
     };
   }
 
-  WsuSankeyViz.VERSION = "1.1.0";
+  WsuSankeyViz.VERSION = "1.1.1";
   jsx.extend(WsuSankeyViz, dataviz.DataVisualization);
 
   WsuSankeyViz.prototype._saveSettings = function() {
@@ -274,7 +280,7 @@ define(['jquery',
   WsuSankeyViz.prototype._resolveThemeColor = function(oTransientRenderingContext, helper, rowIndex) {
     try {
       var oColorContext = this.getColorContext(oTransientRenderingContext);
-      var oColorInterpolator = this.getCachedColorInterpolator(oTransientRenderingContext, datamodelshapes.Logical.COLOR);
+      var oColorInterpolator = this.getCachedColorInterpolator(oTransientRenderingContext, LOGICAL_COLOR);
       var colorInfo = this.getDataItemColorInfo(helper, oColorContext, oColorInterpolator, rowIndex, 0);
       return colorInfo.sColor || colorInfo.sSeriesColor || "";
     } catch (e) {
@@ -398,8 +404,10 @@ define(['jquery',
         ? num(oDataLayout.getValue(PHYS_DATA, r, weightLayer.index))
         : ((hasMeasureRoleInfo || !hasDataColumn) ? null : num(oDataLayout.getValue(PHYS_DATA, r, 0)));
       if (weight === null || weight < 0) weight = 1;
-      pathWeightTotal += weight;
       var color = useOacColor ? this._resolveThemeColor(oTransientRenderingContext, helper, r) : "";
+      // A row whose every segment is rejected (orphan, self-link) emits no
+      // edge and must not inflate the percent-threshold denominator.
+      var emitted = false;
       for (var s = 0; s < path.length - 1; s++) {
         var from = path[s].label;
         var to = path[s + 1].label;
@@ -408,6 +416,7 @@ define(['jquery',
           warnings.selfLinkEdges += 1;
           continue;
         }
+        emitted = true;
         raw.push({
           stageIndex: path[s].stage,
           toStage: path[s + 1].stage,
@@ -422,6 +431,7 @@ define(['jquery',
           incompletePath: incompletePath
         });
       }
+      if (emitted) pathWeightTotal += weight;
     }
     return {rawEdges: raw, warnings: warnings, pathWeightTotal: pathWeightTotal};
   };
@@ -435,7 +445,7 @@ define(['jquery',
     rawEdges.forEach(function(e) {
       // #34: complete and incomplete traffic between the same nodes stay
       // separate edges so a mostly-complete flow is not painted incomplete.
-      var key = [e.stageIndex, e.toStage, e.from, e.to, e.group || "", e.incompletePath ? 1 : 0].join(KEY_SEP);
+      var key = tupleKey(e.stageIndex, e.toStage, e.from, e.to, e.group || "", e.incompletePath ? 1 : 0);
       if (!byKey[key]) {
         byKey[key] = {
           stageIndex: e.stageIndex,
@@ -492,7 +502,7 @@ define(['jquery',
         if (this.Config.collapseOther === "on" && drop.length) {
           var others = Object.create(null);
           drop.forEach(function(d) {
-            var k = (d.incompletePath ? "i" : "c") + KEY_SEP + edgeToStage(d);
+            var k = tupleKey(d.incompletePath ? 1 : 0, edgeToStage(d));
             if (!others[k]) {
               others[k] = {stageIndex: Number(sk), toStage: edgeToStage(d), from: "Other", to: "Other", group: "",
                 value: 0, rows: [], color: "", incompletePath: !!d.incompletePath, termCode: null, detailsMap: {}};
@@ -527,7 +537,7 @@ define(['jquery',
     var maxStage = 0;
 
     function ensureNode(stage, label) {
-      var key = stage + KEY_SEP + label;
+      var key = nodeKey(stage, label);
       if (!nodesByKey[key]) {
         nodesByKey[key] = {
           key: key,
@@ -566,6 +576,28 @@ define(['jquery',
       maxStage = Math.max(maxStage, edgeToStage(e));
     });
 
+    // Transit nodes: one per (spanning edge, crossed stage). They take part in
+    // the vertical layout of that stage but are never drawn.
+    edges.forEach(function(e, idx) {
+      var toStage = edgeToStage(e);
+      if (toStage - e.stageIndex <= 1) return;
+      e._transits = [];
+      for (var ts = e.stageIndex + 1; ts < toStage; ts++) {
+        var tkey = tupleKey("transit", idx, ts);
+        var tn = {
+          key: tkey, stage: ts, label: "", transit: true,
+          inValue: e.value, outValue: e.value, value: e.value,
+          rows: e.rows.slice(), detailsMap: {}, themeColor: "",
+          sortKey: (typeof e.termCode === "number" && !isNaN(e.termCode)) ? e.termCode : null,
+          x: 0, y: 0, h: 0
+        };
+        nodesByKey[tkey] = tn;
+        if (!stageToNodes[ts]) stageToNodes[ts] = [];
+        stageToNodes[ts].push(tn);
+        e._transits.push(tn);
+      }
+    });
+
     var stageCount = maxStage + 1;
     var nodeWidth = this.Config.nodeWidth;
     var configuredGap = this.Config.nodeGap;
@@ -586,7 +618,9 @@ define(['jquery',
         return b.value - a.value || a.label.localeCompare(b.label);
       });
       var sum = list.reduce(function(acc, n) { return acc + n.value; }, 0);
-      stageTotals[s] = sum;
+      // Stage totals describe the stage's own nodes; flow merely passing
+      // through (transit) is excluded from "% of Stage".
+      stageTotals[s] = list.reduce(function(acc, n) { return acc + (n.transit ? 0 : n.value); }, 0);
       var gap = list.length > 1 ? configuredGap : 0;
       if (this.Config.autoNodeGap === "on" && list.length > 1) {
         var denseGapCeiling = (height - (list.length * minNodeHeight)) / Math.max(1, list.length - 1);
@@ -641,14 +675,14 @@ define(['jquery',
     });
     var outSum = Object.create(null), inSum = Object.create(null);
     outEdges.forEach(function(e, i) {
-      var sk = e.stageIndex + KEY_SEP + e.from, tk = edgeToStage(e) + KEY_SEP + e.to;
+      var sk = nodeKey(e.stageIndex, e.from), tk = nodeKey(edgeToStage(e), e.to);
       outSum[sk] = (outSum[sk] || 0) + naturalWidth[i];
       inSum[tk] = (inSum[tk] || 0) + naturalWidth[i];
     });
     outEdges = outEdges.map(function(e, idx) {
-      var source = nodesByKey[e.stageIndex + KEY_SEP + e.from];
-      var target = nodesByKey[edgeToStage(e) + KEY_SEP + e.to];
-      var sk = e.stageIndex + KEY_SEP + e.from, tk = edgeToStage(e) + KEY_SEP + e.to;
+      var source = nodesByKey[nodeKey(e.stageIndex, e.from)];
+      var target = nodesByKey[nodeKey(edgeToStage(e), e.to)];
+      var sk = nodeKey(e.stageIndex, e.from), tk = nodeKey(edgeToStage(e), e.to);
       var fit = Math.min(1,
         outSum[sk] > source.h ? source.h / outSum[sk] : 1,
         inSum[tk] > target.h ? target.h / inSum[tk] : 1);
@@ -657,10 +691,14 @@ define(['jquery',
       var ty = target.y + target._targetOffset + (w / 2);
       source._sourceOffset += w;
       target._targetOffset += w;
+      // Waypoints through the transit nodes of a spanning edge (centered).
+      var waypoints = (e._transits || []).map(function(tn) { return {x: tn.x, y: tn.y + tn.h / 2}; });
       return {
         id: "e" + idx,
         stageIndex: e.stageIndex,
         toStage: edgeToStage(e),
+        fitted: fit < 1,
+        waypoints: waypoints,
         from: e.from,
         to: e.to,
         value: e.value,
@@ -691,11 +729,19 @@ define(['jquery',
     };
   };
 
-  WsuSankeyViz.prototype._tooltipHtmlForEdge = function(edge, totalsByStage, totalFlow) {
+  WsuSankeyViz.prototype._tooltipHtmlForEdge = function(edge, totalsByStage, totalFlow, warnings) {
     var rows = [["From", edge.from], ["To", edge.to]];
     (edge.details || []).forEach(function(d) {
       rows.push([d.label, d.value]);
     });
+    var w = warnings || {};
+    if (edge.from === "Other" && w.topNDropped > 0) rows.push(["Note", "Collapsed " + w.topNDropped + " flow(s) beyond Top N"]);
+    else if (w.thresholdDropped > 0 || w.topNDropped > 0) {
+      var parts = [];
+      if (w.thresholdDropped > 0) parts.push(w.thresholdDropped + " under threshold");
+      if (w.topNDropped > 0) parts.push(w.topNDropped + " beyond Top N");
+      rows.push(["Note", "Flows not shown: " + parts.join(", ")]);
+    }
     if (this.Config.showDerivedTooltipMetrics !== "on") {
       return "<table>" + rows.map(function(r) {
         return "<tr><td class='tthead'>" + esc(r[0]) + "</td><td>" + esc(r[1]) + "</td></tr>";
@@ -846,17 +892,32 @@ define(['jquery',
       .attr("class", "link-path")
       .attr("d", function(e) {
         // Leave the side of the source that faces the target and enter the
-        // side of the target that faces the source; direction-agnostic.
+        // side of the target that faces the source; direction-agnostic. A
+        // spanning edge is drawn as a chain of curves through its transit
+        // nodes with a straight run across each transit column.
+        var nw = oViz.Config.nodeWidth;
         var rtl = e.target.x < e.source.x;
-        var x0 = rtl ? e.source.x : e.source.x + oViz.Config.nodeWidth;
-        var x1 = rtl ? e.target.x + oViz.Config.nodeWidth : e.target.x;
-        var c = Math.abs(x1 - x0) * oViz.Config.linkCurve * (rtl ? -1 : 1);
-        return "M" + x0 + "," + e.sy + " C" + (x0 + c) + "," + e.sy + " " + (x1 - c) + "," + e.ty + " " + x1 + "," + e.ty;
+        var sign = rtl ? -1 : 1;
+        function curve(xa, ya, xb, yb) {
+          var c = Math.abs(xb - xa) * oViz.Config.linkCurve * sign;
+          return " C" + (xa + c) + "," + ya + " " + (xb - c) + "," + yb + " " + xb + "," + yb;
+        }
+        var x0 = rtl ? e.source.x : e.source.x + nw;
+        var d = "M" + x0 + "," + e.sy;
+        var px = x0, py = e.sy;
+        (e.waypoints || []).forEach(function(wp) {
+          var enter = rtl ? wp.x + nw : wp.x;
+          var leave = rtl ? wp.x : wp.x + nw;
+          d += curve(px, py, enter, wp.y) + " L" + leave + "," + wp.y;
+          px = leave; py = wp.y;
+        });
+        var x1 = rtl ? e.target.x + nw : e.target.x;
+        return d + curve(px, py, x1, e.ty);
       })
       .attr("stroke-width", function(e) { return e.width; })
       .attr("stroke", function(e) { return colorWithAlpha(edgeColor(e), oViz.Config.linkOpacity, "rgba(30,136,229,0.35)"); })
       .on("mouseover", function(event, e) {
-        tooltip.html(oViz._tooltipHtmlForEdge(e, model.layout.stageTotals, model.totalFlow)).style("display", "block");
+        tooltip.html(oViz._tooltipHtmlForEdge(e, model.layout.stageTotals, model.totalFlow, model.warnings)).style("display", "block");
         oViz._moveTooltip(tooltip, event);
       })
       .on("mousemove", function(event) { oViz._moveTooltip(tooltip, event); })
@@ -881,7 +942,7 @@ define(['jquery',
     }
 
     var nodes = g.append("g").attr("class", "nodes").selectAll("g")
-      .data(model.layout.nodes)
+      .data(model.layout.nodes.filter(function(n) { return !n.transit; }))
       .enter()
       .append("g");
 
@@ -974,11 +1035,15 @@ define(['jquery',
       return {nodes: nodesOut, edges: edgesOut};
     }
     function collectDownstreamFromEdge(edge) {
-      var focus = collectByRows(rowSet(edge.rows), null, "down");
-      // Keep only segments at or after this edge's stage.
-      Object.keys(focus.edges).forEach(function(id) {
-        var e = model.layout.edges.filter(function(x) { return x.id === id; })[0];
-        if (e && e.stageIndex < edge.stageIndex) delete focus.edges[id];
+      var byRows = collectByRows(rowSet(edge.rows), null, "down");
+      // Keep only segments at or after this edge's stage, and derive the node
+      // set from those segments so upstream nodes are not left highlighted.
+      var focus = {nodes: {}, edges: {}};
+      model.layout.edges.forEach(function(e) {
+        if (!byRows.edges[e.id] || e.stageIndex < edge.stageIndex) return;
+        focus.edges[e.id] = true;
+        focus.nodes[e.source.key] = true;
+        focus.nodes[e.target.key] = true;
       });
       focus.edges[edge.id] = true;
       focus.nodes[edge.source.key] = true;
@@ -1003,7 +1068,10 @@ define(['jquery',
       activeFocusKey = focusKey;
       links
         .style("opacity", function(e) { return focus.edges[e.id] ? 1 : 0.08; })
-        .style("stroke-width", function(e) { return focus.edges[e.id] ? Math.max(e.width, 2.5) : Math.max(0.75, e.width * 0.5); });
+        .style("stroke-width", function(e) {
+          if (focus.edges[e.id]) return e.fitted ? e.width : Math.max(e.width, 2.5);
+          return e.fitted ? e.width * 0.5 : Math.max(0.75, e.width * 0.5);
+        });
       nodeRects.style("opacity", function(n) { return focus.nodes[n.key] ? 1 : 0.25; });
       nodeLabels.style("opacity", function(n) { return focus.nodes[n.key] ? 1 : 0.35; });
     }

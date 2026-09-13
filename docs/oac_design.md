@@ -698,15 +698,20 @@ self-loop strategy:
   config value.
 - Enforce a minimum rendered node size for nodes with self-loops so the loop can
   visibly attach to the node body at both ends.
-- Include loop radius, max node size, and max edge width in the initial
-  `network.fit({padding: ...})` calculation. Ordinary chart padding is often
-  not enough because the loop extends outside the node's bounding box.
+- Include loop radius, max node size, and max edge width in the clearance
+  applied after the initial `network.fit()`. vis-network's `fit()` accepts no
+  `padding` option (it is silently ignored), so call `fit({animation:false})`
+  and then `moveTo({scale: getScale() * factor})` where
+  `factor = min(w / (w + 2p), h / (h + 2p))` for canvas size `w × h` and the
+  desired clearance `p`. Ordinary chart padding is often not enough because
+  the loop extends outside the node's bounding box.
 - Keep stabilized and interactive physics modes on the same self-loop geometry.
   Physics may move the node, but it should not change the loop policy.
 
 Reference implementation: WSU Network uses node-size-aware helpers for minimum
-self-loop node size, `selfReference.size`, and fit padding; self-loop edges set
-`smooth.enabled = false` so `selfReference` owns the loop.
+self-loop node size, `selfReference.size`, and post-fit clearance
+(`fitWithPadding`); self-loop edges set `smooth.enabled = false` so
+`selfReference` owns the loop.
 
 ### 6.19 Shared-X invisible hit area pattern
 
@@ -734,8 +739,11 @@ rows.forEach(function(row) {
 return {byX: byX, ...};
 
 // In _drawXHitAreas:
-var step = xValues.length > 1 ? innerWidth / (xValues.length - 1) : innerWidth;
-var band = Math.max(step, 14);
+// The point scale is padded, so its real step is x.step(); dividing the width
+// by (n - 1) overlaps neighbours and a later rect intercepts hovers meant for
+// an earlier category. Do not add a minimum width for the same reason.
+var step = xValues.length > 1 ? x.step() : innerWidth;
+var band = step;
 g.selectAll(".x-hit")
    .data(xValues)
    .enter().append("rect")

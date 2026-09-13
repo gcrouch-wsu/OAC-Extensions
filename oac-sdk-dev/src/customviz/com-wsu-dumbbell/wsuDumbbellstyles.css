@@ -16,6 +16,9 @@
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  /* Small multiples grow the SVG past the container; scroll instead of clip (1.1.1). */
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* Cursor feedback so users know drag-to-zoom is available. Endpoints and

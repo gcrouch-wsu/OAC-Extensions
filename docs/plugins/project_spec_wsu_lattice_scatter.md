@@ -13,7 +13,7 @@ development without re-deriving decisions from the prototype.
 - **Short name**: WSU Lattice Scatter
 - **Category**: WSU
 - **Root id**: `com-wsu-lattice-scatter`
-- **Version constant**: `WsuLatticeScatterViz.VERSION = "1.1.0"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuLatticeScatterViz.VERSION = "1.1.1"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-lattice-scatter/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-lattice-scatter.zip`
 

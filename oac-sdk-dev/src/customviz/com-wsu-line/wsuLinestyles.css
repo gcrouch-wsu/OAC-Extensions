@@ -60,6 +60,14 @@
   font-weight: 600;
 }
 
+/* With a foreground override the chips drop their fixed white fill and use
+   a translucent border in the header color, so white-on-dark stays readable (1.2.1). */
+.wsu-line-header.has-fg .wsu-v-chip {
+  background: transparent;
+  border-color: currentColor;
+  opacity: 0.95;
+}
+
 /* Header font color / bold controls apply to chip text too (1.2.0). */
 .wsu-line-header.has-fg .wsu-v-chip-label,
 .wsu-line-header.has-fg .wsu-v-chip-value,

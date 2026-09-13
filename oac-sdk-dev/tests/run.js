@@ -31,27 +31,72 @@ suite("WSU Sankey", function() {
       { logical: "glyph", name: "I2",    values: ["C", "C"] },
       { logical: "item",  name: "End",   values: ["D", "D"] }
     ]});
-    assert.deepStrictEqual(nodeKeys(r.layout), ["0:A", "1:B", "2:C", "3:D"]);
+    var real = r.layout.nodes.filter(function(n) { return !n.transit; });
+    assert.deepStrictEqual(real.map(function(n) { return n.stage + ":" + n.label; }).sort(), ["0:A", "1:B", "2:C", "3:D"]);
     var span = r.agg.edges.filter(function(e) { return e.from === "A" && e.to === "C"; })[0];
     assert.ok(span, "A->C spanning edge exists");
     assert.strictEqual(span.stageIndex, 0);
     assert.strictEqual(span.toStage, 2);
+    // the spanning link reserves a transit slot in stage 1 and routes through it
+    var transit = r.layout.nodes.filter(function(n) { return n.transit && n.stage === 1; });
+    assert.strictEqual(transit.length, 1);
+    var drawn = r.layout.edges.filter(function(e) { return e.from === "A" && e.to === "C"; })[0];
+    assert.strictEqual(drawn.waypoints.length, 1);
+    var b = real.filter(function(n) { return n.label === "B"; })[0];
+    var wy = drawn.waypoints[0].y;
+    assert.ok(wy < b.y || wy > b.y + b.h, "waypoint y " + wy + " is outside B [" + b.y + "," + (b.y + b.h) + "]");
   });
 
-  test("complete and incomplete traffic between the same nodes are separate edges (#34)", function() {
-    var vals = { start: [], end: [] };
-    for (var i = 0; i < 10; i++) { vals.start.push("A"); vals.end.push(i < 9 ? "B" : ""); }
+  test("spanning link does not pass through an unrelated middle-stage node (#22 geometry)", function() {
     var r = build({ rows: [
-      { logical: "row",  name: "Start", values: vals.start },
-      { logical: "item", name: "End",   values: vals.end }
+      { logical: "row",   name: "Start", values: ["A", "X"] },
+      { logical: "glyph", name: "I1",    values: ["", "B"] },
+      { logical: "item",  name: "End",   values: ["D", "Y"] }
+    ]});
+    var b = r.layout.nodes.filter(function(n) { return n.label === "B"; })[0];
+    var ad = r.layout.edges.filter(function(e) { return e.from === "A" && e.to === "D"; })[0];
+    assert.strictEqual(ad.waypoints.length, 1);
+    var wy = ad.waypoints[0].y;
+    assert.ok(wy < b.y || wy > b.y + b.h, "A->D routes around B");
+    assert.ok(b.h < 400, "B no longer fills the whole stage: " + b.h);
+    assert.strictEqual(r.layout.stageTotals[1], 1, "transit flow excluded from stage 1 total");
+  });
+
+  test("complete and incomplete traffic on the SAME segment are separate edges (#34)", function() {
+    // 9 rows A -> B -> C, 1 row A -> B -> (missing): the A->B segment is shared
+    var st = [], mid = [], en = [];
+    for (var i = 0; i < 10; i++) { st.push("A"); mid.push("B"); en.push(i < 9 ? "C" : ""); }
+    var r = build({ rows: [
+      { logical: "row",   name: "Start", values: st },
+      { logical: "glyph", name: "I1",    values: mid },
+      { logical: "item",  name: "End",   values: en }
     ]}, { routeMissingEndToIncomplete: "on", includeIncompletePaths: "on", incompleteEndLabel: "No Completion" });
     var ab = r.agg.edges.filter(function(e) { return e.from === "A" && e.to === "B"; });
-    assert.strictEqual(ab.length, 1);
-    assert.strictEqual(ab[0].incompletePath, false, "A->B is not painted incomplete");
-    assert.strictEqual(ab[0].value, 9);
-    var inc = r.agg.edges.filter(function(e) { return e.incompletePath; });
-    assert.strictEqual(inc.length, 1);
-    assert.strictEqual(inc[0].value, 1);
+    assert.strictEqual(ab.length, 2, "A->B split by status");
+    var complete = ab.filter(function(e) { return !e.incompletePath; })[0];
+    var incomplete = ab.filter(function(e) { return e.incompletePath; })[0];
+    assert.strictEqual(complete.value, 9);
+    assert.strictEqual(incomplete.value, 1);
+    assert.strictEqual(complete.rows.length, 9);
+    assert.strictEqual(incomplete.rows.length, 1);
+  });
+
+  test("rows whose every segment was rejected do not inflate the percent denominator (#35 round 2)", function() {
+    var r = build({
+      rows: [{ logical: "row", name: "Start", values: ["A", "B"] }, { logical: "item", name: "End", values: ["A", "C"] }],
+      measures: [{ logical: "measures", name: "W", values: [9, 1] }]
+    }, { disallowSelfLinks: "on", thresholdMode: "percent", minFlowThreshold: 60 });
+    assert.strictEqual(r.raw.warnings.selfLinkEdges, 1);
+    assert.strictEqual(r.agg.total, 1, "only the emitting row counts");
+    assert.strictEqual(r.agg.edges.length, 1, "B->C survives");
+  });
+
+  test("JSON tuple keys: labels containing U+001F do not collide (#10 round 2)", function() {
+    var r = build({ rows: [
+      { logical: "row",  name: "Start", values: ["A\u001fB", "A"] },
+      { logical: "item", name: "End",   values: ["C", "B\u001fC"] }
+    ]});
+    assert.strictEqual(r.agg.edges.length, 2);
   });
 
   test("percent threshold uses path weight, not summed segments (#35)", function() {
@@ -96,6 +141,20 @@ suite("WSU Sankey", function() {
     var incOther = others.filter(function(e) { return e.incompletePath; });
     assert.strictEqual(incOther.length, 1, "the incomplete flow collapsed into its own Other");
     others.forEach(function(o) { assert.ok(Array.isArray(o.details), "Other carries details"); });
+    var complete = others.filter(function(e) { return !e.incompletePath; })[0];
+    assert.ok(complete.details.length > 0, "Other carries at least one detail row");
+  });
+
+  test("'Other' keeps the earliest term code (#24)", function() {
+    var starts = [], ends = [], strm = [];
+    for (var i = 0; i < 5; i++) { starts.push("S" + i); ends.push("E" + i); strm.push(String(2260 - i)); }
+    var r = build({ rows: [
+      { logical: "row",  name: "Start", values: starts },
+      { logical: "item", name: "End",   values: ends },
+      { logical: "size", name: "STRM",  values: strm }
+    ]}, { topNPerStage: 1, collapseOther: "on" });
+    var other = r.agg.edges.filter(function(e) { return e.from === "Other"; })[0];
+    assert.strictEqual(other.termCode, 2256);
   });
 
   test("stacked link floors never exceed the node height (#26)", function() {
@@ -150,12 +209,27 @@ suite("WSU Lattice Scatter", function() {
     assert.strictEqual(p.termSort, 2267);
   });
 
-  test("progress threshold classifies (#13)", function() {
+  test("progress threshold classifies, and normalizes the letter like the label does (#13)", function() {
     var viz = instance(mod, null, { progressThreshold: 1.7 });
     viz.loadConfig();
     assert.strictEqual(viz._progressStatus({ gradeLetter: "C", gradePoints: 2.0 }), "Progress Eligible");
     assert.strictEqual(viz._progressStatus({ gradeLetter: "D", gradePoints: 1.0 }), "Progress Blocked");
     assert.strictEqual(viz._progressStatus({ gradeLetter: "W", gradePoints: 4.0 }), "Progress Blocked");
+    assert.strictEqual(viz._progressStatus({ gradeLetter: " w ", gradePoints: 4.0 }), "Progress Blocked");
+    assert.strictEqual(viz._gradePoints({ gradeLetter: " b+ ", gradePoints: null }), 3.3);
+  });
+
+  test("extraction no longer stamps IP onto rows that have points but no letter (#11)", function() {
+    var fake = fakeLayout({
+      rows: [{ logical: "item", name: "Term", values: ["2024 Fall"] }, { logical: "row", name: "Course", values: ["MATH 171"] }],
+      measures: [{ logical: "measures", name: "Points", values: [3.7] }]
+    });
+    var viz = instance(mod, fake, { colorSource: "custom", markerShape: "grade-points" });
+    viz.loadConfig();
+    var pts = viz._generateData(fake.layout, fake.ctx);
+    var p = (pts.points || pts.rows || pts)[0];
+    assert.strictEqual(p.gradeLetter, "");
+    assert.strictEqual(viz._markerLabel(p), "3.7");
   });
 });
 
@@ -253,6 +327,11 @@ suite("WSU Line", function() {
     assert.strictEqual(byS.C._rank, 1);
     assert.strictEqual(byS.A._rank, 2);
     assert.strictEqual(byS.B._rank, 0, "NaN row is unranked");
+    // descending: real ranks reverse, unranked still last
+    viz.Config.tooltipSortDirection = "desc";
+    var outDesc = viz._tooltipRows("x", null, dataset).rows;
+    assert.strictEqual(outDesc[0].series, "A", "rank 2 first when descending");
+    assert.strictEqual(outDesc[outDesc.length - 1].series, "B", "unranked row sorts last in desc too");
   });
 
   test("marker size clamps into the gadget range (#18)", function() {
@@ -327,9 +406,25 @@ suite("WSU Network", function() {
     });
   });
 
-  test("Repeat Roundness is no longer a config key (#20)", function() {
+  test("Repeat Roundness is no longer a config key, and a saved one loads cleanly (#20)", function() {
     var viz = instance(mod, null);
     assert.ok(!("repeatRoundness" in viz.Config));
+    viz._savedConfig = { repeatRoundness: 0.9, repeatSize: 30, showEdgeLabels: "off" };
+    viz.loadConfig();
+    assert.strictEqual(viz.Config.repeatSize, 30);
+    assert.strictEqual(viz.Config.showEdgeLabels, "off");
+    assert.ok(!("repeatRoundness" in viz.Config));
+  });
+
+  test("JSON tuple keys: labels containing U+001F do not merge edges (#10 round 2)", function() {
+    var r = build({
+      rows: [
+        { logical: "row", name: "Source", values: ["A\u001fB", "A"] },
+        { logical: "row", name: "Dest",   values: ["C", "B\u001fC"] }
+      ],
+      measures: [{ logical: "measures", name: "N", values: [1, 1] }]
+    });
+    assert.strictEqual(r.model.edges.length, 2);
   });
 });
 
