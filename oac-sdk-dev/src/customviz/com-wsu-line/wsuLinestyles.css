@@ -60,6 +60,23 @@
   font-weight: 600;
 }
 
+/* Header font color / bold controls apply to chip text too (1.2.0). */
+.wsu-line-header.has-fg .wsu-v-chip-label,
+.wsu-line-header.has-fg .wsu-v-chip-value,
+.wsu-line-header.has-fg .wsu-v-chip-value.muted {
+  color: inherit;
+}
+
+.wsu-line-header.has-bold .wsu-v-chip-label,
+.wsu-line-header.has-bold .wsu-v-chip-value {
+  font-weight: inherit;
+}
+
+.wsu-line .legend-scroll-hint {
+  fill: #9aa0a6;
+  pointer-events: none;
+}
+
 .wsu-line-header .wsu-v-chip-value + .wsu-v-chip-value::before {
   content: ", ";
   color: #9aa0a6;

@@ -181,7 +181,9 @@ define(['jquery',
             if (!jsx.isNull(conf[key]) && typeof conf[key] !== "undefined") this.Config[key] = conf[key];
          }, this);
          this.Config.lineWidth = Number(this.Config.lineWidth) || 2;
-         this.Config.pointSize = Number(this.Config.pointSize) || 4;
+         this.Config.pointSize = Number(this.Config.pointSize);
+         if (isNaN(this.Config.pointSize) || this.Config.pointSize < 4) this.Config.pointSize = 4;
+         if (this.Config.pointSize > 12) this.Config.pointSize = 12;
          this.Config.tooltipLimit = Number(this.Config.tooltipLimit) || 20;
          this.Config.tooltipColumnLimit = Number(this.Config.tooltipColumnLimit);
          if (isNaN(this.Config.tooltipColumnLimit) || this.Config.tooltipColumnLimit < 1) this.Config.tooltipColumnLimit = 20;
@@ -215,7 +217,7 @@ define(['jquery',
       this.setLegendActiveSeries = function(s) { legendActiveSeries = s; };
    }
 
-   WsuLineViz.VERSION = "1.1.1";
+   WsuLineViz.VERSION = "1.2.0";
    jsx.extend(WsuLineViz, dataviz.DataVisualization);
 
    function str(value) {
@@ -373,20 +375,13 @@ define(['jquery',
       return codes;
    }
 
+   var legendClipSeq = 0;
+
    function measureName(oDataLayout, aAllMeasures) {
       var value = "";
       try { value = oDataLayout.getValue(PHYS_COLUMN, 0, 0, false); }
       catch (e) { value = ""; }
       return str(value || aAllMeasures[0] || "Value");
-   }
-
-   function resolveDynamicValueLabel(raw) {
-      var labels = new Set();
-      (raw || []).forEach(function(row) {
-         var label = str(row.dynamicValueLabel).trim();
-         if (label !== "") labels.add(label);
-      });
-      return labels.size === 1 ? Array.from(labels)[0] : "";
    }
 
    WsuLineViz.prototype._configText = function(key, fallback) {
@@ -518,9 +513,14 @@ define(['jquery',
       var skippedNonNumeric = 0;
       var rawMeasureLabel = measureName(oDataLayout, aAllMeasures);
 
+      var dynamicLabels = new Set();
       for (var rowIndex = 0; rowIndex < Math.max(nRows, 0); rowIndex++) {
          dataRowsSeen++;
          var meta = this._readRowMeta(oDataLayout, layers, rowIndex, detailLabels, headerLabels);
+         // Label consistency is judged over the raw data, before missing rows
+         // are dropped, so a conflicting label on a hidden row still forces
+         // the manual fallback.
+         if (str(meta.dynamicValueLabel).trim() !== "") dynamicLabels.add(str(meta.dynamicValueLabel).trim());
          var rawValue = oDataLayout.getValue(PHYS_DATA, rowIndex, 0);
          var value = parseFloat(rawValue);
          if (isNaN(value)) {
@@ -565,7 +565,7 @@ define(['jquery',
          });
       }
 
-      var dynamicValueLabel = resolveDynamicValueLabel(raw);
+      var dynamicValueLabel = dynamicLabels.size === 1 ? Array.from(dynamicLabels)[0] : "";
       var valueLabel = dynamicValueLabel || this._configText("valueLabel", rawMeasureLabel);
       var rows = this._aggregateRows(raw);
       var hasTermCode = rows.some(function(row) { return isValidStrmTermCode(row.termCode); });
@@ -734,8 +734,17 @@ define(['jquery',
       else if (order === "nameDesc") ordered.sort(function(a, b) { return compareNatural(b, a); });
       else if (order === "strmAsc") ordered.sort(function(a, b) { return compareSeriesTermCode(a, b, false); });
       else if (order === "strmDesc") ordered.sort(function(a, b) { return compareSeriesTermCode(a, b, true); });
-      // "colorOrder" leaves dataset.seriesValues order (which reflects color
-      // assignment order from the iteration that built seriesColors).
+      else if (order === "colorOrder") {
+         // Order of first appearance in the data, which is the order colors
+         // were assigned in (seriesColors is an insertion-ordered Map).
+         var seen = new Set();
+         var byColor = [];
+         (dataset.seriesColors ? Array.from(dataset.seriesColors.keys()) : []).forEach(function(series) {
+            if (ordered.indexOf(series) >= 0 && !seen.has(series)) { seen.add(series); byColor.push(series); }
+         });
+         ordered.forEach(function(series) { if (!seen.has(series)) { seen.add(series); byColor.push(series); } });
+         ordered = byColor;
+      }
       // "chronoAsc" is the unmodified default.
       return ordered.map(function(series, i) {
          return {
@@ -823,7 +832,32 @@ define(['jquery',
       }
       else {
          legend = svg.append("g").attr("class", "legend legend-right").attr("transform", "translate(" + (box.svgWidth - box.rightWidth + 12) + "," + box.y + ")");
-         groups = legend.selectAll("g").data(items).enter().append("g").attr("class", "legend-item").attr("data-series", function(d) { return d.label; }).attr("transform", function(d, i) { return "translate(0," + (i * rowHeight) + ")"; });
+         var listHeight = items.length * rowHeight;
+         var viewHeight = Math.max(rowHeight, box.height);
+         var list = legend;
+         if (listHeight > viewHeight) {
+            // More entries than fit: clip to the chart height and let the wheel
+            // scroll the list so the lower entries stay reachable.
+            var clipId = "wsu-line-legend-clip-" + (++legendClipSeq);
+            svg.append("clipPath").attr("id", clipId).append("rect")
+               .attr("x", -6).attr("y", 0).attr("width", box.rightWidth).attr("height", viewHeight);
+            legend.attr("clip-path", "url(#" + clipId + ")");
+            legend.append("rect").attr("class", "legend-scroll-bg")
+               .attr("x", -6).attr("y", 0).attr("width", box.rightWidth).attr("height", viewHeight)
+               .attr("fill", "transparent");
+            list = legend.append("g").attr("class", "legend-scroll-list");
+            var offset = 0;
+            var maxOffset = listHeight - viewHeight;
+            legend.on("wheel", function(event) {
+               event.preventDefault();
+               offset = Math.max(0, Math.min(maxOffset, offset + (event.deltaY > 0 ? rowHeight : -rowHeight)));
+               list.attr("transform", "translate(0," + (-offset) + ")");
+            });
+            legend.append("text").attr("class", "legend-scroll-hint")
+               .attr("x", 0).attr("y", viewHeight - 3).style("font-size", Math.max(8, fontSize - 2) + "px")
+               .text("\u21c5 scroll");
+         }
+         groups = list.selectAll("g.legend-item").data(items).enter().append("g").attr("class", "legend-item").attr("data-series", function(d) { return d.label; }).attr("transform", function(d, i) { return "translate(0," + (i * rowHeight) + ")"; });
          groups.append("path").attr("d", markerPath).attr("transform", "translate(5," + Math.round(rowHeight / 2) + ")").attr("fill", function(d) { return d.color; });
          groups.append("text").attr("x", 16).attr("y", Math.round(rowHeight / 2) + Math.round(fontSize / 3)).style("font-size", fontSize + "px").text(function(d) { return label(d.label, labelMax); });
       }
@@ -867,6 +901,7 @@ define(['jquery',
       var italic = this.Config.headerFontItalic === "on";
       var underline = this.Config.headerFontUnderline === "on";
       var styles = ["font-size:" + fontSize + "px"];
+      this._headerClassFlags = (fgOverride ? " has-fg" : "") + ((bold || preset === "prominent") ? " has-bold" : "");
       if (preset === "compact") {
          styles.push("background:transparent");
          styles.push("border-bottom:1px solid #d8dde3");
@@ -895,6 +930,8 @@ define(['jquery',
 
    WsuLineViz.prototype._draw = function(elContainer, dataset, oDataLayout) {
       var oViz = this;
+      this._detachZoomEsc();
+      this._drawnRows = dataset.rows || [];
       var containerId = this.getSubElementIdFromParent(elContainer, "wsuLine") || this.getID() || ("viz_" + new Date().getTime());
       var rootId = "wsu_line_" + containerId.replace(/[^A-Za-z0-9_-]/g, "_");
 
@@ -904,7 +941,7 @@ define(['jquery',
       var headerHtml = "";
       if (hasHeader) {
          var headerStyle = this._headerInlineStyle();
-         headerHtml = "<div class='wsu-line-header' style='" + esc(headerStyle) + "'>";
+         headerHtml = "<div class='wsu-line-header" + esc(this._headerClassFlags || "") + "' style='" + esc(headerStyle) + "'>";
          dataset.headerAttrs.forEach(function(attr) {
             var valueHtml;
             if (attr.values.length === 0) {
@@ -969,7 +1006,12 @@ define(['jquery',
          .attr("height", height)
          .attr("viewBox", "0 0 " + width + " " + height)
          .on("click", function(event) {
-            if (event.target === this) oViz._clearMarks(oDataLayout, root);
+            if (event.target !== this) return;
+            oViz._clearMarks(oDataLayout, root);
+            if (oViz.getLegendActiveSeries()) {
+               oViz.setLegendActiveSeries(null);
+               oViz._applyLegendActiveSeries();
+            }
          });
 
       var tooltip = d3.select("body").selectAll("#" + rootId + "_tooltip").data([null]);
@@ -1001,6 +1043,7 @@ define(['jquery',
       }
 
       var xAxis = d3.axisBottom(x).tickValues(this._tickValues(visibleXValues)).tickFormat(function(d) {
+         if (oViz.Config.xLabels === "off") return "";
          return oViz.Config.privacyMode === "on" ? "" : label(d, 16);
       });
       g.append("g").attr("class", "x axis").attr("transform", "translate(0," + innerHeight + ")").call(xAxis)
@@ -1090,6 +1133,7 @@ define(['jquery',
          svg.classed("wsu-dragging", false);
          if (escHandler) {
             document.removeEventListener("keydown", escHandler);
+            if (oViz._zoomEscHandler === escHandler) oViz._zoomEscHandler = null;
             escHandler = null;
          }
       }
@@ -1110,12 +1154,14 @@ define(['jquery',
          else {
             dragRect.attr("display", null).attr("x", startX).attr("y", startY).attr("width", 0).attr("height", 0);
          }
+         oViz._detachZoomEsc();
          escHandler = function(ev) {
             if (ev.key === "Escape" && dragging) {
                ev.preventDefault();
                endDrag();
             }
          };
+         oViz._zoomEscHandler = escHandler;
          document.addEventListener("keydown", escHandler);
       });
 
@@ -1570,7 +1616,16 @@ define(['jquery',
    WsuLineViz.prototype._applySelectedRows = function(root) {
       var selectedRows = this.getSelectedRows();
       root.selectAll(".series-point").classed("wsu-selected", false);
-      selectedRows.forEach(function(value, row) {
+      if (!selectedRows.size) return;
+      var highlighted = Object.create(null);
+      selectedRows.forEach(function(value, row) { highlighted[row] = true; });
+      // An aggregated point represents every row in sourceRows; a mark on any
+      // of them selects the point.
+      (this._drawnRows || []).forEach(function(d) {
+         if (highlighted[d.row]) return;
+         if ((d.sourceRows || []).some(function(r) { return selectedRows.has(r); })) highlighted[d.row] = true;
+      });
+      Object.keys(highlighted).forEach(function(row) {
          root.selectAll("[data-row='" + row + "']").classed("wsu-selected", true);
       });
    };
@@ -1759,7 +1814,7 @@ define(['jquery',
 
       addToggle(pStyle, "showPointsGadget", "Points: Show", this.Config.showPoints);
       addSwitcher(pStyle, "pointShapeGadget", "Points: Shape", this.Config.pointShape, [{value: "circle", label: "Circle"}, {value: "square", label: "Square"}, {value: "triangle", label: "Triangle"}, {value: "diamond", label: "Diamond"}, {value: "cross", label: "Cross"}, {value: "star", label: "Star"}], nx("STY"));
-      pStyle.addChild(new gadgets.SliderGadgetInfo("pointSizeGadget", "Points: Size", "Points: Size", new gadgets.SliderGadgetValueProperties(euidef.GadgetTypeIDs.SLIDER, this.Config.pointSize, 2, 12)));
+      pStyle.addChild(new gadgets.SliderGadgetInfo("pointSizeGadget", "Points: Size", "Points: Size", new gadgets.SliderGadgetValueProperties(euidef.GadgetTypeIDs.SLIDER, this.Config.pointSize, 4, 12)));
 
       addSwitcher(pStyle, "colorSourceGadget", "Color: Source", this.Config.colorSource, [{value: "oac", label: "OAC Theme"}, {value: "custom", label: "Custom Palette"}], nx("STY"));
       addText(pStyle, factory, "paletteGadget", "Color: Custom Palette (comma-separated hex)", this.Config.palette);
@@ -1869,7 +1924,15 @@ define(['jquery',
       return true;
    };
 
+   WsuLineViz.prototype._detachZoomEsc = function() {
+      if (this._zoomEscHandler) {
+         document.removeEventListener("keydown", this._zoomEscHandler);
+         this._zoomEscHandler = null;
+      }
+   };
+
    WsuLineViz.prototype._doStopComponent = function() {
+      this._detachZoomEsc();
       // Tooltips are attached to <body>; remove ours when the viz is torn down.
       if (this._tooltipId) d3.select("#" + this._tooltipId).remove();
       WsuLineViz.superClass._doStopComponent.apply(this, arguments);
