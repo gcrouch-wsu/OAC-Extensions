@@ -34,8 +34,8 @@ Five Oracle Analytics custom visualization plugins, each a folder under
 - Prefer OAC framework services (logger, color service, marking) over
   hand-rolled equivalents; see `docs/oac_design.md` §6.23.
 - Before claiming a change works: `node --check` both JS files, parse both
-  manifests, run `node testsun.js` from `oac-sdk-dev/` (add a test for the
-  defect you fixed), then `.uild-sdk.ps1`. Host behavior can only be
+  manifests, run `node tests/run.js` from `oac-sdk-dev/` (add a test for the
+  defect you fixed), then `./build-sdk.ps1`. Host behavior can only be
   confirmed in OAD/OAC; say so if you could not.
 
 ## Host facts verified against Oracle Analytics Desktop (2026-09)
