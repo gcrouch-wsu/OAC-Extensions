@@ -23,7 +23,11 @@
   if (!ctx) { console.error("RequireJS context not found — open a workbook first."); return; }
   var defined = Object.keys(ctx.defined || {});
   var wanted = /^(d3|jquery$|require$|ojL10n|obitech-(framework|report|reportservices|application|appservices|viz|legend|tooltip)\/)/;
-  defined.forEach(function (id) { if (wanted.test(id)) out.modules[id] = true; });
+  defined.forEach(function (id) {
+    // skip per-workbook caption bundles (they embed a catalog path) and the host's own nls bundles
+    if (/@items-content|\/nls\//.test(id)) return;
+    if (wanted.test(id)) out.modules[id] = true;
+  });
   // ids the lint allowlist names, whether or not they appear above
   ["jquery", "d3js", "d3v3", "d3v6js", "d3v7js", "obitech-framework/jsx", "obitech-report/datavisualization",
    "obitech-report/gadgetdialog", "obitech-report/vizdatamodelsmanager", "obitech-reportservices/data",
