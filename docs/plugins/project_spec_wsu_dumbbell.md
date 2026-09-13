@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Dumbbell
 - **Category**: WSU
 - **Root id**: `com-wsu-dumbbell`
-- **Version constant**: `WsuDumbbellViz.VERSION = "1.1.1"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuDumbbellViz.VERSION = "1.1.2"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-dumbbell/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-dumbbell.zip`
 
@@ -61,9 +61,8 @@ values per entity is the primary signal.
   values, axis ticks, reference line labels, and the stats summary.
 - **Long-format role mapping** — Keyword (matches `pre`/`first`/`before`
   vs `target`/`second`/`after`) or Bucket Order. Locale-flexible.
-- **Four-tab property panel** — General / Style / Reference / Axis &
-  Legend (attempted via custom panel IDs with try/catch fallback to
-  General; see `../oac_design.md` §6.14).
+- **Property panel** — General (style and reference gadgets) plus the
+  host-defined Axis panel for axis & legend gadgets (1.1.2; see §4).
 
 ---
 
@@ -203,9 +202,15 @@ tooltip is suppressed instead of rendering an empty shell.
 
 ## 4. Property Panel — Four-Tab Layout
 
-Implemented via `gadgetdialog.forcePanelByID` with custom string IDs
-(`wsuDumbbellStyle`, `wsuDumbbellReference`, `wsuDumbbellAxisLegend`) and a
-try/catch fallback. See `../oac_design.md` §6.14.
+Implemented via `gadgetdialog.forcePanelByID`. Panels: General (`euidef.GD_PANEL_ID_GENERAL`) plus the host-defined
+`GD_PANEL_ID_AXIS` / `GD_PANEL_ID_INTERACTION` panels where the plugin has
+gadgets for them. Custom string ids are no longer requested — a host that does
+not know an id creates an unusable panel for it rather than failing, so the
+old try/catch fallback could not detect that case (2026-09-13 review). Which
+tabs the cloud host actually shows for a custom visualization is issue #7 and
+section 5 of `../guides/oac_dev_verification.md`.
+Style and Reference gadgets live on General; Axis & Legend gadgets request
+`GD_PANEL_ID_AXIS` (1.1.2).
 
 **Gadget conventions** (see also `../oac_design.md` §6.24, §6.28):
 - Boolean on/off properties (Tooltip Show toggles, Stats Summary,
@@ -274,8 +279,8 @@ AXIS & LEGEND TAB
 Show checkboxes and the five Format controls. Labelled
 `Interaction: Zoom Mode`.
 
-If the SDK rejects custom panel IDs, every gadget falls back to the
-General tab. The label prefixes keep it scannable.
+If the host does not provide an Axis panel for custom visualizations,
+those gadgets land on General; the label prefixes keep it scannable.
 
 **Plugin runtime services**: WSU Dumbbell uses
 `obitech-appservices/logger` (see `../oac_design.md` §6.27) for init and

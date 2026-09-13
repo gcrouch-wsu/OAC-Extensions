@@ -123,7 +123,21 @@ function stubFor(dep) {
   if (dep === "d3v6js") return d3Stub();
   if (/vis-network/.test(dep)) return { DataSet: function() {}, Network: function() {} };
   if (/^skin!/.test(dep)) return {};
+  if (/^ojL10n!/.test(dep)) return loadNlsBundle(dep.replace(/^ojL10n!/, ""));
+  if (dep === "require") return { toUrl: function(p) { return p; } };
+  if (dep === "obitech-framework/messageformat") return { format: function(s) { return s; } };
   throw new Error("no stub for dependency " + dep);
+}
+
+// ojL10n!<plugin>/nls/messages -> the plugin's real root bundle, so tests run
+// against the same strings the host would serve for the default locale.
+function loadNlsBundle(modulePath) {
+  var file = path.join(SRC, modulePath.replace(/\/nls\/messages$/, "/nls/root/messages.js"));
+  var code = fs.readFileSync(file, "utf8");
+  var bundle = null;
+  vm.runInNewContext(code, { define: function(obj) { bundle = obj; } }, { filename: file });
+  if (!bundle || typeof bundle !== "object") throw new Error("NLS bundle did not define an object: " + file);
+  return bundle;
 }
 
 // ---- module loader ---------------------------------------------------------

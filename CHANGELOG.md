@@ -3,6 +3,57 @@
 Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 `docs/plugins/`. Repository tags mark the state of all five together.
 
+## Unreleased (round 3) — currency claims re-based on Oracle documentation
+
+The 2026-09-13 adversarial review checked the repository's currency claims
+against Oracle's published OAC documentation instead of the desktop install.
+Verdict: the plugins were current, but the *evidence* for saying so was
+desktop-derived and in two places wrong. Fixed:
+
+### Documentation and policy
+- **Oracle Analytics Desktop and its bundled SDK are deprecated** (no
+  downloads after December 2026; final version 26.01). `oac_design.md` 6.32
+  now states this, the archiving/packager fallback, and that compatibility is
+  qualified on OAC Dev — with every claim labeled [doc] / [sample] / [OAD].
+- **`d3v3` correction.** It is not a cloud-only host alias. Oracle's
+  re-published samples map it themselves to a cdnjs URL through the
+  `oracle.bi.tech.plugin.requirejsConfig` extension point, which is Oracle's
+  documented interim guidance for the D3 v3 deprecation ("planned for
+  deprecation in May 2026"). Still forbidden here (D3 v3 + external CDN).
+  `requirejsConfig` is documented as the bring-your-own-library route.
+- New `docs/guides/oac_dev_verification.md`: the seven tests only a live
+  tenant can settle (dependency baseline, replacement/cache behavior, data
+  governor limits, interaction contract, panels, ESM/worker/CSP, clients and
+  locales).
+- README: the "replaces in place, workbooks keep working" statement is now
+  qualified as tested behavior for 1.0.0 → 1.1.1 on OAD, not a contract;
+  the SDK deprecation is stated under Prerequisites.
+
+### All five plugins (Network 1.2.2, Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, Lattice 1.1.2)
+- **Localization:** the `LBL` string tables are loaded from
+  `nls/root/messages.js` through `ojL10n!<plugin>/nls/messages` (Oracle's NLS
+  guidance requires externalized UI strings), with the English text in code
+  as fallback. A test asserts every key exists in the bundle.
+- **Container id:** `getSubElementIdFromParent` (undocumented host
+  convenience) is feature-detected and try/caught; its absence can no longer
+  break render — previously the `|| getID()` fallback was unreachable.
+- **Property panels:** custom string panel ids are no longer requested.
+  `forcePanelByID` creates an unusable panel for an unknown id rather than
+  failing, so the try/catch fallback could not detect that case. Plugins now
+  use General plus the host-defined `GD_PANEL_ID_AXIS` /
+  `GD_PANEL_ID_INTERACTION` panels where present.
+- **Line, Dumbbell:** `_addFilterMenuOption` / `_addRemoveSelectedMenuOption`
+  are feature-detected (they were called unconditionally while the lint
+  claimed otherwise).
+
+### Lint
+- ES5 rule also catches default parameters, spread/rest, destructuring,
+  for-of and async/await; `import()` is the sanctioned exception.
+- Semi-private calls through `this` aliases (`oViz._x()`) are scanned.
+- Host methods absent from the OAD baseline must be guarded within 400
+  characters of each call, not anywhere in the file.
+- 35 tests + lint pass. All negative-tested.
+
 ## Unreleased (round 2) — second review of the v1.2.0 candidate
 
 The 2026-09-13 review of PR #10 rated 7 of the 35 fixes Partial and 4
@@ -235,6 +286,11 @@ line pointers. This list is a summary only.
 | [#6](https://github.com/gcrouch-wsu/OAC-Extensions/issues/6) | WSU Dumbbell: aggregate mode + viewer controls persisting to view settings |
 | [#7](https://github.com/gcrouch-wsu/OAC-Extensions/issues/7) | Which OAC/OAD versions honor custom property-panel tabs |
 | [#8](https://github.com/gcrouch-wsu/OAC-Extensions/issues/8) | Consolidate duplicated helper code |
+| — | **Toolchain expiry.** OAD/SDK deprecated (no downloads after Dec 2026). Archive the 26.01 installer; a manifest→`plugin.xml` packager is the fallback if the SDK stops installing. Ask Oracle for the replacement. |
+| — | **Every compatibility claim is desktop- or sample-derived.** No OAC Dev run has been recorded yet. `docs/guides/oac_dev_verification.md` is the procedure; results go here with the tenant build. |
+| — | **Data-model governor behavior unknown.** Manifests cap rows (10k–70k); whether OAC truncates, warns or refuses above the cap is undocumented. The plugins' warning strips report only their own drops. Guide §3. |
+| — | **Localization is partial.** `LBL` tables are externalized; gadget labels and inline tooltip fragments are still literals; only the `root` bundle exists. |
+| — | **Marking uses undocumented, sample-precedented services** (`setMark`, `MarkingEvent`, `MARK_RELATED`). Brushing is documented as a user feature, not as a plugin API. Guide §4. Data actions are *not* a substitute (they consume marked context; documented event is `INVOKE_DATA_ACTION`). |
 
 Details:
 

@@ -1215,24 +1215,73 @@ CSS variable (`.style("--bg-opacity", X)`) and read it from a CSS rule
 
 ### 6.32 Currency policy — no legacy dependencies
 
-"Legacy" in this ecosystem is a short, concrete list. The plugin family
-must stay off all of it, and `oac-sdk-dev/tests/lint.js` (run by
-`node tests/run.js`) fails the build when any of it appears.
+Every statement in this section and the next carries one of three evidence
+labels. Keep them straight; the 2026-09-13 review found the earlier text had
+conflated them.
 
-| Legacy | Current | Why |
+- **[doc]** — stated in Oracle's published OAC documentation (URL given).
+- **[sample]** — observed in an Oracle-published sample. Oracle labels the
+  library "samples, provided as-is"; a sample proves something *can* work on
+  some tenant at some time, nothing more.
+- **[OAD]** — observed in the installed Oracle Analytics Desktop 26.01. The
+  desktop is a convenience baseline, **not** the production host.
+
+The production host is **Oracle Analytics Cloud**, updated monthly. Nothing
+below substitutes for the checks in `docs/guides/oac_dev_verification.md`.
+
+#### The toolchain has an expiry date [doc]
+
+Oracle's *What's New → Features Deprecated and Planned for Desupport*
+(https://docs.oracle.com/en/cloud/paas/analytics-cloud/acswn/): Oracle
+Analytics Desktop is deprecated and "will no longer [be] available for
+download as of December 2026"; its last version carries the January 2026
+features; "the Oracle Analytics extension development environment and the
+associated SDKs included with Oracle Analytics Desktop are also deprecated."
+
+Consequences for this repository:
+
+1. **Archive the toolchain now.** Keep the OAD 26.01 installer and the JDK 17
+   installer in institutional storage (not in this public repo — the SDK jars
+   are Oracle-licensed). The build is reproducible only while a machine can
+   still install them.
+2. **The build output is plain files.** A packaged extension is
+   `customviz/<id>/…` + a generated `plugin.xml` + `resourcefolder.lst.json`
+   in a zip; nothing in it depends on the SDK at runtime. If the SDK becomes
+   unusable, a small packager that emits the same `plugin.xml` from the JSON
+   manifests (the mapping is visible in `build/srcPlugins` vs
+   `build/destPlugins`) is the fallback. Not built yet; tracked as a risk.
+3. **Compatibility is qualified on OAC Dev, not on the desktop.**
+   `HOST_VERSION` in `tests/lint.js` records where the allowlist was last
+   *checked*; it is not a claim that OAC matches it.
+4. **Ask Oracle** (support request) what replaces the SDK for customers who
+   build extensions. Until answered, assume none.
+
+#### Legacy list
+
+| Legacy | Current | Evidence |
 |---|---|---|
-| hand-written `plugin.xml` in `src/` | JSON manifests under `extensions/` (`devMode=NEW`); the SDK generates `plugin.xml` | Oracle's own samples still ship `plugin.xml`; the JSON form is what the SDK validates |
-| `d3js` (D3 3.4.13) | `d3v6js` (D3 6.2.0) | Oracle re-published its samples in Jan–Feb 2026 replacing `d3js` with `d3v3`; the unversioned alias is being retired |
-| `d3v3` | `d3v6js` | Cloud-only alias; **not defined in OAD 26.01** — those re-published samples do not load on the desktop |
-| `obitech-legend/legendandvizcontainer` | SVG legend drawn by the plugin | Semi-private mixin, breaks on minor updates (section 2) |
-| `knockout`, `ojs/*` | none | Not needed; OAC samples are moving off them |
-| `obitech-report/visualization` | `obitech-report/datavisualization` | Superseded |
+| host-bundled `d3js` (D3 3.4.13 [OAD]) | `d3v6js` (D3 6.2.0 [OAD]) | **[doc]** "The D3.JS v3 JavaScript library, currently used for developing custom visualizations. Planned for deprecation in May 2026." |
+| `d3v3` | `d3v6js` | **[sample]** `d3v3` is *not* a host alias. Oracle's re-published samples declare it themselves through the `oracle.bi.tech.plugin.requirejsConfig` extension point (`{"paths":{"d3v3":"https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.17/d3.min"}}`), which is Oracle's **[doc]** interim guidance ("reference the D3v3 library from the CDN link … add the CDN domain to the Safe Domains list"). It is D3 v3 plus an external CDN dependency; this family uses neither. |
+| hand-written `plugin.xml` in `src/` | JSON manifests under `extensions/`; the SDK generates `plugin.xml` | House convention. **[doc]** still documents `plugin.xml` as the packaging structure; the JSON form is what `bivalidate` validates. Not an Oracle prohibition. |
+| `obitech-legend/legendandvizcontainer` | SVG legend drawn by the plugin | **[OAD]** semi-private mixin that broke on minor updates (section 2). |
+| `knockout`, `ojs/*` | none | House policy. **[doc]** Oracle still documents Knockout for data-action editors; visualizations here do not need it. |
+| `obitech-report/visualization` | `obitech-report/datavisualization` | **[sample]** every current sample uses the latter. |
 
-### Allowlist tied to a host version
+`tests/lint.js` fails the suite when any of the left column appears.
 
-`tests/lint.js` carries `HOST_VERSION` and `ALLOWED_MODULES`: every AMD id
-the plugins may depend on, verified present in that OAD build. Verified for
-**OAD 26.01.0.0.0 (2026-01-20)** by:
+#### Bringing your own library [sample → doc]
+
+`oracle.bi.tech.plugin.requirejsConfig` lets a plugin add RequireJS `paths`
+for its own module ids. This is the mechanism to use if `d3v6js` is ever
+withdrawn: vendor a D3 build inside the plugin folder and map an id to it
+(no CDN, no Safe Domains). It is exercised by Oracle's 2026 samples and named
+in the D3 deprecation notice; the JSON-manifest equivalent should be
+confirmed with `bivalidate` before relying on it.
+
+#### Allowlist and its provenance [OAD]
+
+`ALLOWED_MODULES` in `tests/lint.js` lists the AMD ids the plugins may
+depend on. They were confirmed present in OAD 26.01.0.0.0 (2026-01-20) by:
 
 ```powershell
 cd "C:\Program Files\Oracle Analytics Desktop\war\va\plugins"
@@ -1240,79 +1289,82 @@ Get-ChildItem thirdparty\obitech-thirdparty        # d3js.js, d3v6js.js -> the t
 Select-String -Path report\report.js,viz\viz.js -Pattern '"d3v6js"' -List
 ```
 
-and, for the inherited host methods the plugins call (`getMarkingService`,
-`getCachedColorInterpolator`, `getSubElementIdFromParent`, ...):
+and each inherited host method the plugins call was grepped the same way.
+**No public Oracle document enumerates these module ids or methods**; 27 of
+the 28 inherited methods also appear in Oracle's own samples, one
+(`_doStopComponent`) only in the framework source. They are
+sample-precedented, undocumented APIs. Treatment:
 
-```powershell
-Select-String -Path report\report.js -Pattern 'getSubElementIdFromParent' | Measure-Object
-```
+- Optional conveniences are feature-detected and never on the render path
+  unguarded: `getSubElementIdFromParent` (via `_containerId()`),
+  `_addFilterMenuOption` / `_addRemoveSelectedMenuOption` /
+  `_addColorMenuOption`, the color-service trio (try/catch → custom palette).
+- Lifecycle and marking calls (`_doInitializeComponent`, `_doStopComponent`,
+  `getMarkingService`, `getEventRouter`, `subscribeToEvent`) cannot be
+  guarded away; they are accepted and are items 1 and 4 of the OAC Dev
+  verification guide.
+- Any method absent from the OAD baseline goes in `UNVERIFIED_HOST_METHODS`
+  and must be guarded *at the call site* (the lint checks the preceding 400
+  characters, so a guard elsewhere in the file does not count).
 
-A method with only one or two references in the bundle is real but thinly
-used — the likeliest to be renamed. The plugins wrap each of those in
-`try/catch` with a fallback (color service -> custom palette, container id
--> `getID()`).
+#### After every OAC update, and before OAD 26.01 stops installing
 
-### After every OAD / OAC upgrade
+1. Run section 0 of `docs/guides/oac_dev_verification.md` on OAC Dev: dump
+   the tenant's defined module ids and diff against `ALLOWED_MODULES`.
+2. If an id or method disappeared, fix the plugins first, then update the
+   lint lists and record the tenant build next to `HOST_VERSION`.
+3. If a new versioned D3 id appears, decide whether to move; never depend on
+   two D3 builds at once.
 
-1. Re-run the two checks above against the new install.
-2. If a module id or method disappeared, fix the plugins first, then update
-   `ALLOWED_MODULES` / `TOLERATED_PRIVATE_CALLS` and bump `HOST_VERSION`.
-3. If a *new* versioned id appears (for example `d3v7js`), decide whether to
-   move; do not depend on two D3 builds at once.
-4. In OAC Dev, DevTools console:
-   `require(["d3v6js"], function(d3){ console.log(d3.version); })` — the
-   cloud host updates quarterly and can be ahead of the desktop.
+#### Language level [sample]
 
-### Language level
-
-Settled by Oracle's May 2026 MapTiler / H3 samples (§6.33), which have the
-two forms side by side:
+Oracle documents no JavaScript language level, optimizer, or ES-module
+contract for extensions. The convention below is inferred from Oracle's own
+code and is a risk to test (guide section 6), not a platform rule:
 
 - **AMD entry modules** (the `define([...])` file the manifest points at, the
-  datamodel handler, anything the r.js optimizer touches): **ES5** — `var`,
-  `function`. The 12,000-line MapTiler entry file has zero `let`, `const`,
-  arrow functions or classes. Keep this convention; it is what the SDK build
-  and the OAC upload optimizer are known to handle.
-- **Everything loaded with dynamic `import(requirejs.toUrl(...))`**: native
-  **ES modules** are accepted — `export class`, `import { X } from "./y.js"`,
-  `let/const` all ship in that sample as ordinary `<resource type="script">`
-  entries. Use this route for a heavy vendored library or a modern helper
-  layer; the AMD entry stays ES5 and lazy-loads it.
+  datamodel handler): **ES5** — `var`, `function`. Every Oracle sample,
+  including the 12,000-line May 2026 MapTiler entry file, is ES5.
+- **Modules loaded with dynamic `import(requirejs.toUrl(...))`**: the MapTiler
+  sample ships native ES modules (`export class`, `import { X } from
+  "./y.js"`) as ordinary `<resource type="script">` entries and loads them
+  this way. Use this route for a heavy vendored library; the entry stays ES5.
 
-`tests/lint.js` enforces the first rule on AMD entry files only.
+`tests/lint.js` enforces the first rule on AMD entry files (let/const, arrow,
+class, template literal, default parameter, spread/rest, destructuring,
+for-of, async). Dynamic `import()` itself is the sanctioned exception.
 
-### 6.33 Patterns from Oracle's May 2026 samples (MapTiler weather, H3 grids)
+### 6.33 Patterns from Oracle's May 2026 samples (MapTiler weather, H3 grids) [sample]
 
-The two newest entries in the Oracle extensions library
-(`com-gautam-maptilerweatherh3`, `com-gautam-oraclevectormapsh3`, both
-version-stamped May 2026, kept locally under `plugin_training/`). They are
-ordinary `oracle.bi.tech.plugin.visualization` extensions, not a new
-extension type, and use no D3 at all. What they demonstrate:
+`com-gautam-maptilerweatherh3` and `com-gautam-oraclevectormapsh3`
+(version-stamped May 2026, local copies under `plugin_training/`) are
+ordinary `oracle.bi.tech.plugin.visualization` extensions, not a new type,
+and use no D3. Everything below is *what the sample does*; whether it works
+on a given tenant is section 6 of the verification guide.
 
-1. **Feature-detect host methods that may not exist yet.** The sample calls
-   `getProjection()` only behind `typeof this.getProjection === "function"`.
-   That method is **absent from OAD 26.01** and present in the cloud host —
-   the cloud updates quarterly and runs ahead of the desktop. Apply the same
-   guard to any host method with few references in the bundle (§6.32).
-   Present in 26.01 and safe to use: `getVizContextFromRenderingContext`,
-   `getLogicalDataModel`.
-2. **Lazy-load heavy libraries as ES modules.** `import(requirejs.toUrl(
-   "<plugin>/lib.js"))` returns a promise; the entry module stays small and
-   ES5. Declare `require` as an AMD dependency to get `requirejs.toUrl`.
-3. **A plugin may ship a Web Worker** (`maplibreworker.js` as a script
-   resource) — relevant if a layout ever becomes too slow for the main
-   thread (Sankey transit layout, Network stabilization).
-4. **External HTTP is possible**, gated by the tenant's CSP and by
-   judgement: `fetch()` to a third-party API with a key supplied through a
-   property-panel text gadget and cached under a namespaced settings key.
+1. **Feature-detect host methods.** The sample guards `getProjection()`,
+   `getVizContextFromRenderingContext()` and `getLogicalDataModel()` with
+   `typeof this.x === "function"`. `getProjection` is absent from OAD 26.01;
+   the other two are present. A guard proves nothing about any tenant — it
+   is the *pattern* that transfers, not a capability list.
+2. **Lazy-load heavy libraries as ES modules** via `import(requirejs.toUrl(
+   "<plugin>/lib.js"))`; declare `require` as an AMD dependency.
+3. **A plugin may ship a Web Worker** as a script resource. Safe Domains has
+   no `worker-src` setting **[doc]**; whether a packaged worker starts under
+   the tenant CSP is untested here.
+4. **External HTTP is a policy matter, not a hard limit.** The sample calls
+   `fetch()` against `api.maptiler.com` with a key from a property-panel text
+   gadget. **[doc]** Safe Domains carries per-resource permissions
+   (`connect-src`, `script-src`, …) and changes need sign-out/sign-in.
    **Not for this plugin family** — student-level data never leaves OAC.
 5. **Persisted viewer state** under an explicit settings key
-   (`...SavedViewState`), the pattern Dumbbell's `filterValues` now follows.
-6. **i18n through `ojL10n!<plugin>/nls/messages` + `obitech-framework/
-   messageformat`**, the same mechanism as §6.25; the WSU plugins still
-   hard-code their strings in an `LBL` object, which is the one place they
-   lag Oracle's current practice. Migrating is optional and mechanical.
-7. **Plugin id namespaces are author-based** (`com-gautam-…`) — consistent
+   (`…SavedViewState`); Dumbbell's `filterValues` follows the same pattern.
+6. **i18n through `ojL10n!<plugin>/nls/messages`.** **[doc]** Oracle's NLS
+   guidance requires externalized UI strings for localization. The WSU
+   plugins now load their bundle this way and take every `LBL` string from
+   `nls/root/messages.js` (English fallback in code). Gadget labels and
+   inline tooltip fragments are still literals — listed in *Known gaps*.
+7. **Plugin id namespaces are author-based** (`com-gautam-…`), consistent
    with `com-wsu-…`.
 
 ---

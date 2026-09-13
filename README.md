@@ -32,9 +32,14 @@ want from the [Releases](../../releases) page, then:
   choose the zip → **restart OAD** (the extension registry is cached).
 
 The visualizations appear under the **WSU** category in the visualization
-gallery. Uploading a zip with the same root id replaces the installed version in
-place; existing workbooks keep working as long as the grammar buckets have not
-been renamed.
+gallery. Uploading a zip with the same root id replaces the installed version
+(the Console asks to overwrite). **Tested behavior, not a contract:** on OAD
+26.01 the 1.0.0 → 1.1.1 upgrade replaced in place and saved workbooks kept
+their bucket bindings and settings. Oracle documents upload, delete and
+recovery but not a compatibility guarantee, and does not say when an open
+browser session starts running the new code. `docs/guides/oac_dev_verification.md`
+§2 is the procedure for establishing both on your tenant before a production
+upload.
 
 ## Try it with the synthetic dataset
 
@@ -51,7 +56,10 @@ bucket and what to look for.
 
 - Windows (the build scripts are PowerShell; Gradle itself is cross-platform)
 - [Oracle Analytics Desktop](https://www.oracle.com/business-analytics/analytics-desktop.html)
-  — ships the SDK tools under `<OAD install>\tools`
+  — ships the SDK tools under `<OAD install>\tools`. **Deprecated by Oracle:**
+  no downloads after December 2026; the final version (January 2026, 26.01)
+  is the one this repository was built with. Archive the installer. See
+  `docs/oac_design.md` §6.32 for what that means for this build.
 - A JDK 17 (OAD's bundled JDK at `<OAD install>\OracleBI1\jdk`, or any
   standalone JDK 17)
 - Node.js (only for the `node --check` syntax step)

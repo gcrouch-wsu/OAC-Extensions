@@ -11,6 +11,7 @@ define(['jquery',
         'obitech-reportservices/data',
         'obitech-appservices/logger',
         'd3v6js',
+        'ojL10n!com-wsu-dumbbell/nls/messages',
         'skin!css!com-wsu-dumbbell/wsuDumbbellstyles'],
         function($,
                  jsx,
@@ -24,7 +25,8 @@ define(['jquery',
                  euidef,
                  data,
                  logger,
-                 d3) {
+                 d3,
+                 nls) {
    "use strict";
 
    var MODULE_NAME = 'com-wsu-dumbbell/wsuDumbbell';
@@ -48,29 +50,36 @@ define(['jquery',
    var DCP_DATA_LAYOUT = dataviz.DataContextProperty.DATA_LAYOUT;
    var DCP_DATA_LAYOUT_HELPER = dataviz.DataContextProperty.DATA_LAYOUT_HELPER;
 
+   // User-facing strings come from nls/root/messages.js (ojL10n bundle); the
+   // English text here is the fallback when a key is missing from the bundle.
+   function L(key, fallback) {
+     var v = nls && Object.prototype.hasOwnProperty.call(nls, key) ? nls[key] : null;
+     return typeof v === "string" && v !== "" ? v : fallback;
+   }
+   
    var LBL = {
-      DIR_IMPROVED: "Improved",
-      DIR_WORSE: "Worse",
-      DIR_SAME: "Same",
-      DIR_INCOMPLETE: "Incomplete",
-      MISSING: "Missing",
-      AVG_FIRST: "Avg first",
-      AVG_SECOND: "Avg second",
-      SUMMARY_UP: "Up",
-      SUMMARY_DOWN: "Down",
-      SUMMARY_FLAT: "Flat",
-      SUMMARY_AVG: "Avg Δ",
-      SUMMARY_LARGE: "Large drops",
-      SORT_LABEL: "Sort",
-      ASC_BUTTON: "Asc",
-      DESC_BUTTON: "Desc",
-      ALL_FILTER: "All",
-      ORIGINAL_ORDER: "Original order",
-      RESET_ZOOM: "Reset Zoom",
-      EMPTY_STATE: "No rows to display. Drop a measure on Value(s), an attribute on Category, and optionally configure missing-value handling or filters.",
-      FILTERED_EMPTY: "No rows match the current Filter By selection.",
-      GROUPS_TRUNCATED: "Showing the first {shown} of {total} groups.",
-      SORTED_BY: " sorted by "
+     DIR_IMPROVED: L("WSUDUMBBELL_LBL_DIR_IMPROVED", "Improved"),
+     DIR_WORSE: L("WSUDUMBBELL_LBL_DIR_WORSE", "Worse"),
+     DIR_SAME: L("WSUDUMBBELL_LBL_DIR_SAME", "Same"),
+     DIR_INCOMPLETE: L("WSUDUMBBELL_LBL_DIR_INCOMPLETE", "Incomplete"),
+     MISSING: L("WSUDUMBBELL_LBL_MISSING", "Missing"),
+     AVG_FIRST: L("WSUDUMBBELL_LBL_AVG_FIRST", "Avg first"),
+     AVG_SECOND: L("WSUDUMBBELL_LBL_AVG_SECOND", "Avg second"),
+     SUMMARY_UP: L("WSUDUMBBELL_LBL_SUMMARY_UP", "Up"),
+     SUMMARY_DOWN: L("WSUDUMBBELL_LBL_SUMMARY_DOWN", "Down"),
+     SUMMARY_FLAT: L("WSUDUMBBELL_LBL_SUMMARY_FLAT", "Flat"),
+     SUMMARY_AVG: L("WSUDUMBBELL_LBL_SUMMARY_AVG", "Avg Δ"),
+     SUMMARY_LARGE: L("WSUDUMBBELL_LBL_SUMMARY_LARGE", "Large drops"),
+     SORT_LABEL: L("WSUDUMBBELL_LBL_SORT_LABEL", "Sort"),
+     ASC_BUTTON: L("WSUDUMBBELL_LBL_ASC_BUTTON", "Asc"),
+     DESC_BUTTON: L("WSUDUMBBELL_LBL_DESC_BUTTON", "Desc"),
+     ALL_FILTER: L("WSUDUMBBELL_LBL_ALL_FILTER", "All"),
+     ORIGINAL_ORDER: L("WSUDUMBBELL_LBL_ORIGINAL_ORDER", "Original order"),
+     RESET_ZOOM: L("WSUDUMBBELL_LBL_RESET_ZOOM", "Reset Zoom"),
+     EMPTY_STATE: L("WSUDUMBBELL_LBL_EMPTY_STATE", "No rows to display. Drop a measure on Value(s), an attribute on Category, and optionally configure missing-value handling or filters."),
+     FILTERED_EMPTY: L("WSUDUMBBELL_LBL_FILTERED_EMPTY", "No rows match the current Filter By selection."),
+     GROUPS_TRUNCATED: L("WSUDUMBBELL_LBL_GROUPS_TRUNCATED", "Showing the first {shown} of {total} groups."),
+     SORTED_BY: L("WSUDUMBBELL_LBL_SORTED_BY", " sorted by ")
    };
 
    function symbolType(name) {
@@ -206,7 +215,7 @@ define(['jquery',
       this.clearZoomState = function() { zoomState = null; };
    }
 
-   WsuDumbbellViz.VERSION = "1.1.1";
+   WsuDumbbellViz.VERSION = "1.1.2";
    jsx.extend(WsuDumbbellViz, dataviz.DataVisualization);
 
    function str(value) {
@@ -695,11 +704,21 @@ define(['jquery',
       });
    };
 
+   // getSubElementIdFromParent is a host convenience that is not documented; use it
+   // when present, otherwise fall back to the viz id. Never let its absence break render.
+   WsuDumbbellViz.prototype._containerId = function(elContainer, prefix) {
+     var id = "";
+     if (typeof this.getSubElementIdFromParent === "function") {
+       try { id = this.getSubElementIdFromParent(elContainer, prefix) || ""; } catch (e) { id = ""; }
+     }
+     return id || this.getID() || ("viz_" + Date.now());
+   };
+
    WsuDumbbellViz.prototype._draw = function(elContainer, rows, oDataLayout) {
       var oViz = this;
       this._detachZoomEsc();
       this._drawnRows = rows;
-      var containerId = this.getSubElementIdFromParent(elContainer, "wsuDumbbell") || this.getID() || ("viz_" + new Date().getTime());
+      var containerId = this._containerId(elContainer, "wsuDumbbell");
       var rootId = "wsu_dumbbell_" + containerId.replace(/[^A-Za-z0-9_-]/g, "_");
       $(elContainer).html("<div id='" + rootId + "' class='wsu-dumbbell' data-zoom-mode='" + esc(this.Config.zoomMode || "off") + "' data-brush-mode='" + esc(this.Config.brushMode || "off") + "'></div>");
       var root = d3.select("#" + rootId);
@@ -1614,8 +1633,8 @@ define(['jquery',
       WsuDumbbellViz.superClass._addVizSpecificMenuOptions.call(this, oTransientVizContext, sMenuType, aResults, contextmenu, evtParams, oTransientRenderingContext);
       if (sMenuType === euidef.CM_TYPE_VIZ_PROPS && !this.isViewOnlyLimit()) {
          if (!oTransientRenderingContext) oTransientRenderingContext = this.createRenderingContext(oTransientVizContext);
-         this._addFilterMenuOption(oTransientVizContext, aResults, null, null, oTransientRenderingContext);
-         this._addRemoveSelectedMenuOption(oTransientVizContext, aResults, null, null, oTransientRenderingContext);
+         if (typeof this._addFilterMenuOption === 'function') this._addFilterMenuOption(oTransientVizContext, aResults, null, null, oTransientRenderingContext);
+         if (typeof this._addRemoveSelectedMenuOption === 'function') this._addRemoveSelectedMenuOption(oTransientVizContext, aResults, null, null, oTransientRenderingContext);
       }
    };
 
@@ -1651,13 +1670,21 @@ define(['jquery',
       var factory = this.getGadgetFactory();
 
       var pGen = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, euidef.GD_PANEL_ID_GENERAL);
-      function tryPanel(id) {
-         try { var p = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, id); return p || pGen; }
-         catch (e) { return pGen; }
+      // Ask for a panel the host itself defines (euidef.GD_PANEL_ID_*). Unknown ids
+      // are not requested: forcePanelByID would create an unusable panel for them.
+      function hostPanel(constName) {
+        var id = euidef && constName ? euidef[constName] : null;
+        if (!id) return pGen;
+        try {
+          var p = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, id);
+          return p || pGen;
+        } catch (e) {
+          return pGen;
+        }
       }
-      var pStyle = tryPanel("wsuDumbbellStyle");
-      var pReference = tryPanel("wsuDumbbellReference");
-      var pAxisLegend = tryPanel("wsuDumbbellAxisLegend");
+      var pStyle = pGen;
+      var pReference = pGen;
+      var pAxisLegend = hostPanel("GD_PANEL_ID_AXIS");
 
       var base = euidef.GD_FIELD_ORDER_GENERAL_LINE_TYPE;
       var ord = {GEN: base + 100, STY: base + 200, REF: base + 300, AXL: base + 400};

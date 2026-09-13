@@ -9,5 +9,20 @@ define({
     "WSULINE_TOOLTIP": "Tooltip detail",
     "WSULINE_TERM_CODE": "Sorting Term Code (STRM)",
     "WSULINE_VALUE_LABEL": "Dynamic Value Label (from data)",
-    "TEXT_MESSAGE": "WSU line chart with shared-X tooltip, drag-to-zoom, header attributes, and built-in 1- and 3-year delta comparisons"
+    "TEXT_MESSAGE": "WSU line chart with shared-X tooltip, drag-to-zoom, header attributes, and built-in 1- and 3-year delta comparisons",
+  "WSULINE_LBL_COMPARE_VS_AVG": "Vs Avg",
+  "WSULINE_LBL_COMPARE_RANK": "Rank",
+  "WSULINE_LBL_COMPARE_CHANGE": "Δ 1 Year",
+  "WSULINE_LBL_COMPARE_PCT_CHANGE": "Δ% 1 Year",
+  "WSULINE_LBL_DELTA_3Y_VALUE": "Δ 3 Years",
+  "WSULINE_LBL_DELTA_3Y_PCT": "Δ% 3 Years",
+  "WSULINE_LBL_AVG_PREFIX": "Average",
+  "WSULINE_LBL_ROW_LIMIT_FOOTER": "Showing {0} of {1} series",
+  "WSULINE_LBL_COL_LIMIT_FOOTER_ONE": "+{0} more column not shown",
+  "WSULINE_LBL_COL_LIMIT_FOOTER_MANY": "+{0} more columns not shown",
+  "WSULINE_LBL_RESET_ZOOM": "Reset Zoom",
+  "WSULINE_LBL_HEADER_NONE": "—",
+  "WSULINE_LBL_HEADER_MORE": "+{0} more",
+  "WSULINE_LBL_EMPTY_BUCKETS": "No rows to display. Drop a measure on Value (Y-Axis), an attribute on Category (X-Axis), and optionally a field on Series / Color.",
+  "WSULINE_LBL_EMPTY_NO_NUMERIC": "Source data has rows but no numeric values for the selected measure. Verify the Y-axis field is treated as a Measure (not Attribute) on the dataset."
 });

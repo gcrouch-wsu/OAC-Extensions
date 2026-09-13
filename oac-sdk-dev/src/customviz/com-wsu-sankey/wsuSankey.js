@@ -11,6 +11,7 @@ define(['jquery',
         'obitech-reportservices/data',
         'obitech-appservices/logger',
         'd3v6js',
+        'ojL10n!com-wsu-sankey/nls/messages',
         'skin!css!com-wsu-sankey/wsuSankeystyles'],
         function($,
                  jsx,
@@ -24,7 +25,8 @@ define(['jquery',
                  euidef,
                  data,
                  logger,
-                 d3) {
+                 d3,
+                 nls) {
   "use strict";
 
   var MODULE_NAME = "com-wsu-sankey/wsuSankey";
@@ -48,10 +50,17 @@ define(['jquery',
   var DCP_DATA_LAYOUT_HELPER = dataviz.DataContextProperty.DATA_LAYOUT_HELPER;
   var LAYER_DISPLAY_NAME = data.LayerMetadata.LAYER_DISPLAY_NAME;
 
+  // User-facing strings come from nls/root/messages.js (ojL10n bundle); the
+  // English text here is the fallback when a key is missing from the bundle.
+  function L(key, fallback) {
+    var v = nls && Object.prototype.hasOwnProperty.call(nls, key) ? nls[key] : null;
+    return typeof v === "string" && v !== "" ? v : fallback;
+  }
+  
   var LBL = {
-    EMPTY: "No rows to display. Add Start Node and End Node buckets.",
-    UNKNOWN_START: "(Unknown Start)",
-    UNKNOWN_END: "(Unknown End)"
+    EMPTY: L("WSUSANKEY_LBL_EMPTY", "No rows to display. Add Start Node and End Node buckets."),
+    UNKNOWN_START: L("WSUSANKEY_LBL_UNKNOWN_START", "(Unknown Start)"),
+    UNKNOWN_END: L("WSUSANKEY_LBL_UNKNOWN_END", "(Unknown End)")
   };
 
   // Composite dictionary keys are JSON tuples, so no label content can make
@@ -218,7 +227,7 @@ define(['jquery',
     };
   }
 
-  WsuSankeyViz.VERSION = "1.1.1";
+  WsuSankeyViz.VERSION = "1.1.2";
   jsx.extend(WsuSankeyViz, dataviz.DataVisualization);
 
   WsuSankeyViz.prototype._saveSettings = function() {
@@ -818,8 +827,18 @@ define(['jquery',
     }
   };
 
+  // getSubElementIdFromParent is a host convenience that is not documented; use it
+  // when present, otherwise fall back to the viz id. Never let its absence break render.
+  WsuSankeyViz.prototype._containerId = function(elContainer, prefix) {
+    var id = "";
+    if (typeof this.getSubElementIdFromParent === "function") {
+      try { id = this.getSubElementIdFromParent(elContainer, prefix) || ""; } catch (e) { id = ""; }
+    }
+    return id || this.getID() || ("viz_" + Date.now());
+  };
+
   WsuSankeyViz.prototype._draw = function(elContainer, model, oDataLayout) {
-    var containerId = this.getSubElementIdFromParent(elContainer, "wsuSankey") || this.getID() || ("viz_" + Date.now());
+    var containerId = this._containerId(elContainer, "wsuSankey");
     var rootId = "wsu_sankey_" + containerId.replace(/[^A-Za-z0-9_-]/g, "_");
     $(elContainer).html("<div id='" + rootId + "' class='wsu-sankey'></div>");
     var root = d3.select("#" + rootId);
@@ -1218,12 +1237,20 @@ define(['jquery',
     this.loadConfig();
     var factory = this.getGadgetFactory();
     var pGen = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, euidef.GD_PANEL_ID_GENERAL);
-    function tryPanel(id) {
-      try { var p = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, id); return p || pGen; }
-      catch (e) { return pGen; }
+    // Ask for a panel the host itself defines (euidef.GD_PANEL_ID_*). Unknown ids
+    // are not requested: forcePanelByID would create an unusable panel for them.
+    function hostPanel(constName) {
+      var id = euidef && constName ? euidef[constName] : null;
+      if (!id) return pGen;
+      try {
+        var p = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, id);
+        return p || pGen;
+      } catch (e) {
+        return pGen;
+      }
     }
-    var pRules = tryPanel("wsuSankeyRules");
-    var pStyle = tryPanel("wsuSankeyStyle");
+    var pRules = pGen;
+    var pStyle = pGen;
     var base = euidef.GD_FIELD_ORDER_GENERAL_LINE_TYPE;
     var ord = {GEN: base + 100, RULE: base + 200, STY: base + 300};
     var nx = function(g) { return ord[g]++; };
