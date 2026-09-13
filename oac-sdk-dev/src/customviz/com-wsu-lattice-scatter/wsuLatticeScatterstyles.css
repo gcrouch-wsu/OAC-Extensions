@@ -54,6 +54,14 @@
   pointer-events: none;
 }
 
+/* Progress status (Progress: Threshold). Blocked attempts are dimmed so the
+   threshold has a visible effect without adding tooltip wording. */
+.wsu-lattice .lattice-point.progress-blocked .point-label,
+.wsu-lattice .lattice-point.progress-blocked .point-bg,
+.wsu-lattice .lattice-point.progress-blocked .point-symbol {
+  opacity: 0.55;
+}
+
 .wsu-lattice .point-hit {
   cursor: pointer;
 }
