@@ -43,9 +43,12 @@ stock visualizations cannot provide.
 ## 2. Constraints — Hard Limitations & Vulnerabilities
 
 ### Hard Limitations (Avoid Wasting Time)
-- **External Data Fetching**: Plugins cannot fetch data from external APIs
-  or unrelated OAC datasets. All data must be bound to the visualization's
-  bucket configuration.
+- **Unrelated OAC datasets**: a plugin sees only the data bound to its own
+  grammar buckets; it cannot query other OAC datasets or the semantic model.
+  (*External* HTTP is **not** a hard limitation — see §6.33. Oracle's May 2026
+  MapTiler sample calls `fetch()` against `api.maptiler.com` and ships a Web
+  Worker. It is a CSP / governance decision, and for this plugin family the
+  policy is: no external calls, because the data is student-level.)
 - **Fixed Property Panel**: The layout of the right-hand property panel is
   locked. You can add gadgets (sliders, switchers, text fields), but you
   cannot change the overall panel hierarchy or add complex React/HTML widgets
@@ -1262,11 +1265,55 @@ used — the likeliest to be renamed. The plugins wrap each of those in
 
 ### Language level
 
-The plugins are ES5 by convention (`var`, `function`), matching every Oracle
-sample including the 2026 re-publishes. This is compatibility, not legacy:
-the OAC upload path's optimizer has not been verified with ES2015+ syntax.
-Do not introduce `class`, arrow functions, or `let/const` until that is
-confirmed on OAC Dev.
+Settled by Oracle's May 2026 MapTiler / H3 samples (§6.33), which have the
+two forms side by side:
+
+- **AMD entry modules** (the `define([...])` file the manifest points at, the
+  datamodel handler, anything the r.js optimizer touches): **ES5** — `var`,
+  `function`. The 12,000-line MapTiler entry file has zero `let`, `const`,
+  arrow functions or classes. Keep this convention; it is what the SDK build
+  and the OAC upload optimizer are known to handle.
+- **Everything loaded with dynamic `import(requirejs.toUrl(...))`**: native
+  **ES modules** are accepted — `export class`, `import { X } from "./y.js"`,
+  `let/const` all ship in that sample as ordinary `<resource type="script">`
+  entries. Use this route for a heavy vendored library or a modern helper
+  layer; the AMD entry stays ES5 and lazy-loads it.
+
+`tests/lint.js` enforces the first rule on AMD entry files only.
+
+### 6.33 Patterns from Oracle's May 2026 samples (MapTiler weather, H3 grids)
+
+The two newest entries in the Oracle extensions library
+(`com-gautam-maptilerweatherh3`, `com-gautam-oraclevectormapsh3`, both
+version-stamped May 2026, kept locally under `plugin_training/`). They are
+ordinary `oracle.bi.tech.plugin.visualization` extensions, not a new
+extension type, and use no D3 at all. What they demonstrate:
+
+1. **Feature-detect host methods that may not exist yet.** The sample calls
+   `getProjection()` only behind `typeof this.getProjection === "function"`.
+   That method is **absent from OAD 26.01** and present in the cloud host —
+   the cloud updates quarterly and runs ahead of the desktop. Apply the same
+   guard to any host method with few references in the bundle (§6.32).
+   Present in 26.01 and safe to use: `getVizContextFromRenderingContext`,
+   `getLogicalDataModel`.
+2. **Lazy-load heavy libraries as ES modules.** `import(requirejs.toUrl(
+   "<plugin>/lib.js"))` returns a promise; the entry module stays small and
+   ES5. Declare `require` as an AMD dependency to get `requirejs.toUrl`.
+3. **A plugin may ship a Web Worker** (`maplibreworker.js` as a script
+   resource) — relevant if a layout ever becomes too slow for the main
+   thread (Sankey transit layout, Network stabilization).
+4. **External HTTP is possible**, gated by the tenant's CSP and by
+   judgement: `fetch()` to a third-party API with a key supplied through a
+   property-panel text gadget and cached under a namespaced settings key.
+   **Not for this plugin family** — student-level data never leaves OAC.
+5. **Persisted viewer state** under an explicit settings key
+   (`...SavedViewState`), the pattern Dumbbell's `filterValues` now follows.
+6. **i18n through `ojL10n!<plugin>/nls/messages` + `obitech-framework/
+   messageformat`**, the same mechanism as §6.25; the WSU plugins still
+   hard-code their strings in an `LBL` object, which is the one place they
+   lag Oracle's current practice. Migrating is optional and mechanical.
+7. **Plugin id namespaces are author-based** (`com-gautam-…`) — consistent
+   with `com-wsu-…`.
 
 ---
 

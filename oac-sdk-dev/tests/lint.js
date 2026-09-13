@@ -35,8 +35,15 @@ var ALLOWED_MODULES = [
   "obitech-application/gadgets",
   "obitech-application/extendable-ui-definitions",
   "obitech-appservices/logger",
-  "obitech-viz/genericDataModelHandler"
+  "obitech-viz/genericDataModelHandler",
+  // Established by Oracle's May 2026 samples (oac_design.md 6.33); present in 26.01.
+  "require",                            // for requirejs.toUrl() when lazy-loading ES modules
+  "obitech-framework/messageformat"     // pairs with ojL10n!<plugin>/nls/messages
 ];
+
+// Host methods known to be ABSENT from OAD HOST_VERSION but present in the
+// cloud host. Calls must be feature-detected (typeof this.x === "function").
+var CLOUD_ONLY_METHODS = ["getProjection"];
 
 // Ids the host is retiring or that break on minor updates. Never reintroduce.
 var FORBIDDEN_MODULES = {
@@ -65,6 +72,30 @@ function problem(file, msg) { problems.push(path.relative(SRC, file) + ": " + ms
 
 function listPlugins() {
   return fs.readdirSync(SRC).filter(function(d) { return /^com-wsu-/.test(d); });
+}
+
+// Replace comments and string/regex literals with spaces (length-preserving is
+// not needed; we only test for presence of syntax afterwards).
+function stripCommentsAndStrings(code) {
+  var out = "";
+  var i = 0, n = code.length;
+  while (i < n) {
+    var c = code[i], d = code[i + 1];
+    if (c === "/" && d === "/") { while (i < n && code[i] !== "\n") i++; continue; }
+    if (c === "/" && d === "*") { i += 2; while (i < n && !(code[i] === "*" && code[i + 1] === "/")) i++; i += 2; continue; }
+    if (c === '"' || c === "'" || c === "`") {
+      var q = c; i++;
+      while (i < n && code[i] !== q) { if (code[i] === "\\") i++; i++; }
+      i++; out += (q === "`" ? " TEMPLATE_LITERAL_MARKER " : " "); continue;
+    }
+    if (c === "/" && /[=(,:\[!&|?{};\n]\s*$/.test(out.slice(-3))) {
+      // regex literal (heuristic: '/' after an operator/opening token)
+      i++; while (i < n && code[i] !== "/") { if (code[i] === "\\") i++; if (code[i] === "\n") break; i++; }
+      i++; out += " "; continue;
+    }
+    out += c; i++;
+  }
+  return out;
 }
 
 function amdDeps(code) {
@@ -97,6 +128,7 @@ listPlugins().forEach(function(plugin) {
         return;
       }
       if (id.indexOf(plugin + "/") === 0) return;           // the plugin's own files (lib/, nls/)
+      if (id.indexOf("ojL10n!" + plugin + "/") === 0) return; // the plugin's own i18n bundle
       if (FORBIDDEN_MODULES[id]) { problem(file, "forbidden dependency '" + id + "': " + FORBIDDEN_MODULES[id]); return; }
       if (ALLOWED_MODULES.indexOf(id) < 0) problem(file, "dependency '" + id + "' is not in the allowlist verified against OAD " + HOST_VERSION + " — verify it exists in the host and add it to tests/lint.js");
     });
@@ -115,7 +147,26 @@ listPlugins().forEach(function(plugin) {
       problem(file, "calls semi-private host method '" + name + "' — add a justification to TOLERATED_PRIVATE_CALLS or avoid it");
     });
 
-    // 3. Legacy string markers that do not appear as AMD deps.
+    // 3. AMD entry files stay ES5 (the optimizer path); ES2015+ belongs in
+    //    modules loaded via import(requirejs.toUrl(...)) — see oac_design.md 6.32.
+    // Scan code only: comments and string literals are blanked first so prose
+    // like "let the wheel" or a backtick in a comment cannot trip the rule.
+    var codeOnly = stripCommentsAndStrings(code);
+    var es2015 = [];
+    if (/(^|[^A-Za-z0-9_$.])(let|const)\s+[A-Za-z_$]/.test(codeOnly)) es2015.push("let/const");
+    if (/=>/.test(codeOnly)) es2015.push("arrow function");
+    if (/(^|[^A-Za-z0-9_$.])class\s+[A-Z][A-Za-z0-9_$]*\s*(extends\s+[A-Za-z_$][\w$.]*\s*)?\{/.test(codeOnly)) es2015.push("class");
+    if (/TEMPLATE_LITERAL_MARKER/.test(codeOnly)) es2015.push("template literal");
+    if (es2015.length) problem(file, "AMD entry file uses ES2015+ syntax (" + es2015.join(", ") + "); keep entry modules ES5 and lazy-load modern code with import()");
+
+    // 4. Cloud-only host methods must be feature-detected.
+    CLOUD_ONLY_METHODS.forEach(function(m) {
+      var direct = code.indexOf("this." + m + "(") >= 0;
+      var guarded = code.indexOf("typeof this." + m + " === 'function'") >= 0 || code.indexOf('typeof this.' + m + ' === "function"') >= 0;
+      if (direct && !guarded) problem(file, "calls '" + m + "', which is absent from OAD " + HOST_VERSION + " — wrap it in typeof this." + m + " === 'function'");
+    });
+
+    // 5. Legacy string markers that do not appear as AMD deps.
     if (/legendandvizcontainer/.test(code)) problem(file, "references legendandvizcontainer");
     if (/\bd3\.(layout|svg\.line|scale\.linear|behavior)\b/.test(code)) problem(file, "uses a D3 v3-only API");
   });
