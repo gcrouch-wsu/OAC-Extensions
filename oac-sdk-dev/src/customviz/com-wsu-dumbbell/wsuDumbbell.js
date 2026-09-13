@@ -68,6 +68,8 @@ define(['jquery',
       ORIGINAL_ORDER: "Original order",
       RESET_ZOOM: "Reset Zoom",
       EMPTY_STATE: "No rows to display. Drop a measure on Value(s), an attribute on Category, and optionally configure missing-value handling or filters.",
+      FILTERED_EMPTY: "No rows match the current Filter By selection.",
+      GROUPS_TRUNCATED: "Showing the first {shown} of {total} groups.",
       SORTED_BY: " sorted by "
    };
 
@@ -110,8 +112,8 @@ define(['jquery',
          sortControlStyle: "compact",
          controlSpacing: "default",
          jitter: "on",
-         performanceMode: "auto",
          longFormatRoleMapping: "keyword",
+         filterValues: {},
          // Tooltip
          tooltipLayout: "table",
          showSummary: "on",
@@ -190,6 +192,7 @@ define(['jquery',
          this.Config.largeChangeThreshold = Number(this.Config.largeChangeThreshold) || 1;
          this.Config.legendMarkerSize = Number(this.Config.legendMarkerSize);
          if (isNaN(this.Config.legendMarkerSize) || this.Config.legendMarkerSize < 4) this.Config.legendMarkerSize = 8;
+         if (!this.Config.filterValues || typeof this.Config.filterValues !== "object") this.Config.filterValues = {};
       };
 
       this.getSelectedRows = function() { return selectedRows; };
@@ -203,7 +206,7 @@ define(['jquery',
       this.clearZoomState = function() { zoomState = null; };
    }
 
-   WsuDumbbellViz.VERSION = "1.0.1";
+   WsuDumbbellViz.VERSION = "1.1.0";
    jsx.extend(WsuDumbbellViz, dataviz.DataVisualization);
 
    function str(value) {
@@ -303,12 +306,15 @@ define(['jquery',
       return LBL.DIR_SAME;
    }
 
+   var zoomInstallSeq = 0;
+
    function parseLabeledValues(text) {
       return tokens(text).map(function(item) {
          var parts = item.split(':');
          var value = parseFloat(parts[0]);
          if (isNaN(value)) return null;
-         return {value: value, label: str(parts.slice(1).join(':') || parts[0])};
+         var explicit = str(parts.slice(1).join(':')).trim();
+         return {value: value, label: explicit || str(parts[0]), labelIsValue: !explicit};
       }).filter(function(item) { return item !== null; });
    }
 
@@ -351,6 +357,10 @@ define(['jquery',
       sortLabels.forEach(function(lab, i) {
          options.push({value: "sort-" + i, label: lab});
       });
+      options.push({value: "first", label: "First value"});
+      options.push({value: "second", label: "Second value"});
+      options.push({value: "delta", label: "\u0394 (signed)"});
+      options.push({value: "absDelta", label: "\u0394 (absolute)"});
       // Surface saved value if it no longer maps to a current bucket
       var current = str(this.Config.sortBy);
       if (current && current !== "original") {
@@ -460,7 +470,7 @@ define(['jquery',
    };
 
    WsuDumbbellViz.prototype._generateLongData = function(oDataLayout, helper, oColorContext, oColorInterpolator, colorServiceAvailable, measures, layers, nRows, entityLabel, roleLabel, detailLabels, groupLabel, sortLabels, filterLabels) {
-      var byEntity = {};
+      var byEntity = Object.create(null);
       var oViz = this;
       for (var rowIndex = 0; rowIndex < Math.max(nRows, 0); rowIndex++) {
          var meta = this._readRowMeta(oDataLayout, helper, oColorContext, oColorInterpolator, colorServiceAvailable, layers, rowIndex, detailLabels, sortLabels, filterLabels);
@@ -488,13 +498,18 @@ define(['jquery',
          target.sourceRows.push(rowIndex);
          var resolved = oViz._resolveLongRole(role, target.rolesSeenCount);
          target.rolesSeenCount++;
-         if (resolved === "first" && isNaN(target.first)) {
-            target.first = value;
-            target.firstName = oViz._configText("firstLabel", role || "First value");
+         if (resolved === "first") {
+            // Duplicate observations for a role never spill into the other endpoint.
+            if (isNaN(target.first)) {
+               target.first = value;
+               target.firstName = oViz._configText("firstLabel", role || "First value");
+            }
          }
-         else if (resolved === "second" && isNaN(target.second)) {
-            target.second = value;
-            target.secondName = oViz._configText("secondLabel", role || "Second value");
+         else if (resolved === "second") {
+            if (isNaN(target.second)) {
+               target.second = value;
+               target.secondName = oViz._configText("secondLabel", role || "Second value");
+            }
          }
          else if (isNaN(target.first)) {
             target.first = value;
@@ -593,7 +608,7 @@ define(['jquery',
    };
 
    WsuDumbbellViz.prototype._aggregateRows = function(rows) {
-      var groups = {};
+      var groups = Object.create(null);
       rows.forEach(function(row) {
          var key = row.group || "All";
          if (!groups[key]) groups[key] = {items: [], key: key};
@@ -617,8 +632,8 @@ define(['jquery',
             key,
             items[0].firstName,
             items[0].secondName,
-            aggFn(firstVals),
-            aggFn(secondVals),
+            firstVals.length ? aggFn(firstVals) : NaN,
+            secondVals.length ? aggFn(secondVals) : NaN,
             [],
             key,
             items[0].groupLabel,
@@ -628,6 +643,7 @@ define(['jquery',
             []
          );
          row.count = items.length;
+         row.isAggregate = true;
          return row;
       }, this);
    };
@@ -681,6 +697,8 @@ define(['jquery',
 
    WsuDumbbellViz.prototype._draw = function(elContainer, rows, oDataLayout) {
       var oViz = this;
+      this._detachZoomEsc();
+      this._drawnRows = rows;
       var containerId = this.getSubElementIdFromParent(elContainer, "wsuDumbbell") || this.getID() || ("viz_" + new Date().getTime());
       var rootId = "wsu_dumbbell_" + containerId.replace(/[^A-Za-z0-9_-]/g, "_");
       $(elContainer).html("<div id='" + rootId + "' class='wsu-dumbbell' data-zoom-mode='" + esc(this.Config.zoomMode || "off") + "' data-brush-mode='" + esc(this.Config.brushMode || "off") + "'></div>");
@@ -793,11 +811,12 @@ define(['jquery',
          g.append("g").attr("class", "grid").call(d3.axisLeft(y).tickSize(-box.width).tickFormat(""));
       }
 
-      var byKey = {};
+      var byKey = Object.create(null);
       rows.forEach(function(row) { byKey[row.xKey] = row; });
       var xAxis = d3.axisBottom(x).tickValues(this._tickValues(rows)).tickFormat(function(xKey) {
          var row = byKey[xKey];
          if (!row) return "";
+         if (oViz.Config.xLabels === "off") return "";
          if (!oViz._shouldShowLabels(rows.length)) return String(row.position || "");
          return label(row.entity, 16);
       });
@@ -897,10 +916,20 @@ define(['jquery',
       }
    };
 
+   WsuDumbbellViz.prototype._detachZoomEsc = function() {
+      if (this._zoomEscHandler) {
+         document.removeEventListener("keydown", this._zoomEscHandler);
+         this._zoomEscHandler = null;
+      }
+   };
+
    WsuDumbbellViz.prototype._installZoomBox = function(svg, g, innerWidth, innerHeight, x, y, rows, mode) {
       var oViz = this;
       var xMode = mode === "x" || mode === "xy";
       var yMode = mode === "y" || mode === "xy";
+      // Small multiples install one zoom box per panel on the shared <svg>;
+      // d3 replaces listeners with the same typename, so each panel needs its own.
+      var ns = ".zoom" + (++zoomInstallSeq);
       var zoomGroup = g.append("g").attr("class", "zoom-overlay-group");
       var dragRect = zoomGroup.append("rect")
          .attr("class", "zoom-rect")
@@ -919,9 +948,10 @@ define(['jquery',
          dragging = false;
          dragRect.attr("display", "none");
          if (escHandler) { document.removeEventListener("keydown", escHandler); escHandler = null; }
+         if (oViz._zoomEscHandler === escHandler) oViz._zoomEscHandler = null;
       }
 
-      svg.on("mousedown.zoom", function(event) {
+      svg.on("mousedown" + ns, function(event) {
          if (event.button !== 0) return;
          var pt = pointerInChart(event);
          if (pt.x < 0 || pt.x > innerWidth || pt.y < 0 || pt.y > innerHeight) return;
@@ -933,10 +963,12 @@ define(['jquery',
          var rectW = xMode ? 0 : innerWidth;
          var rectH = yMode ? 0 : innerHeight;
          dragRect.attr("display", null).attr("x", rectX).attr("y", rectY).attr("width", rectW).attr("height", rectH);
+         oViz._detachZoomEsc();
          escHandler = function(ev) { if (ev.key === "Escape" && dragging) { ev.preventDefault(); endDrag(); } };
+         oViz._zoomEscHandler = escHandler;
          document.addEventListener("keydown", escHandler);
       });
-      svg.on("mousemove.zoom", function(event) {
+      svg.on("mousemove" + ns, function(event) {
          if (!dragging) return;
          var pt = pointerInChart(event);
          var cx = Math.max(0, Math.min(innerWidth, pt.x));
@@ -947,7 +979,7 @@ define(['jquery',
          var rh = yMode ? Math.abs(cy - startY) : innerHeight;
          dragRect.attr("x", rx).attr("y", ry).attr("width", rw).attr("height", rh);
       });
-      svg.on("mouseup.zoom", function(event) {
+      svg.on("mouseup" + ns, function(event) {
          if (!dragging) return;
          var pt = pointerInChart(event);
          var cx = Math.max(0, Math.min(innerWidth, pt.x));
@@ -977,8 +1009,10 @@ define(['jquery',
          oViz.setZoomState(newState);
          oViz._rerender();
       });
-      svg.on("mouseleave.zoom", function() { if (dragging) endDrag(); });
-      svg.on("dblclick.zoom", function(event) {
+      svg.on("mouseleave" + ns, function() { if (dragging) endDrag(); });
+      svg.on("dblclick" + ns, function(event) {
+         var pt = pointerInChart(event);
+         if (pt.x < 0 || pt.x > innerWidth || pt.y < 0 || pt.y > innerHeight) return;
          event.preventDefault();
          if (oViz.getZoomState()) { oViz.clearZoomState(); oViz._rerender(); }
       });
@@ -1002,11 +1036,23 @@ define(['jquery',
 
    WsuDumbbellViz.prototype._drawSmallMultiples = function(svg, rows, margin, width, height, tooltip, oDataLayout, root) {
       var groups = d3.group(rows, function(d) { return d.group || "Ungrouped"; });
-      var keys = Array.from(groups.keys()).slice(0, 12);
+      var allKeys = Array.from(groups.keys());
+      var keys = allKeys.slice(0, 12);
       var panelGap = 22;
       var availableHeight = Math.max(height - margin.top - margin.bottom, 120);
       var panelHeight = Math.max((availableHeight - panelGap * (keys.length - 1)) / Math.max(keys.length, 1), 70);
       var panelWidth = Math.max(width - margin.left - margin.right, 120);
+      // When the minimum panel height wins, the stack is taller than the SVG:
+      // grow the SVG (the chart area scrolls) instead of clipping the last panels.
+      var neededHeight = margin.top + margin.bottom + keys.length * panelHeight + panelGap * (keys.length - 1);
+      if (neededHeight > height) {
+         svg.attr("height", neededHeight).attr("viewBox", "0 0 " + width + " " + neededHeight);
+      }
+      if (allKeys.length > keys.length) {
+         svg.append("text").attr("class", "subtle small-multiples-note")
+            .attr("x", margin.left).attr("y", 12)
+            .text(LBL.GROUPS_TRUNCATED.replace("{shown}", keys.length).replace("{total}", allKeys.length));
+      }
       keys.forEach(function(key, i) {
          var panelRows = groups.get(key);
          panelRows.forEach(function(row, j) {
@@ -1142,12 +1188,13 @@ define(['jquery',
 
    WsuDumbbellViz.prototype._legendItems = function(sample, rows) {
       if (!sample) return [];
+      var oViz = this;
       if (this.Config.colorMode === "group" && this._hasGroups(rows)) {
          var groups = Array.from(new Set(rows.map(function(d) { return d.group || "Ungrouped"; }))).slice(0, 12);
-         return groups.map(function(group, i) {
-            var groupRow = rows.filter(function(row) { return (row.group || "Ungrouped") === group; })[0] || {};
-            return {label: group, color: groupRow.groupColor || GROUP_PALETTE[i % GROUP_PALETTE.length]};
-         });
+         return groups.map(function(group) {
+            var groupRow = rows.filter(function(row) { return (row.group || "Ungrouped") === group; })[0] || {group: group};
+            return {label: group, color: oViz._groupColor(groupRow)};
+         }, this);
       }
       if (this.Config.colorMode === "direction") {
          return [
@@ -1252,7 +1299,9 @@ define(['jquery',
       }
       var lineGroups = g.selectAll(".reference-group").data(lines).enter().append("g").attr("class", "reference-group");
       lineGroups.append("line").attr("class", "reference-line").attr("x1", 0).attr("x2", width).attr("y1", function(d) { return y(d.value); }).attr("y2", function(d) { return y(d.value); });
-      lineGroups.append("text").attr("class", "reference-label").attr("x", width - 4).attr("y", function(d) { return y(d.value) - 3; }).attr("text-anchor", "end").text(function(d) { return d.label; });
+      lineGroups.append("text").attr("class", "reference-label").attr("x", width - 4).attr("y", function(d) { return y(d.value) - 3; }).attr("text-anchor", "end").text(function(d) {
+         return d.labelIsValue ? formatValue(d.value, fmtOpts) : d.label;
+      });
    };
 
    WsuDumbbellViz.prototype._drawAnnotations = function(g, y, width) {
@@ -1377,7 +1426,7 @@ define(['jquery',
          var groupLabel = this._configText("groupLabel", row.groupLabel || "Group");
          this._addTipRow(tipRows, groupLabel, row.group);
       }
-      if (cfg.showCount !== "off" && row.count > 1) this._addTipRow(tipRows, "Count", row.count);
+      if (cfg.showCount !== "off" && row.isAggregate) this._addTipRow(tipRows, "Count", row.count);
       row.details.forEach(function(detail) {
          this._addTipRow(tipRows, detail.label, detail.value);
       }, this);
@@ -1468,7 +1517,17 @@ define(['jquery',
    WsuDumbbellViz.prototype._applySelectedRows = function(root) {
       var selectedRows = this.getSelectedRows();
       root.selectAll(".endpoint,.connector").classed("wsu-selected", false);
-      selectedRows.forEach(function(value, row) {
+      if (!selectedRows.size) return;
+      var drawn = this._drawnRows || [];
+      var highlighted = Object.create(null);
+      selectedRows.forEach(function(value, row) { highlighted[row] = true; });
+      // A drawn mark represents every row in sourceRows (aggregates, long
+      // format), so a mark on any of them selects the mark.
+      drawn.forEach(function(d) {
+         if (highlighted[d.row]) return;
+         if ((d.sourceRows || []).some(function(r) { return selectedRows.has(r); })) highlighted[d.row] = true;
+      });
+      Object.keys(highlighted).forEach(function(row) {
          root.selectAll("[data-row='" + row + "'] .endpoint,[data-row='" + row + "'] .connector").classed("wsu-selected", true);
       });
    };
@@ -1487,7 +1546,13 @@ define(['jquery',
          var rows = this._generateData(oDataLayout, oTransientRenderingContext);
          var elContainer = this.getContainerElem();
          if (!rows || rows.length === 0) {
-            $(elContainer).html("<div class='wsu-dumbbell'><div class='empty-state'>" + esc(LBL.EMPTY_STATE) + "</div></div>");
+            var filteredOut = this._allRows && this._allRows.length > 0;
+            $(elContainer).html("<div class='wsu-dumbbell'><div class='empty-state'>" + esc(filteredOut ? LBL.FILTERED_EMPTY : LBL.EMPTY_STATE) + "</div></div>");
+            // Keep the in-chart Sort/Filter strip so the viewer can clear the
+            // combination that produced the empty result.
+            if (filteredOut && this.Config.viewerControls !== "off") {
+               this._drawControls(d3.select(elContainer).select(".wsu-dumbbell"), this._allRows, $(elContainer).width());
+            }
             return;
          }
          this._draw(elContainer, rows, oDataLayout);
@@ -1729,6 +1794,7 @@ define(['jquery',
    };
 
    WsuDumbbellViz.prototype._doStopComponent = function() {
+      this._detachZoomEsc();
       // Tooltips are attached to <body>; remove ours when the viz is torn down.
       if (this._tooltipId) d3.select("#" + this._tooltipId).remove();
       WsuDumbbellViz.superClass._doStopComponent.apply(this, arguments);

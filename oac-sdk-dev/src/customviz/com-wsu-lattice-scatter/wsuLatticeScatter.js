@@ -41,6 +41,7 @@ define(['jquery',
 
   var PHYS_DATA = datamodelshapes.Physical.DATA;
   var PHYS_ROW = datamodelshapes.Physical.ROW;
+  var LOGICAL_COLOR = datamodelshapes.Logical.COLOR;
   var SETTINGS_CHART = dataviz.SettingsNS.CHART;
   // Fallback parse order is fixed; dataset term sort keys remain authoritative.
   var TERM_PARSE_FALLBACK_ORDER = "spring-summer-fall";
@@ -80,8 +81,9 @@ define(['jquery',
   }
 
   function num(v) {
+    if (v === null || typeof v === "undefined" || str(v).trim() === "") return null;
     var n = Number(v);
-    return isNaN(n) ? null : n;
+    return isNaN(n) || !isFinite(n) ? null : n;
   }
 
   function compareText(a, b) {
@@ -240,7 +242,7 @@ define(['jquery',
     };
   }
 
-  WsuLatticeScatterViz.VERSION = "1.0.1";
+  WsuLatticeScatterViz.VERSION = "1.1.0";
   jsx.extend(WsuLatticeScatterViz, dataviz.DataVisualization);
 
   WsuLatticeScatterViz.prototype._saveSettings = function() {
@@ -277,13 +279,20 @@ define(['jquery',
     return gp >= this.Config.progressThreshold ? LBL.ELIGIBLE : LBL.BLOCKED;
   };
 
+  // "IP" (in progress) is only shown when the row carries neither a letter nor
+  // grade points. A missing letter with real points renders the points; a
+  // missing measure with a real letter renders the letter (or its point value).
   WsuLatticeScatterViz.prototype._markerLabel = function(p) {
-    if (this.Config.markerShape === "grade-letter") return str(p.gradeLetter || "IP");
+    var l = str(p.gradeLetter).trim().toUpperCase();
+    var gp = this._gradePoints(p);
+    if (this.Config.markerShape === "grade-letter") {
+      if (l) return l;
+      return gp === null ? "IP" : gp.toFixed(1);
+    }
     if (this.Config.markerShape === "grade-points") {
-      var l = str(p.gradeLetter).toUpperCase();
-      if (l === "W" || l === "I" || l === "IP") return l || "IP";
-      var gp = this._gradePoints(p);
-      return gp === null ? (l || "IP") : gp.toFixed(1);
+      if (l === "W" || l === "I" || l === "IP") return l;
+      if (gp !== null) return gp.toFixed(1);
+      return l || "IP";
     }
     return "";
   };
@@ -360,7 +369,7 @@ define(['jquery',
   WsuLatticeScatterViz.prototype._resolveThemeColor = function(oTransientRenderingContext, helper, rowIndex) {
     try {
       var oColorContext = this.getColorContext(oTransientRenderingContext);
-      var oColorInterpolator = this.getCachedColorInterpolator(oTransientRenderingContext, datamodelshapes.Logical.COLOR);
+      var oColorInterpolator = this.getCachedColorInterpolator(oTransientRenderingContext, LOGICAL_COLOR);
       var colorInfo = this.getDataItemColorInfo(helper, oColorContext, oColorInterpolator, rowIndex, 0);
       return colorInfo.sColor || colorInfo.sSeriesColor || "";
     } catch (e) {
@@ -384,6 +393,10 @@ define(['jquery',
 
     var useOacColor = this.Config.colorSource !== "custom";
     var points = [];
+    // The Class Grade Points measure is optional (minCount 0): do not touch the
+    // data edge when it is absent.
+    var hasMeasure = false;
+    try { hasMeasure = (oDataLayout.getEdgeExtent(PHYS_DATA) || 0) > 0; } catch (e) { hasMeasure = false; }
     for (var row = 0; row < Math.max(nRows, 0); row++) {
       var p = {
         row: row,
@@ -414,8 +427,10 @@ define(['jquery',
         }
       });
 
-      var m = num(oDataLayout.getValue(PHYS_DATA, row, 0));
-      if (m !== null) p.gradePoints = m;
+      if (hasMeasure) {
+        var m = num(oDataLayout.getValue(PHYS_DATA, row, 0));
+        if (m !== null) p.gradePoints = m;
+      }
 
       // Try to infer common semantic fields from detail labels.
       p.details.forEach(function(d) {
@@ -424,7 +439,8 @@ define(['jquery',
         if (lab === "grade code" || lab === "target grade code" || lab === "official letter grade" || lab === "letter grade") {
           if (!p.gradeLetter) p.gradeLetter = d.value;
         }
-        if (lab === "target term sort" || lab === "target term index" || lab === "term sort key" || lab === "academic term index" || lab === "term index" || lab === "term sort" || lab === "term code" || lab === "strm") {
+        // Only a fallback: the dedicated "Sorting Term Code" bucket (size edge) wins when present.
+        if (p.termSort === null && (lab === "target term sort" || lab === "target term index" || lab === "term sort key" || lab === "academic term index" || lab === "term index" || lab === "term sort" || lab === "term code" || lab === "strm")) {
           var t = num(d.value);
           if (t !== null) p.termSort = t;
         }
@@ -441,7 +457,6 @@ define(['jquery',
       if (!p.studentId) {
         p.studentId = ("Row " + (row + 1));
       }
-      p.gradeLetter = p.gradeLetter || "IP";
       points.push(p);
     }
     return points;
@@ -488,6 +503,12 @@ define(['jquery',
     var maxY = window.pageYOffset + window.innerHeight - h - 8;
     if (left > maxX) left = pageX - w - 12;
     if (top > maxY) top = pageY - h - 12;
+    // A tooltip wider/taller than the space on either side would flip to a
+    // negative coordinate; keep it on-screen instead.
+    var minX = window.pageXOffset + 8;
+    var minY = window.pageYOffset + 8;
+    if (left < minX) left = minX;
+    if (top < minY) top = minY;
     tooltip.style("left", left + "px").style("top", top + "px");
   };
 
@@ -664,6 +685,9 @@ define(['jquery',
 
     merged.each(function(point) {
       var group = d3.select(this);
+      var blocked = oViz._progressStatus(point) === LBL.BLOCKED;
+      group.classed("progress-blocked", blocked).classed("progress-eligible", !blocked)
+        .attr("data-progress", blocked ? "blocked" : "eligible");
       var cx = x(point.term) + x.bandwidth() / 2;
       var cyBase = y(point.course) + y.bandwidth() / 2;
       var cy = cyBase;
@@ -718,6 +742,7 @@ define(['jquery',
       } else {
         var sym = d3.symbol().type(symbolType(oViz.Config.markerShape)).size(Math.PI * oViz.Config.markerSize * oViz.Config.markerSize);
         group.append("path")
+          .attr("class", "point-symbol")
           .attr("transform", "translate(" + cx + "," + cy + ")")
           .attr("d", sym())
           .attr("fill", color)
@@ -835,7 +860,7 @@ define(['jquery',
       {value: "star", label: "Star"}
     ], nx("GEN"));
     pGen.addChild(new gadgets.SliderGadgetInfo("markerSizeGadget", "Marker: Size", "Marker: Size", new gadgets.SliderGadgetValueProperties(euidef.GadgetTypeIDs.SLIDER, this.Config.markerSize, 6, 30)));
-    addSwitcher(pGen, "progressThresholdGadget", "Progress: Threshold", String(this.Config.progressThreshold), [
+    addSwitcher(pGen, "progressThresholdGadget", "Progress: Threshold", Number(this.Config.progressThreshold).toFixed(1), [
       {value: "2.0", label: "C (2.0)"},
       {value: "1.7", label: "C- (1.7)"},
       {value: "1.3", label: "D+ (1.3)"},

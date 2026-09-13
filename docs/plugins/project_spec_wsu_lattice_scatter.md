@@ -13,7 +13,7 @@ development without re-deriving decisions from the prototype.
 - **Short name**: WSU Lattice Scatter
 - **Category**: WSU
 - **Root id**: `com-wsu-lattice-scatter`
-- **Version constant**: `WsuLatticeScatterViz.VERSION = "1.0.1"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuLatticeScatterViz.VERSION = "1.1.0"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-lattice-scatter/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-lattice-scatter.zip`
 
@@ -56,12 +56,16 @@ rows in its tooltip contract.
 
 ### Sort precedence (authoritative)
 For term and course ordering, precedence is:
-1. dataset custom sort keys (grammar-pane calculations),
-2. lexical fallback.
+1. dataset sort keys — the `Sorting Term Code` bucket for terms, a
+   `course sort order`-style tooltip field for courses,
+2. label parsing — season/year parsed from the term label
+   (`spring < summer < fall` within a year); the catalog number parsed from
+   the course label,
+3. lexical (natural-order) comparison.
 
-Do not treat numeric scraping from display labels as authoritative sort keys.
-
-Term sort keys are optional. When missing, ordering falls back deterministically
+Label parsing is a convenience fallback only; it never overrides a dataset
+sort key, and datasets with irregular labels should supply keys. Term sort
+keys are optional. When missing, ordering falls back deterministically
 without raising a warning banner.
 
 ### Progress status semantics
@@ -71,6 +75,10 @@ without raising a warning banner.
   - W/I/IP always `Progress Blocked`,
   - numeric points >= threshold => `Progress Eligible`,
   - otherwise `Progress Blocked`.
+
+The status is applied to every marker as a class (`progress-eligible` /
+`progress-blocked`) and a `data-progress` attribute; blocked markers render
+at reduced opacity (1.1.0). It never adds wording to the tooltip.
 
 ---
 
@@ -123,7 +131,9 @@ Notes:
 - `size` supplies a numeric sort key per term (for example SDW `STRM`). When
   present it takes precedence over the parsed term label. As of 1.0.1 the
   bucket is read directly; earlier builds only honored it when the field's
-  display name matched one of the tooltip-detail label heuristics.
+  display name matched one of the tooltip-detail label heuristics. As of
+  1.0.2 a tooltip-detail field whose label matches those heuristics is used
+  **only when the `size` bucket is empty**; it never overrides it.
 - `glyph` should include `target_grade_code` in v1 datasets.
 - If `measures` is absent, grade-point mode falls back to letter mapping where possible.
 
@@ -136,6 +146,13 @@ Notes:
 - `ySortDirection`: `asc|desc` (default `asc`)
 - `markerShape`: `circle|square|triangle|diamond|cross|star|grade-letter|grade-points`
 - `markerSize`: numeric slider (default `11`)
+
+### Grade marker label resolution (1.0.2)
+- `grade-letter` mode shows the `glyph` letter; if no letter, the grade-point
+  value; if neither, `IP`.
+- `grade-points` mode shows `W`/`I`/`IP` letters as-is; otherwise the numeric
+  grade points (from `measures`, or mapped from the letter); if neither, `IP`.
+- A null or blank grade-point cell is **missing**, not `0.0`.
 
 ### Grade marker text
 - `gradeFontSize`: numeric slider (default `13`)
@@ -152,7 +169,9 @@ Notes:
 - `customGradeColor`: hex (default `#1e88e5`)
 
 ### Progress policy
-- `progressThreshold`: decimal points (default `1.7`)
+- `progressThreshold`: decimal points (default `1.7`). The property panel
+  offers the presets `2.0 / 1.7 / 1.3 / 1.0 / 0.0`; other values can only
+  arrive through a saved view config and are honored as-is.
 
 ### Axes
 - `xAxisTitle`: text (default empty → "Term")
@@ -178,29 +197,26 @@ No `pass/fail` wording in tooltip for this plugin family.
 
 ## 7. Property Panel Layout (current)
 
+The plugin requests two custom panels (`wsuLatticeStyle`, `wsuLatticeAxis`)
+and falls back to General when the host ignores custom ids.
+
 ### General
 - Marker Shape
 - Marker Size
 - Progress Threshold
-- X Axis Sort
-- Y Axis Sort
 
-### Grade Style
-- Grade Font Size
-- Grade Font Bold
-- Grade Font Italic
-- Grade Font Underline
+### Style (`wsuLatticeStyle`)
+- Grade Text: Size / Bold / Italic / Underline
 - Grade Background
 - Outline Shade
+- Color Source (OAC Theme / Custom)
+- Custom Grade Color (hex)
 
-### Color
-- Color Source (OAC / Custom)
-- Custom Grade Color
-
-### Axis & Tooltip
-- X Title override
-- Y Title override
-- Tooltip detail cap (future)
+### Axis (`wsuLatticeAxis`)
+- X Axis Sort
+- Y Axis Sort
+- X Axis Title / Y Axis Title
+- Axis: Gridlines
 
 ---
 
@@ -232,7 +248,7 @@ No `pass/fail` wording in tooltip for this plugin family.
 ## 10. Deferred Items (post-v1)
 
 - Advanced legend interactions.
-- Threshold presets by policy pack (C-, C, D+).
+- Free-form (non-preset) progress threshold entry.
 - Multi-student cohort density and collision controls.
 - Rich tooltip templates with conditional sections.
 - In-chart filter widgets (course band, campus, semester).

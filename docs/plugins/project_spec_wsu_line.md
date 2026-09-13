@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Line
 - **Category**: WSU
 - **Root id**: `com-wsu-line`
-- **Version constant**: `WsuLineViz.VERSION = "1.1.0"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuLineViz.VERSION = "1.2.0"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-line/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-line.zip`
 
@@ -129,7 +129,7 @@ to safe values in `loadConfig`.
 |-----|---------|--------|
 | `showPoints` | `"on"` | on / off |
 | `pointShape` | `"circle"` | circle / square / triangle / diamond / cross / star |
-| `pointSize` | `4` | 2–12 (slider). Treated as visual radius; converted to `d3.symbol().size = π × r²` for symbol rendering |
+| `pointSize` | `4` | 4–12 (slider). Treated as visual radius; converted to `d3.symbol().size = π × r²` for symbol rendering. Values below 4 are clamped to 4 (1.2.0) |
 
 ### Style — Color
 | Key | Default | Values | Notes |
@@ -164,7 +164,7 @@ to safe values in `loadConfig`.
 | Key | Default | Values |
 |-----|---------|--------|
 | `xSort` | `"natural"` | natural / descending / original |
-| `xLabels` | `"auto"` | auto / off / on |
+| `xLabels` | `"auto"` | auto / off / on — `off` suppresses tick text entirely (1.2.0) |
 | `showGridlines` | `"on"` | on / off |
 | `showGuide` | `"on"` | on / off |
 | `xAxisTitle` | `""` | text override |
@@ -181,8 +181,8 @@ to safe values in `loadConfig`.
 | Key | Default | Values |
 |-----|---------|--------|
 | `legend` | `"on"` | on / off |
-| `legendPosition` | `"auto"` | auto / right / bottom / off — when `auto`, the renderer auto-flips bottom→right when the bottom legend would consume more than 25% of available height (L4a) |
-| `legendOrder` | `"chronoAsc"` | chronoAsc / chronoDesc / strmAsc / strmDesc / nameAsc / nameDesc / colorOrder |
+| `legendPosition` | `"auto"` | auto / right / bottom / off — when `auto`, the renderer auto-flips bottom→right when the bottom legend would consume more than 25% of available height (L4a). A right legend taller than the chart is clipped and scrolls with the mouse wheel (1.2.0) |
+| `legendOrder` | `"chronoAsc"` | chronoAsc / chronoDesc / strmAsc / strmDesc / nameAsc / nameDesc / colorOrder — `colorOrder` is order of first appearance in the data, i.e. color-assignment order (1.2.0) |
 | `legendMarkerShape` | `"match"` | match / circle / square / triangle / diamond / cross / star — `match` follows the chart's `pointShape` |
 | `legendMarkerSize` | `5` | 3–12 (slider). Visual radius; converted to symbol area the same way as `pointSize`. Default reduced from 8 to 5 so legend markers are visually proportional to default chart points (L5). |
 | `legendFontSize` | `11` | 8–18 (slider). Applied as inline `font-size` on each legend `<text>` element. Row height and column width adapt to the chosen font size. |
@@ -216,7 +216,7 @@ try/catch fallback. See `../oac_design.md` §6.14.
   `Header: Bold`, etc.) render as **checkboxes** (`TEXT_TOGGLE`), not
   paired text buttons. Internal Config still stores `"on"`/`"off"`
   strings — translation happens at the gadget boundary.
-- Multi-option choices (3+ options like `Zoom Mode = Off / X / Y / X+Y`)
+- Multi-option choices (3+ options like `Zoom Mode = Off / X / X+Y`)
   remain `TEXT_SWITCHER` with stacked label buttons.
 - Numeric ranges (line width, font size, marker size, label max length)
   are sliders.
@@ -242,7 +242,7 @@ GENERAL TAB
   Format: Decimal Places                          switcher
   Format: Value Prefix                            text
   Format: Value Suffix                            text
-  Interaction: Zoom Mode (Off / X / Y / X+Y)      switcher
+  Interaction: Zoom Mode (Off / X / X+Y)          switcher
   Interaction: Click Marks                        switcher
   Interaction: Privacy Mode                       ☑ checkbox
 
@@ -301,7 +301,15 @@ tab. The build doesn't break either way.
 - A clicked legend item elevates the matching series to opacity 1.0 via
   the `.wsu-legend-active` CSS class (see `../oac_design.md` §6.31). Other
   series fade to 0.18 via `.wsu-faded`. Click empty area or the same
-  legend item again to clear.
+  legend item again to clear (empty-area click also clears marks).
+- The *Dynamic Value Label* consistency check runs over every source row,
+  including rows hidden by `missingMode = hide`; a conflicting label on a
+  hidden row still forces the manual fallback (1.2.0).
+- Inbound marks from other visualizations highlight a point when any of
+  its `sourceRows` is marked, so aggregated points respond to every
+  contributor (1.2.0).
+- Header `Font Color` / `Bold` controls apply to the header attribute
+  chips as well as the header frame (1.2.0).
 - Tooltip content that exceeds the visible viewport (70vh) appends a
   sticky "Tooltip clipped — additional rows hidden" footer at the
   bottom of the visible area (see `../oac_design.md` §6.30).
@@ -327,7 +335,7 @@ Per row:
 
 | Field | Formula | Used by |
 |-------|---------|---------|
-| `_rank` | 1-based rank by descending value within the X bucket | compareMode `rank` |
+| `_rank` | 1-based rank by descending value within the X bucket; rows with a missing value are unranked (blank cell, sorted last) — 1.1.1 | compareMode `rank` |
 | `_delta` | `value − mean(values at this X)` | compareMode `average` |
 | `_prevDelta` | `value − same-season STRM from exactly one prior academic year` | compareMode `previous` / `previousPercent` |
 | `_prevPercent` | `_prevDelta / prior.value × 100` | compareMode `previousPercent` |

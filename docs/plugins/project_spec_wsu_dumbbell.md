@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Dumbbell
 - **Category**: WSU
 - **Root id**: `com-wsu-dumbbell`
-- **Version constant**: `WsuDumbbellViz.VERSION = "1.0.1"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuDumbbellViz.VERSION = "1.1.0"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-dumbbell/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-dumbbell.zip`
 
@@ -90,6 +90,10 @@ Bucket schema:
   one per role. Role detection uses keyword matching by default
   (`pre`/`first`/`before` → first; `target`/`second`/`after` → second). Set
   `Long Format Role Mapping = Bucket Order` to fall back to row position.
+  If an entity has more than one row for the same recognised role, the first
+  row wins and the extras are ignored; a duplicate never fills the *other*
+  endpoint (1.0.2). Only rows whose role matches no keyword fall through to
+  whichever endpoint is still empty.
 
 ---
 
@@ -98,17 +102,17 @@ Bucket schema:
 ### View
 | Key | Default | Values |
 |-----|---------|--------|
-| `viewMode` | `"individual"` | individual / groupAverage / smallMultiples |
+| `viewMode` | `"individual"` | individual / groupAverage / smallMultiples — small multiples show at most 12 groups and print "Showing the first N of M groups" when more exist; the SVG grows (and scrolls) rather than clipping panels (1.1.0) |
 | `groupAggregation` | `"mean"` | mean / median / sum / min / max |
 | `longFormatRoleMapping` | `"keyword"` | keyword / bucketOrder |
 | `viewerControls` | `"on"` | on / off |
-| `sortBy` | `"original"` | original / first / second / delta / absDelta / `sort-N` |
+| `sortBy` | `"original"` | original / first / second / delta / absDelta / `sort-N` — all offered by both the property panel and the in-chart selector (1.1.0) |
 | `sortDirection` | `"ascending"` | ascending / descending |
-| `sortControlPosition` | `"topRight"` | topRight / topLeft / bottomRight / bottomLeft / above / below |
+| `sortControlPosition` | `"topRight"` | topRight / topLeft / bottomRight / bottomLeft / above / below — left/right align the strip, above/below center it (1.1.0) |
 | `sortControlStyle` | `"compact"` | compact / expanded |
 | `controlSpacing` | `"default"` | tight / default / loose |
 | `jitter` | `"on"` | on / off (when first==second) |
-| `performanceMode` | `"auto"` | auto / full |
+| `filterValues` | `{}` | `{ "filter-N": value }` — in-chart Filter By selections; persisted and restored (1.1.0) |
 
 ### Tooltip
 | Key | Default | Values |
@@ -122,7 +126,7 @@ Bucket schema:
 | `showDeltaPercent` | `"off"` | on / off |
 | `showDirection` | `"off"` | on / off |
 | `showGroup` | `"on"` | on / off |
-| `showCount` | `"on"` | on / off (only renders when group-aggregated) |
+| `showCount` | `"on"` | on / off (renders on every group-aggregated row, including singletons — 1.1.0) |
 
 If every built-in tooltip row is disabled and `Tooltip details` is empty, the
 tooltip is suppressed instead of rendering an empty shell.
@@ -153,7 +157,7 @@ tooltip is suppressed instead of rendering an empty shell.
 ### Reference
 | Key | Default | Values |
 |-----|---------|--------|
-| `referenceLines` | `""` | `Value:Label, Value:Label, ...` |
+| `referenceLines` | `""` | `Value:Label, Value:Label, ...` — a value without a label is printed through the configured number format (1.1.0) |
 | `annotations` | `""` | `Value:Label, Value:Label, ...` |
 | `averageLines` | `"off"` | on / off |
 | `largeChangeThreshold` | `1` | numeric |
@@ -170,7 +174,7 @@ tooltip is suppressed instead of rendering an empty shell.
 ### Axis & Legend
 | Key | Default | Values |
 |-----|---------|--------|
-| `xLabels` | `"auto"` | auto / off / on |
+| `xLabels` | `"auto"` | auto / off / on — `off` suppresses tick text entirely; `auto` thins to position numbers above 50 rows (1.1.0) |
 | `gridlines` | `"on"` | on / off |
 | `xAxisTitle` | `""` | text override |
 | `yAxisTitle` | `""` | text override |
@@ -293,6 +297,14 @@ Per row:
 | `count` | rows aggregated into this group (only meaningful in `groupAverage` view mode) |
 
 `Group Aggregate` applies active `Filter By` selections before aggregation.
+An endpoint whose contributors are all missing stays missing in the aggregate
+(no delta is computed); it is never reported as `0` (1.0.2). Inbound marks
+from other visualizations highlight a mark when **any** of its `sourceRows`
+is marked, so aggregates and long-format pairs respond to every contributor
+(1.1.0). When a Filter By combination yields no rows, the in-chart strip stays
+visible so the viewer can clear it (1.1.0). In `Color By:
+Group`, legend swatches and marks resolve their color through the same path,
+so they always agree (1.0.2).
 Aggregate rows intentionally do not carry row-level `Tooltip details`; if
 aggregate-safe explanatory text is needed, provide it upstream as a field that
 is already valid at the displayed aggregate grain.
