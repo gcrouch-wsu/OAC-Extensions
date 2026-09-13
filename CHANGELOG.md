@@ -5,51 +5,94 @@ Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 
 ## Unreleased — branch `fix/data-correctness` (candidate v1.2.0)
 
-Data-correctness fixes from the 2026-09-12 code review. None of these change
-a default; all of them change what a chart shows for some inputs. Behavior
-below is traced in source and syntax-checked; **not yet verified in OAD**.
+Every valid finding from the 2026-09-12 code review (Codex, 35 numbered items
+plus 15 spec-drift rows), fixed one commit per plugin with the spec updated
+in the same commit. **No defaults change.** Verified by `node --check`, the
+new model-test harness (`oac-sdk-dev/tests`, 24 tests), and `build-sdk.ps1`;
+**not yet verified in OAD**.
 
-### WSU Lattice Scatter 1.0.2
-- **Fixed:** a null/blank grade-point cell rendered as `0.0` in grade-points
-  mode (`num()` treated null as 0). It is now missing.
-- **Fixed:** every row without a letter grade was stamped `IP`, so a row with
-  real grade points but no letter showed `IP`. Marker label now uses
-  whichever evidence exists; `IP` only when there is none.
-- **Fixed:** a tooltip-detail field whose name matched the STRM heuristic
-  overwrote the sort key already read from the *Sorting Term Code* bucket.
+### Decisions taken (were design questions, not bugs)
+- **Sankey mixed-status edges (#34):** complete and incomplete traffic between
+  the same two nodes are now separate edges, so a mostly-complete flow is not
+  painted incomplete. Chosen over a majority rule because it loses nothing.
+- **Sankey percent threshold (#35):** the denominator is total path weight
+  (one weight per row), not the sum of segments, so adding an intermediate
+  stage no longer changes what is filtered. `% of Total` in tooltips uses the
+  same denominator.
+- **Lattice *Progress Threshold* (#13):** wired in. Every marker carries
+  `progress-eligible` / `progress-blocked`; blocked markers are dimmed. No
+  tooltip wording is added, so the tooltip contract is unchanged.
+- **Network *Repeat Roundness* (#20):** removed. vis-network self-loops have
+  no roundness parameter, so the control never had an effect.
 
-### WSU Dumbbell 1.0.2
-- **Fixed:** long format — a second row for an already-filled role spilled
-  into the other endpoint (two `before` rows produced `before → before`
-  and discarded `after`). Extras are ignored.
-- **Fixed:** Group Aggregate / Sum — an endpoint whose contributors were all
-  missing became a measured `0` with an invented delta. It stays missing.
-- **Fixed:** Color By Group — legend swatches were assigned by index, marks
-  by label hash, so they disagreed. Both use the same resolver.
-- **Fixed:** category values such as `constructor` matched inherited object
-  properties in entity/group dictionaries.
+### WSU Lattice Scatter 1.1.0
+- **Fixed:** null/blank grade points rendered `0.0`; points-without-letter
+  rendered `IP`; tooltip field overrode *Sorting Term Code* (all 1.0.2).
+- **Fixed:** *Progress Threshold* had no rendered effect (see decisions).
+- **Fixed:** the optional measure was read unconditionally; tooltips could
+  flip off-screen; threshold switcher value did not match its option values.
+- Spec: sort precedence documents the label-parsing tier; panel inventory
+  matches Style/Axis panels; presets documented.
 
-### WSU Sankey 1.0.2
-- **Fixed:** a blank intermediate cell shifted later cells into an earlier
-  lane (`A, blank, C, D` and `A, B, C, D` split `C` and `D`). Stage is now
-  the bucket position; a flow may span an empty stage.
-- **Fixed:** `0` for Max Intermediate Depth, Value Decimals, Stage Padding
-  and the three chart paddings reverted to the default on every load.
-- **Fixed:** `|`-joined edge/node keys could merge unrelated flows when a
-  label contained `|`; dictionaries are null-prototype objects.
+### WSU Dumbbell 1.1.0
+- **Fixed:** duplicate long-format role spilled into the other endpoint;
+  all-missing Sum aggregate became `0`; legend swatches ≠ mark colors;
+  `constructor`-style keys (all 1.0.2).
+- **Fixed:** saved Filter By selections were not restored; a filter
+  combination that emptied the chart hid its own reset controls; small
+  multiples overwrote each other's zoom handlers, silently dropped groups
+  past 12 and clipped panels; inbound marks ignored non-representative
+  aggregate rows; *X Labels: Off* did not hide labels; the document-level
+  Escape listener survived an interrupted drag.
+- Drift: panel Sort Field offers first/second/delta/absDelta; control
+  positions have CSS; unused `performanceMode` removed; reference-line
+  value labels use the number format; Count shows on every aggregate row.
 
-### WSU Network 1.1.2
-- **Fixed:** edge items carried a vis-network `value`, so the library
-  rescaled width with its own defaults and *Min/Max Edge Width* never
-  applied.
-- **Fixed:** `||`-joined edge keys could merge unrelated edges; all
-  label-keyed dictionaries are null-prototype objects.
+### WSU Sankey 1.1.0
+- **Fixed:** blank intermediate shifted stages; zero settings reverted;
+  `|` key collisions (all 1.0.2).
+- **Fixed:** mixed-status edges and percent threshold (see decisions);
+  click focus followed graph adjacency and invented cross-path
+  relationships (now row membership); right-to-left layout kept
+  left-to-right link geometry; `Other` dropped incomplete status, details
+  and term code; 1 px link floors overflowed small nodes; optional measure
+  read unconditionally; tooltips could flip off-screen; threshold/top-N
+  drop counts were not shown.
+- Symbol assertions at module top. Spec: bucket label is *Sorting Term
+  Code (STRM)*.
 
-### WSU Line 1.1.1
-- **Fixed:** shared-X hit rectangles were sized for an unpadded scale and
-  overlapped, so hovering/clicking near one category could pick the next.
-- **Fixed:** a missing measure could take a numeric tooltip rank and push
-  the real maximum down. Missing values are unranked and sort last.
+### WSU Network 1.2.0
+- **Fixed:** vis-network `value` overrode *Min/Max Edge Width*; `||` key
+  collisions (both 1.1.2).
+- **Fixed:** a detail blank on some contributors was shown as the
+  aggregate's value; `fit()` padding was silently ignored (clearance now
+  applied by post-fit scaling); a failed re-render left the previous vis
+  instance alive; *Repeat Roundness* removed (see decisions).
+- Symbol assertions at module top. Spec: Edge Weight documented as required.
+
+### WSU Line 1.2.0
+- **Fixed:** shared-X hit areas picked the wrong category; NaN values took
+  numeric ranks (both 1.1.1).
+- **Fixed:** right legend could not scroll; header color/bold did not reach
+  the chips; dynamic-label conflict check skipped hidden null rows; inbound
+  marks ignored non-representative aggregate rows; *X Labels: Off* did not
+  hide labels; marker-size slider allowed 3 while the renderer floored at 4;
+  empty-area click did not clear legend focus; `colorOrder` did nothing;
+  the document-level Escape listener survived an interrupted drag.
+- Spec: Zoom Mode options are Off / X / X+Y.
+
+### Repository
+- **New:** `oac-sdk-dev/tests/` — host-independent regression harness
+  (`node tests/run.js`). Loads each plugin in Node with the framework
+  stubbed; 24 tests, one per defect above. It caught a defect in one of
+  these fixes while being written.
+- README and AI_HANDOFF document the test step.
+
+### Not changed
+- Manifest `vizSettings._version` stays `1.0.0`: it is a settings-schema
+  version (every Oracle sample keeps it at 1.0.0); the `1.0.0.<timestamp>`
+  shown in the OAD extension list is the SDK's build stamp.
+- Issue #8 (shared helper consolidation) is unchanged — a separate refactor.
 
 ## 2026-09-11 — tag `v1.1.1`
 
