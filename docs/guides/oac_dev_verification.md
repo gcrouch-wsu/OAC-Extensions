@@ -11,15 +11,23 @@ not against an OAD version.
 Source for this list: the 2026-09-13 adversarial review. Every item is a
 question the public documentation does not answer.
 
-## 0. Record the environment
+## 0. Record the environment (two minutes; do this first)
 
-- Tenant build (About dialog), browser + version, date.
-- DevTools console:
-  `require(["d3v6js"], function(d3){ console.log("d3", d3.version); })` and
-  the same for any id you are considering (`d3v7js`, …). Record which resolve.
-- `Object.keys(require.s.contexts._.defined).filter(function(k){ return /^d3|^obitech-(report|reportservices|application|appservices|viz)\//.test(k); })`
-  gives the module ids the tenant actually defines. Diff against
-  `ALLOWED_MODULES` in `tests/lint.js`.
+1. Sign in to OAC Dev in Chrome or Edge and **open any workbook** (the module
+   registry only exists inside the Data Visualization app).
+2. Press F12 → Console. Open `oac-sdk-dev/tests/oac-probe.js` in an editor,
+   copy the whole file, paste it into the console, press Enter.
+3. It prints one JSON blob and copies it to the clipboard. Save it as
+   `oac-sdk-dev/tests/oac-probe.<tenant>.json` (e.g. `oac-probe.dev.json`).
+4. Run `node tests/compare-probe.js tests/oac-probe.dev.json` from
+   `oac-sdk-dev/`. It diffs the tenant against the lint allowlist, reports
+   every D3 id and version present, every inherited host method the plugins
+   call, and the host panel ids — and says what to change.
+5. Commit the JSON next to the probe (it contains no data, only module ids
+   and booleans) and record the tenant build in `CHANGELOG.md`.
+
+Also note the tenant build (Console → About), the browser and version, and
+the date.
 
 ## 1. Dependency and lifecycle baseline
 
