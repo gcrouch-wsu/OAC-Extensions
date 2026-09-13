@@ -174,6 +174,34 @@
   font-size: 11px;
 }
 
+/* Horizontal placement for the in-chart Sort/Filter strip (Interaction: Control Position). */
+.wsu-dumbbell .in-chart-controls.pos-topLeft,
+.wsu-dumbbell .in-chart-controls.pos-bottomLeft {
+  justify-content: flex-start;
+}
+
+.wsu-dumbbell .in-chart-controls.pos-topRight,
+.wsu-dumbbell .in-chart-controls.pos-bottomRight {
+  justify-content: flex-end;
+}
+
+.wsu-dumbbell .in-chart-controls.pos-above,
+.wsu-dumbbell .in-chart-controls.pos-below {
+  justify-content: center;
+}
+
+.wsu-dumbbell .in-chart-controls.pos-bottomLeft,
+.wsu-dumbbell .in-chart-controls.pos-bottomRight,
+.wsu-dumbbell .in-chart-controls.pos-below {
+  border-bottom: none;
+  border-top: 1px solid #e1e4e7;
+}
+
+.wsu-dumbbell .small-multiples-note {
+  font-size: 11px;
+  fill: #626a73;
+}
+
 .wsu-dumbbell .in-chart-controls.spacing-tight {
   padding: 2px 6px;
   gap: 4px 8px;
