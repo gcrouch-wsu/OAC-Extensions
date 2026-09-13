@@ -11,6 +11,7 @@ define(['jquery',
         'obitech-reportservices/data',
         'obitech-appservices/logger',
         'd3v6js',
+        'ojL10n!com-wsu-line/nls/messages',
         'skin!css!com-wsu-line/wsuLinestyles'],
         function($,
                  jsx,
@@ -24,7 +25,8 @@ define(['jquery',
                  euidef,
                  data,
                  logger,
-                 d3) {
+                 d3,
+                 nls) {
    "use strict";
 
    var MODULE_NAME = 'com-wsu-line/wsuLine';
@@ -47,22 +49,29 @@ define(['jquery',
    var DCP_DATA_LAYOUT = dataviz.DataContextProperty.DATA_LAYOUT;
    var DCP_DATA_LAYOUT_HELPER = dataviz.DataContextProperty.DATA_LAYOUT_HELPER;
 
+   // User-facing strings come from nls/root/messages.js (ojL10n bundle); the
+   // English text here is the fallback when a key is missing from the bundle.
+   function L(key, fallback) {
+     var v = nls && Object.prototype.hasOwnProperty.call(nls, key) ? nls[key] : null;
+     return typeof v === "string" && v !== "" ? v : fallback;
+   }
+   
    var LBL = {
-      COMPARE_VS_AVG: "Vs Avg",
-      COMPARE_RANK: "Rank",
-      COMPARE_CHANGE: "Δ 1 Year",
-      COMPARE_PCT_CHANGE: "Δ% 1 Year",
-      DELTA_3Y_VALUE: "Δ 3 Years",
-      DELTA_3Y_PCT: "Δ% 3 Years",
-      AVG_PREFIX: "Average",
-      ROW_LIMIT_FOOTER: "Showing {0} of {1} series",
-      COL_LIMIT_FOOTER_ONE: "+{0} more column not shown",
-      COL_LIMIT_FOOTER_MANY: "+{0} more columns not shown",
-      RESET_ZOOM: "Reset Zoom",
-      HEADER_NONE: "—",
-      HEADER_MORE: "+{0} more",
-      EMPTY_BUCKETS: "No rows to display. Drop a measure on Value (Y-Axis), an attribute on Category (X-Axis), and optionally a field on Series / Color.",
-      EMPTY_NO_NUMERIC: "Source data has rows but no numeric values for the selected measure. Verify the Y-axis field is treated as a Measure (not Attribute) on the dataset."
+     COMPARE_VS_AVG: L("WSULINE_LBL_COMPARE_VS_AVG", "Vs Avg"),
+     COMPARE_RANK: L("WSULINE_LBL_COMPARE_RANK", "Rank"),
+     COMPARE_CHANGE: L("WSULINE_LBL_COMPARE_CHANGE", "Δ 1 Year"),
+     COMPARE_PCT_CHANGE: L("WSULINE_LBL_COMPARE_PCT_CHANGE", "Δ% 1 Year"),
+     DELTA_3Y_VALUE: L("WSULINE_LBL_DELTA_3Y_VALUE", "Δ 3 Years"),
+     DELTA_3Y_PCT: L("WSULINE_LBL_DELTA_3Y_PCT", "Δ% 3 Years"),
+     AVG_PREFIX: L("WSULINE_LBL_AVG_PREFIX", "Average"),
+     ROW_LIMIT_FOOTER: L("WSULINE_LBL_ROW_LIMIT_FOOTER", "Showing {0} of {1} series"),
+     COL_LIMIT_FOOTER_ONE: L("WSULINE_LBL_COL_LIMIT_FOOTER_ONE", "+{0} more column not shown"),
+     COL_LIMIT_FOOTER_MANY: L("WSULINE_LBL_COL_LIMIT_FOOTER_MANY", "+{0} more columns not shown"),
+     RESET_ZOOM: L("WSULINE_LBL_RESET_ZOOM", "Reset Zoom"),
+     HEADER_NONE: L("WSULINE_LBL_HEADER_NONE", "—"),
+     HEADER_MORE: L("WSULINE_LBL_HEADER_MORE", "+{0} more"),
+     EMPTY_BUCKETS: L("WSULINE_LBL_EMPTY_BUCKETS", "No rows to display. Drop a measure on Value (Y-Axis), an attribute on Category (X-Axis), and optionally a field on Series / Color."),
+     EMPTY_NO_NUMERIC: L("WSULINE_LBL_EMPTY_NO_NUMERIC", "Source data has rows but no numeric values for the selected measure. Verify the Y-axis field is treated as a Measure (not Attribute) on the dataset.")
    };
 
    // Map config string -> d3 symbol generator. Using d3.symbol() lets us match
@@ -217,7 +226,7 @@ define(['jquery',
       this.setLegendActiveSeries = function(s) { legendActiveSeries = s; };
    }
 
-   WsuLineViz.VERSION = "1.2.1";
+   WsuLineViz.VERSION = "1.2.2";
    jsx.extend(WsuLineViz, dataviz.DataVisualization);
 
    function str(value) {
@@ -928,11 +937,21 @@ define(['jquery',
       return styles.join(";");
    };
 
+   // getSubElementIdFromParent is a host convenience that is not documented; use it
+   // when present, otherwise fall back to the viz id. Never let its absence break render.
+   WsuLineViz.prototype._containerId = function(elContainer, prefix) {
+     var id = "";
+     if (typeof this.getSubElementIdFromParent === "function") {
+       try { id = this.getSubElementIdFromParent(elContainer, prefix) || ""; } catch (e) { id = ""; }
+     }
+     return id || this.getID() || ("viz_" + Date.now());
+   };
+
    WsuLineViz.prototype._draw = function(elContainer, dataset, oDataLayout) {
       var oViz = this;
       this._detachZoomEsc();
       this._drawnRows = dataset.rows || [];
-      var containerId = this.getSubElementIdFromParent(elContainer, "wsuLine") || this.getID() || ("viz_" + new Date().getTime());
+      var containerId = this._containerId(elContainer, "wsuLine");
       var rootId = "wsu_line_" + containerId.replace(/[^A-Za-z0-9_-]/g, "_");
 
       var headerHidden = this.Config.headerPreset === "hidden";
@@ -1731,9 +1750,9 @@ define(['jquery',
       this.loadConfig();
       if (sMenuType === euidef.CM_TYPE_VIZ_PROPS && !this.isViewOnlyLimit()) {
          if (!oTransientRenderingContext) oTransientRenderingContext = this.createRenderingContext(oTransientVizContext);
-         this._addFilterMenuOption(oTransientVizContext, aResults, null, null, oTransientRenderingContext);
-         this._addRemoveSelectedMenuOption(oTransientVizContext, aResults, null, null, oTransientRenderingContext);
-         if (this.Config.colorSource !== "custom" && this._addColorMenuOption) {
+         if (typeof this._addFilterMenuOption === 'function') this._addFilterMenuOption(oTransientVizContext, aResults, null, null, oTransientRenderingContext);
+         if (typeof this._addRemoveSelectedMenuOption === 'function') this._addRemoveSelectedMenuOption(oTransientVizContext, aResults, null, null, oTransientRenderingContext);
+         if (this.Config.colorSource !== "custom" && typeof this._addColorMenuOption === "function") {
             this._addColorMenuOption(oTransientVizContext, aResults, oTransientRenderingContext);
          }
       }
@@ -1775,17 +1794,21 @@ define(['jquery',
       // support them on this OAC version, calls fall back to General. The
       // try/catch keeps the build working regardless.
       var pGen = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, euidef.GD_PANEL_ID_GENERAL);
-      function tryPanel(id) {
-         try {
-            var p = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, id);
-            return p || pGen;
-         } catch (e) {
-            return pGen;
-         }
+      // Ask for a panel the host itself defines (euidef.GD_PANEL_ID_*). Unknown ids
+      // are not requested: forcePanelByID would create an unusable panel for them.
+      function hostPanel(constName) {
+        var id = euidef && constName ? euidef[constName] : null;
+        if (!id) return pGen;
+        try {
+          var p = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, id);
+          return p || pGen;
+        } catch (e) {
+          return pGen;
+        }
       }
-      var pStyle = tryPanel("wsuLineStyle");
-      var pHeader = tryPanel("wsuLineHeader");
-      var pAxisLegend = tryPanel("wsuLineAxisLegend");
+      var pStyle = pGen;
+      var pHeader = pGen;
+      var pAxisLegend = hostPanel("GD_PANEL_ID_AXIS");
 
       var base = euidef.GD_FIELD_ORDER_GENERAL_LINE_TYPE;
       var ord = {GEN: base + 100, STY: base + 200, HDR: base + 300, AXL: base + 400};

@@ -13,7 +13,7 @@ development without re-deriving design decisions from built-in Sankey limits.
 - **Short name**: WSU Sankey
 - **Category**: WSU
 - **Root id**: `com-wsu-sankey`
-- **Version constant**: `WsuSankeyViz.VERSION = "1.1.1"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuSankeyViz.VERSION = "1.1.2"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-sankey/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-sankey.zip`
 

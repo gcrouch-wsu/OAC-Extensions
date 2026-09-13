@@ -11,6 +11,7 @@ define(['jquery',
         'obitech-reportservices/data',
         'obitech-appservices/logger',
         'd3v6js',
+        'ojL10n!com-wsu-lattice-scatter/nls/messages',
         'skin!css!com-wsu-lattice-scatter/wsuLatticeScatterstyles'],
         function($,
                  jsx,
@@ -24,7 +25,8 @@ define(['jquery',
                  euidef,
                  data,
                  logger,
-                 d3) {
+                 d3,
+                 nls) {
   "use strict";
 
   var MODULE_NAME = "com-wsu-lattice-scatter/wsuLatticeScatter";
@@ -54,16 +56,23 @@ define(['jquery',
     "C+": 2.3, "C": 2.0, "C-": 1.7, "D+": 1.3, "D": 1.0, "F": 0.0
   };
 
+  // User-facing strings come from nls/root/messages.js (ojL10n bundle); the
+  // English text here is the fallback when a key is missing from the bundle.
+  function L(key, fallback) {
+    var v = nls && Object.prototype.hasOwnProperty.call(nls, key) ? nls[key] : null;
+    return typeof v === "string" && v !== "" ? v : fallback;
+  }
+  
   var LBL = {
-    EMPTY: "No rows to display. Add Course (Y), Term (X), and optional grade fields.",
-    ELIGIBLE: "Progress Eligible",
-    BLOCKED: "Progress Blocked",
-    TT_STUDENT: "Student",
-    TT_COURSE: "Course",
-    TT_TERM: "Term",
-    TT_GRADE: "Grade",
-    X_TITLE: "Term",
-    Y_TITLE: "Course"
+    EMPTY: L("WSULATTICE_LBL_EMPTY", "No rows to display. Add Course (Y), Term (X), and optional grade fields."),
+    ELIGIBLE: L("WSULATTICE_LBL_ELIGIBLE", "Progress Eligible"),
+    BLOCKED: L("WSULATTICE_LBL_BLOCKED", "Progress Blocked"),
+    TT_STUDENT: L("WSULATTICE_LBL_TT_STUDENT", "Student"),
+    TT_COURSE: L("WSULATTICE_LBL_TT_COURSE", "Course"),
+    TT_TERM: L("WSULATTICE_LBL_TT_TERM", "Term"),
+    TT_GRADE: L("WSULATTICE_LBL_TT_GRADE", "Grade"),
+    X_TITLE: L("WSULATTICE_LBL_X_TITLE", "Term"),
+    Y_TITLE: L("WSULATTICE_LBL_Y_TITLE", "Course")
   };
 
   function str(v) {
@@ -242,7 +251,7 @@ define(['jquery',
     };
   }
 
-  WsuLatticeScatterViz.VERSION = "1.1.1";
+  WsuLatticeScatterViz.VERSION = "1.1.2";
   jsx.extend(WsuLatticeScatterViz, dataviz.DataVisualization);
 
   WsuLatticeScatterViz.prototype._saveSettings = function() {
@@ -539,9 +548,19 @@ define(['jquery',
     }
   };
 
+  // getSubElementIdFromParent is a host convenience that is not documented; use it
+  // when present, otherwise fall back to the viz id. Never let its absence break render.
+  WsuLatticeScatterViz.prototype._containerId = function(elContainer, prefix) {
+    var id = "";
+    if (typeof this.getSubElementIdFromParent === "function") {
+      try { id = this.getSubElementIdFromParent(elContainer, prefix) || ""; } catch (e) { id = ""; }
+    }
+    return id || this.getID() || ("viz_" + Date.now());
+  };
+
   WsuLatticeScatterViz.prototype._draw = function(elContainer, points, oDataLayout) {
     var oViz = this;
-    var containerId = this.getSubElementIdFromParent(elContainer, "wsuLattice") || this.getID() || ("viz_" + Date.now());
+    var containerId = this._containerId(elContainer, "wsuLattice");
     var rootId = "wsu_lattice_" + containerId.replace(/[^A-Za-z0-9_-]/g, "_");
     $(elContainer).html("<div id='" + rootId + "' class='wsu-lattice'></div>");
     var root = d3.select("#" + rootId);
@@ -839,12 +858,20 @@ define(['jquery',
     this.loadConfig();
     var factory = this.getGadgetFactory();
     var pGen = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, euidef.GD_PANEL_ID_GENERAL);
-    function tryPanel(id) {
-      try { var p = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, id); return p || pGen; }
-      catch (e) { return pGen; }
+    // Ask for a panel the host itself defines (euidef.GD_PANEL_ID_*). Unknown ids
+    // are not requested: forcePanelByID would create an unusable panel for them.
+    function hostPanel(constName) {
+      var id = euidef && constName ? euidef[constName] : null;
+      if (!id) return pGen;
+      try {
+        var p = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, id);
+        return p || pGen;
+      } catch (e) {
+        return pGen;
+      }
     }
-    var pStyle = tryPanel("wsuLatticeStyle");
-    var pAxis = tryPanel("wsuLatticeAxis");
+    var pStyle = pGen;
+    var pAxis = hostPanel("GD_PANEL_ID_AXIS");
     var base = euidef.GD_FIELD_ORDER_GENERAL_LINE_TYPE;
     var ord = {GEN: base + 100, STY: base + 200, AXL: base + 300};
     var nx = function(g) { return ord[g]++; };

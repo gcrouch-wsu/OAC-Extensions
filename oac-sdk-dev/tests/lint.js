@@ -41,16 +41,18 @@ var ALLOWED_MODULES = [
   "obitech-framework/messageformat"     // pairs with ojL10n!<plugin>/nls/messages
 ];
 
-// Host methods known to be ABSENT from OAD HOST_VERSION but present in the
-// cloud host. Calls must be feature-detected (typeof this.x === "function").
-var CLOUD_ONLY_METHODS = ["getProjection"];
+// Host methods that are ABSENT from OAD HOST_VERSION. Whether the cloud host
+// has them is unverified (Oracle's May 2026 sample guards the call; a guard
+// proves nothing about any tenant). Every call must be feature-detected, and
+// the guard must sit in the same statement or the enclosing few lines.
+var UNVERIFIED_HOST_METHODS = ["getProjection"];
 
-// Ids the host is retiring or that break on minor updates. Never reintroduce.
+// Ids the plugin family must not depend on. Never reintroduce.
 var FORBIDDEN_MODULES = {
-  "d3js": "D3 v3 alias; Oracle's 2026 samples moved to 'd3v3' and OAD 26.01 no longer defines that either. Use d3v6js.",
-  "d3v3": "Not defined in OAD 26.01 (cloud-only alias). Use d3v6js.",
+  "d3js": "Host-bundled D3 v3 (3.4.13). Oracle's What's New: 'planned for deprecation in May 2026'. Use d3v6js.",
+  "d3v3": "D3 v3 from cdnjs via the oracle.bi.tech.plugin.requirejsConfig extension point (Oracle's interim guidance for the d3js deprecation). It is D3 v3 and an external CDN dependency; this family uses d3v6js and makes no external calls.",
   "obitech-legend/legendandvizcontainer": "Semi-private mixin that breaks on minor updates (oac_design.md section 2). Draw legends in SVG.",
-  "knockout": "Not used by this plugin family; OAC's own samples are moving off it.",
+  "knockout": "Not used by this plugin family (Oracle still documents it for data-action editors, not visualizations).",
   "obitech-report/visualization": "Superseded by obitech-report/datavisualization."
 };
 
@@ -138,11 +140,19 @@ listPlugins().forEach(function(plugin) {
     (code.match(/prototype\.(_[A-Za-z0-9]+)\s*=/g) || []).forEach(function(s) { own[s.replace(/prototype\.|\s*=/g, "")] = true; });
     // methods assigned per instance in the constructor: this._name = function
     (code.match(/this\.(_[A-Za-z0-9]+)\s*=\s*function/g) || []).forEach(function(s) { own[s.replace(/^this\.|\s*=\s*function$/g, "")] = true; });
-    var privCalls = {};
-    (code.match(/superClass\.(_[A-Za-z0-9]+)|this\.(_[A-Za-z0-9]+)\(/g) || []).forEach(function(s) {
-      var name = s.replace(/^superClass\.|^this\.|\($/g, "");
-      if (!own[name] && !TOLERATED_PRIVATE_CALLS[name]) privCalls[name] = true;
+    // Aliases of `this` (var oViz = this; var that = this; var self = this) are
+    // scanned too, so oViz._x() cannot bypass the rule.
+    var aliases = ["this"];
+    (code.match(/var\s+([A-Za-z_$][\w$]*)\s*=\s*this\s*;/g) || []).forEach(function(s) {
+      aliases.push(s.replace(/^var\s+|\s*=\s*this\s*;$/g, ""));
     });
+    var privCalls = {};
+    var privRe = new RegExp("(?:superClass|" + aliases.join("|") + ")\\.(_[A-Za-z0-9]+)\\s*\\(", "g");
+    var pm;
+    while ((pm = privRe.exec(code)) !== null) {
+      var name = pm[1];
+      if (!own[name] && !TOLERATED_PRIVATE_CALLS[name]) privCalls[name] = true;
+    }
     Object.keys(privCalls).forEach(function(name) {
       problem(file, "calls semi-private host method '" + name + "' — add a justification to TOLERATED_PRIVATE_CALLS or avoid it");
     });
@@ -157,13 +167,28 @@ listPlugins().forEach(function(plugin) {
     if (/=>/.test(codeOnly)) es2015.push("arrow function");
     if (/(^|[^A-Za-z0-9_$.])class\s+[A-Z][A-Za-z0-9_$]*\s*(extends\s+[A-Za-z_$][\w$.]*\s*)?\{/.test(codeOnly)) es2015.push("class");
     if (/TEMPLATE_LITERAL_MARKER/.test(codeOnly)) es2015.push("template literal");
+    if (/\bfunction\b[^(]*\([^)]*=[^)]*\)/.test(codeOnly)) es2015.push("default parameter");
+    if (/\.\.\.[A-Za-z_$\[]/.test(codeOnly)) es2015.push("spread/rest");
+    if (/\b(var|let|const)\s*[\[{]/.test(codeOnly)) es2015.push("destructuring");
+    if (/\bfor\s*\([^)]*\bof\b/.test(codeOnly)) es2015.push("for-of");
+    if (/\basync\s+function\b|\bawait\s/.test(codeOnly)) es2015.push("async/await");
+    // Dynamic import() is the sanctioned exception: it is how modern code is loaded.
     if (es2015.length) problem(file, "AMD entry file uses ES2015+ syntax (" + es2015.join(", ") + "); keep entry modules ES5 and lazy-load modern code with import()");
 
-    // 4. Cloud-only host methods must be feature-detected.
-    CLOUD_ONLY_METHODS.forEach(function(m) {
-      var direct = code.indexOf("this." + m + "(") >= 0;
-      var guarded = code.indexOf("typeof this." + m + " === 'function'") >= 0 || code.indexOf('typeof this.' + m + ' === "function"') >= 0;
-      if (direct && !guarded) problem(file, "calls '" + m + "', which is absent from OAD " + HOST_VERSION + " — wrap it in typeof this." + m + " === 'function'");
+    // 4. Host methods absent from OAD must be feature-detected at the call site
+    //    (guard within the 400 characters preceding each call), for `this` and its aliases.
+    UNVERIFIED_HOST_METHODS.forEach(function(m) {
+      aliases.forEach(function(alias) {
+        var callRe = new RegExp(alias.replace(/\$/g, "\\$") + "\\." + m + "\\s*\\(", "g");
+        var cm;
+        while ((cm = callRe.exec(code)) !== null) {
+          var before = code.slice(Math.max(0, cm.index - 400), cm.index);
+          var guardRe = new RegExp("typeof\\s+" + alias.replace(/\$/g, "\\$") + "\\." + m + "\\s*===\\s*['\"]function['\"]");
+          if (!guardRe.test(before)) {
+            problem(file, "calls '" + alias + "." + m + "()' at offset " + cm.index + " without a nearby typeof guard — absent from OAD " + HOST_VERSION + ", unverified on OAC");
+          }
+        }
+      });
     });
 
     // 5. Legacy string markers that do not appear as AMD deps.

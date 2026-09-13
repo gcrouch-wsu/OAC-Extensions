@@ -13,7 +13,7 @@ development without re-deriving decisions from the prototype.
 - **Short name**: WSU Lattice Scatter
 - **Category**: WSU
 - **Root id**: `com-wsu-lattice-scatter`
-- **Version constant**: `WsuLatticeScatterViz.VERSION = "1.1.1"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuLatticeScatterViz.VERSION = "1.1.2"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-lattice-scatter/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-lattice-scatter.zip`
 
@@ -197,8 +197,15 @@ No `pass/fail` wording in tooltip for this plugin family.
 
 ## 7. Property Panel Layout (current)
 
-The plugin requests two custom panels (`wsuLatticeStyle`, `wsuLatticeAxis`)
-and falls back to General when the host ignores custom ids.
+Panels: General (`euidef.GD_PANEL_ID_GENERAL`) plus the host-defined
+`GD_PANEL_ID_AXIS` / `GD_PANEL_ID_INTERACTION` panels where the plugin has
+gadgets for them. Custom string ids are no longer requested — a host that does
+not know an id creates an unusable panel for it rather than failing, so the
+old try/catch fallback could not detect that case (2026-09-13 review). Which
+tabs the cloud host actually shows for a custom visualization is issue #7 and
+section 5 of `../guides/oac_dev_verification.md`.
+Style gadgets live on General; sorting/axis gadgets request `GD_PANEL_ID_AXIS`
+(1.1.2).
 
 ### General
 - Marker Shape

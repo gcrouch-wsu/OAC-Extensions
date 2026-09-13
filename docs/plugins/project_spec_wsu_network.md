@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Network
 - **Category**: WSU
 - **Root id**: `com-wsu-network`
-- **Version constant**: `WsuNetworkViz.VERSION = "1.2.1"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuNetworkViz.VERSION = "1.2.2"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-network/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-network.zip`
 
@@ -505,13 +505,17 @@ render a brief tooltip phrase such as `No further course in pathway scope`.
 
 ## 4. Property Panel — Four-Tab Layout
 
-Implemented via `gadgetdialog.forcePanelByID`:
-- General panel uses `euidef.GD_PANEL_ID_GENERAL`
-- custom tabs use try/catch fallback to General if unsupported by the host
-- expected custom panel IDs:
-  - `wsuNetworkStyle`
-  - `wsuNetworkInteraction`
-  - `wsuNetworkAxisLegend`
+Implemented via `gadgetdialog.forcePanelByID`. Panels: General (`euidef.GD_PANEL_ID_GENERAL`) plus the host-defined
+`GD_PANEL_ID_AXIS` / `GD_PANEL_ID_INTERACTION` panels where the plugin has
+gadgets for them. Custom string ids are no longer requested — a host that does
+not know an id creates an unusable panel for it rather than failing, so the
+old try/catch fallback could not detect that case (2026-09-13 review). Which
+tabs the cloud host actually shows for a custom visualization is issue #7 and
+section 5 of `../guides/oac_dev_verification.md`.
+Style gadgets live on General; Interaction gadgets request
+`GD_PANEL_ID_INTERACTION`; Axis & Legend gadgets request `GD_PANEL_ID_AXIS`
+(1.2.2). The label prefixes (`Layout:`, `Repeats:`, `Color:`, …) keep the
+list scannable when everything lands on General.
 
 ### GENERAL TAB
 - **Layout: Stabilization** (on/off) — freezes the graph once settled.

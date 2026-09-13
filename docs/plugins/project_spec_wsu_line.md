@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Line
 - **Category**: WSU
 - **Root id**: `com-wsu-line`
-- **Version constant**: `WsuLineViz.VERSION = "1.2.1"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuLineViz.VERSION = "1.2.2"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-line/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-line.zip`
 
@@ -59,9 +59,8 @@ tooltip calculations when the term-code bucket is provided.
 - **Sort Column dropdown** — dynamic options drawn from real bucket
   field names, built-in rows, and STRM when supplied, plus Sort Direction
   (auto / asc / desc).
-- **Four-tab property panel** — General / Style / Header / Axis & Legend
-  (attempted via custom panel IDs with try/catch fallback to General;
-  see `../oac_design.md` §6.14).
+- **Property panel** — General (style and header gadgets) plus the
+  host-defined Axis panel for axis & legend gadgets (1.2.2; see §4).
 
 ---
 
@@ -208,8 +207,15 @@ sitting at the same baseline opacity as it had before clicking.
 
 ## 4. Property Panel — Four-Tab Layout
 
-Implemented via `gadgetdialog.forcePanelByID` with custom string IDs and a
-try/catch fallback. See `../oac_design.md` §6.14.
+Implemented via `gadgetdialog.forcePanelByID`. Panels: General (`euidef.GD_PANEL_ID_GENERAL`) plus the host-defined
+`GD_PANEL_ID_AXIS` / `GD_PANEL_ID_INTERACTION` panels where the plugin has
+gadgets for them. Custom string ids are no longer requested — a host that does
+not know an id creates an unusable panel for it rather than failing, so the
+old try/catch fallback could not detect that case (2026-09-13 review). Which
+tabs the cloud host actually shows for a custom visualization is issue #7 and
+section 5 of `../guides/oac_dev_verification.md`.
+Style and Header gadgets live on General; Axis & Legend gadgets request
+`GD_PANEL_ID_AXIS` (1.2.2).
 
 **Gadget conventions** (see also `../oac_design.md` §6.24, §6.28):
 - Boolean on/off properties (`Show Series Column`, `Privacy Mode`,
@@ -289,9 +295,8 @@ AXIS & LEGEND TAB
   Legend: Label Max Length (6–40)                 slider
 ```
 
-If the SDK version doesn't accept the custom panel IDs (`wsuLineStyle`,
-`wsuLineHeader`, `wsuLineAxisLegend`), every gadget falls back to the General
-tab. The build doesn't break either way.
+If the host does not provide an Axis panel for custom visualizations,
+those gadgets land on General with their `Axis:` / `Legend:` prefixes.
 
 **Behaviors driven by panel choices**:
 - When `Legend: Position = Auto` and the bottom legend would consume

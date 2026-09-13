@@ -9,5 +9,8 @@ define({
     "WSUSANKEY_TERM_CODE": "Sorting Term Code (STRM)",
     "WSUSANKEY_COLOR_GROUP": "Path Group",
     "WSUSANKEY_DETAIL": "Tooltip Detail",
-    "TEXT_MESSAGE": "WSU Sankey for governed academic pathway flow analysis"
+    "TEXT_MESSAGE": "WSU Sankey for governed academic pathway flow analysis",
+  "WSUSANKEY_LBL_EMPTY": "No rows to display. Add Start Node and End Node buckets.",
+  "WSUSANKEY_LBL_UNKNOWN_START": "(Unknown Start)",
+  "WSUSANKEY_LBL_UNKNOWN_END": "(Unknown End)"
 });

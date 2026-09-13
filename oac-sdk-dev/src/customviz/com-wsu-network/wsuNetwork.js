@@ -11,6 +11,7 @@ define(['jquery',
         'obitech-appservices/logger',
         'd3v6js',
         'com-wsu-network/lib/vis-network.min',
+        'ojL10n!com-wsu-network/nls/messages',
         'skin!css!com-wsu-network/wsuNetworkstyles'],
         function($,
                  jsx,
@@ -24,7 +25,8 @@ define(['jquery',
                  data,
                  logger,
                  d3,
-                 vislib) {
+                 vislib,
+                 nls) {
   "use strict";
 
   var MODULE_NAME = "com-wsu-network/wsuNetwork";
@@ -48,9 +50,16 @@ define(['jquery',
   var DCP_DATA_LAYOUT_HELPER = dataviz.DataContextProperty.DATA_LAYOUT_HELPER;
   var LAYER_DISPLAY_NAME = data.LayerMetadata.LAYER_DISPLAY_NAME;
 
+  // User-facing strings come from nls/root/messages.js (ojL10n bundle); the
+  // English text here is the fallback when a key is missing from the bundle.
+  function L(key, fallback) {
+    var v = nls && Object.prototype.hasOwnProperty.call(nls, key) ? nls[key] : null;
+    return typeof v === "string" && v !== "" ? v : fallback;
+  }
+  
   var LBL = {
-    EMPTY: "No edges to display. Add Source and Destination fields.",
-    EXPANDED_FALLBACK: "Expanded stages require a valid Repeat Stage / Attempt Number field. Showing loop mode."
+    EMPTY: L("WSUNETWORK_LBL_EMPTY", "No edges to display. Add Source and Destination fields."),
+    EXPANDED_FALLBACK: L("WSUNETWORK_LBL_EXPANDED_FALLBACK", "Expanded stages require a valid Repeat Stage / Attempt Number field. Showing loop mode.")
   };
 
   function str(v) {
@@ -316,7 +325,7 @@ define(['jquery',
     };
   }
 
-  WsuNetworkViz.VERSION = "1.2.1";
+  WsuNetworkViz.VERSION = "1.2.2";
   jsx.extend(WsuNetworkViz, dataviz.DataVisualization);
 
   WsuNetworkViz.prototype._saveSettings = function() {
@@ -767,8 +776,18 @@ define(['jquery',
     this._visInstance = null;
   };
 
+  // getSubElementIdFromParent is a host convenience that is not documented; use it
+  // when present, otherwise fall back to the viz id. Never let its absence break render.
+  WsuNetworkViz.prototype._containerId = function(elContainer, prefix) {
+    var id = "";
+    if (typeof this.getSubElementIdFromParent === "function") {
+      try { id = this.getSubElementIdFromParent(elContainer, prefix) || ""; } catch (e) { id = ""; }
+    }
+    return id || this.getID() || ("viz_" + Date.now());
+  };
+
   WsuNetworkViz.prototype._draw = function(elContainer, model, oDataLayout) {
-    var containerId = this.getSubElementIdFromParent(elContainer, "wsuNetwork") || this.getID() || ("viz_" + Date.now());
+    var containerId = this._containerId(elContainer, "wsuNetwork");
     var rootId = "wsu_network_" + containerId.replace(/[^A-Za-z0-9_-]/g, "_");
     this._destroyNetwork();
     $(elContainer).html("<div id='" + rootId + "' class='wsu-network'><div class='network-canvas'></div><div class='edge-legend'></div><div class='subtle-note'></div></div>");
@@ -1057,7 +1076,11 @@ define(['jquery',
     this.loadConfig();
     var factory = this.getGadgetFactory();
     var pGen = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, euidef.GD_PANEL_ID_GENERAL);
-    function tryPanel(id) {
+    // Ask for a panel the host itself defines (euidef.GD_PANEL_ID_*). Unknown ids
+    // are not requested: forcePanelByID would create an unusable panel for them.
+    function hostPanel(constName) {
+      var id = euidef && constName ? euidef[constName] : null;
+      if (!id) return pGen;
       try {
         var p = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, id);
         return p || pGen;
@@ -1066,9 +1089,9 @@ define(['jquery',
       }
     }
 
-    var pStyle = tryPanel("wsuNetworkStyle");
-    var pInteraction = tryPanel("wsuNetworkInteraction");
-    var pAxisLegend = tryPanel("wsuNetworkAxisLegend");
+    var pStyle = pGen;
+    var pInteraction = hostPanel("GD_PANEL_ID_INTERACTION");
+    var pAxisLegend = hostPanel("GD_PANEL_ID_AXIS");
 
     var base = euidef.GD_FIELD_ORDER_GENERAL_LINE_TYPE;
     var ord = {GEN: base + 100, STYLE: base + 200, INT: base + 300, LEG: base + 400};

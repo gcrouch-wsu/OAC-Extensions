@@ -9,5 +9,14 @@ define({
     "WSULATTICE_GRADE": "Course Grade Official",
     "WSULATTICE_TERM_CODE": "Sorting Term Code (optional)",
     "WSULATTICE_DETAIL": "Tooltip Detail",
-    "TEXT_MESSAGE": "WSU lattice scatter for student attempt pathways with grade markers and progress-threshold tooltip logic"
+    "TEXT_MESSAGE": "WSU lattice scatter for student attempt pathways with grade markers and progress-threshold tooltip logic",
+  "WSULATTICE_LBL_EMPTY": "No rows to display. Add Course (Y), Term (X), and optional grade fields.",
+  "WSULATTICE_LBL_ELIGIBLE": "Progress Eligible",
+  "WSULATTICE_LBL_BLOCKED": "Progress Blocked",
+  "WSULATTICE_LBL_TT_STUDENT": "Student",
+  "WSULATTICE_LBL_TT_COURSE": "Course",
+  "WSULATTICE_LBL_TT_TERM": "Term",
+  "WSULATTICE_LBL_TT_GRADE": "Grade",
+  "WSULATTICE_LBL_X_TITLE": "Term",
+  "WSULATTICE_LBL_Y_TITLE": "Course"
 });

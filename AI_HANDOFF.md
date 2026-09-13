@@ -38,7 +38,14 @@ Five Oracle Analytics custom visualization plugins, each a folder under
   defect you fixed), then `./build-sdk.ps1`. Host behavior can only be
   confirmed in OAD/OAC; say so if you could not.
 
-## Host facts verified against Oracle Analytics Desktop (2026-09)
+## Production host is Oracle Analytics Cloud
+
+OAD is a convenience baseline, deprecated by Oracle (no downloads after
+December 2026). Nothing verified on OAD is verified on OAC; see
+`docs/guides/oac_dev_verification.md` and `docs/oac_design.md` 6.32 for the
+evidence labels ([doc] / [sample] / [OAD]) every compatibility claim must carry.
+
+## Host facts verified against Oracle Analytics Desktop 26.01 (2026-09) — [OAD]
 
 - `helper.getLogicalEdgeName(...)` returns the edge key from the datamodel
   handler manifest. `Logical.CATEGORY` is the string `"detail"`.

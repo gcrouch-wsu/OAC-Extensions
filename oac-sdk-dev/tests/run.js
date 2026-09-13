@@ -428,6 +428,38 @@ suite("WSU Network", function() {
   });
 });
 
+// ============================================================================
+suite("NLS bundles", function() {
+  var fs = require("fs"), path = require("path"), vm = require("vm");
+  var SRC = path.join(__dirname, "..", "src", "customviz");
+  fs.readdirSync(SRC).filter(function(d) { return /^com-wsu-/.test(d); }).forEach(function(plugin) {
+    test(plugin + ": every L(key, fallback) in the renderer has the key in nls/root/messages.js", function() {
+      var js = fs.readdirSync(path.join(SRC, plugin)).filter(function(f) { return /^wsu.*\.js$/.test(f) && !/datamodelhandler/i.test(f); })[0];
+      var code = fs.readFileSync(path.join(SRC, plugin, js), "utf8");
+      var bundleCode = fs.readFileSync(path.join(SRC, plugin, "nls", "root", "messages.js"), "utf8");
+      var bundle = null;
+      vm.runInNewContext(bundleCode, { define: function(o) { bundle = o; } });
+      var keys = [], m, re = /L\("([A-Z0-9_]+)",\s*"/g;
+      while ((m = re.exec(code)) !== null) keys.push(m[1]);
+      assert.ok(keys.length > 0, "renderer externalizes at least one string");
+      var missing = keys.filter(function(k) { return !Object.prototype.hasOwnProperty.call(bundle, k); });
+      assert.deepStrictEqual(missing, [], "keys missing from bundle");
+      // manifest keys (display name, buckets) must be there too
+      var manifestKeys = [];
+      var extDir = path.join(SRC, plugin, "extensions");
+      fs.readdirSync(extDir).forEach(function(d) {
+        fs.readdirSync(path.join(extDir, d)).forEach(function(f) {
+          var txt = fs.readFileSync(path.join(extDir, d, f), "utf8");
+          var km, kre = /"key"\s*:\s*"([A-Z0-9_]+)"/g;
+          while ((km = kre.exec(txt)) !== null) manifestKeys.push(km[1]);
+        });
+      });
+      var missing2 = manifestKeys.filter(function(k) { return !Object.prototype.hasOwnProperty.call(bundle, k); });
+      assert.deepStrictEqual(missing2, [], "manifest keys missing from bundle");
+    });
+  });
+});
+
 H.summary();
 
 // Currency lint runs as part of the suite so a legacy dependency fails CI too.
