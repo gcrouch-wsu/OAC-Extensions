@@ -217,7 +217,7 @@ define(['jquery',
       this.setLegendActiveSeries = function(s) { legendActiveSeries = s; };
    }
 
-   WsuLineViz.VERSION = "1.2.0";
+   WsuLineViz.VERSION = "1.2.1";
    jsx.extend(WsuLineViz, dataviz.DataVisualization);
 
    function str(value) {
@@ -1274,7 +1274,9 @@ define(['jquery',
       // overlapping (a later rectangle would otherwise capture hovers that
       // belong to the earlier category).
       var step = dataset.xValues.length > 1 ? x.step() : innerWidth;
-      var band = Math.max(step, 14);
+      // Exactly one step wide so rectangles tile without overlap even when
+      // categories are denser than 14px; the rect is still full height.
+      var band = step;
       g.selectAll(".x-hit")
          .data(dataset.xValues)
          .enter()
@@ -1423,6 +1425,13 @@ define(['jquery',
             if (!aValid && !bValid) return compareChronologicalLabel(a.series, b.series);
             if (!aValid) return 1;
             if (!bValid) return -1;
+         }
+         if (sortKind === "rank") {
+            // Unranked (missing-value) rows sort last whichever direction is chosen.
+            var aUnranked = !a._rank, bUnranked = !b._rank;
+            if (aUnranked && bUnranked) return 0;
+            if (aUnranked) return 1;
+            if (bUnranked) return -1;
          }
          return dirSign * ascCmp(a, b);
       });
@@ -1670,6 +1679,7 @@ define(['jquery',
 
    WsuLineViz.prototype._render = function(oTransientRenderingContext, dataset) {
       try {
+         this._detachZoomEsc();
          this.loadConfig();
          var oDataLayout = oTransientRenderingContext.get(DCP_DATA_LAYOUT);
          if (!oDataLayout) return;

@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Dumbbell
 - **Category**: WSU
 - **Root id**: `com-wsu-dumbbell`
-- **Version constant**: `WsuDumbbellViz.VERSION = "1.1.0"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuDumbbellViz.VERSION = "1.1.1"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-dumbbell/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-dumbbell.zip`
 
@@ -91,7 +91,8 @@ Bucket schema:
   (`pre`/`first`/`before` → first; `target`/`second`/`after` → second). Set
   `Long Format Role Mapping = Bucket Order` to fall back to row position.
   If an entity has more than one row for the same recognised role, the first
-  row wins and the extras are ignored; a duplicate never fills the *other*
+  row carrying a **numeric** value wins (a null first observation does not
+  occupy the role) and the extras are ignored; a duplicate never fills the *other*
   endpoint (1.0.2). Only rows whose role matches no keyword fall through to
   whichever endpoint is still empty.
 

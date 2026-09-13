@@ -3,6 +3,64 @@
 Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 `docs/plugins/`. Repository tags mark the state of all five together.
 
+## Unreleased (round 2) — second review of the v1.2.0 candidate
+
+The 2026-09-13 review of PR #10 rated 7 of the 35 fixes Partial and 4
+Regresses, and found 8 new items. All addressed. Still **not verified in
+OAD**. 30 model tests pass (was 24); two tests the review called
+non-discriminating were rewritten so they fail on the old code.
+
+### WSU Sankey 1.1.1
+- **Fixed (regression from 1.1.0):** a link spanning an empty stage was
+  drawn straight through whatever real node sat in that stage. Spanning
+  edges now get an invisible *transit* node in every crossed stage; the
+  stage is laid out around it and the link is drawn through it. Transit
+  flow is excluded from `% of Stage`.
+- **Fixed (regression):** the path-weight denominator counted rows whose
+  every segment was rejected (orphan/self-link), which could filter out all
+  valid traffic. Only rows that emit an edge count.
+- **Fixed (regression):** edge-click focus pruned upstream edges but left
+  their nodes highlighted; the node set is rebuilt from the kept edges.
+- **Fixed (partial):** focus re-floored every active link to 2.5 px, undoing
+  the node-capacity fit; links that were shrunk to fit are not boosted.
+- **Fixed (partial):** dictionary keys are JSON tuples (a label containing
+  U+001F could still collide with the separator approach).
+- Tooltip carries a validation note when flows were dropped or collapsed
+  (the spec promised this; the warning strip alone was not it).
+- `Logical.COLOR` pinned like the other symbols.
+- Spec: processing order rewritten for stage-position edges, status-split
+  aggregation, transit layout; documents that Top N now counts
+  status-separated edges (visible upgrade effect on saved workbooks).
+
+### WSU Line 1.2.1
+- **Fixed (partial):** the 14 px minimum hit width still overlapped on dense
+  axes (40 categories in 400 px); hit rectangles are exactly one step wide.
+- **Fixed (partial):** rank sort in descending direction put unranked rows
+  first; they are last in both directions.
+- **Fixed (regression):** a white header font color produced white-on-white
+  chips; with a foreground override chips drop their fixed white fill.
+- **Fixed (partial):** a nonempty→empty redraw bypassed `_draw()` and left
+  the document Escape listener attached; it is detached at render entry.
+
+### WSU Dumbbell 1.1.1
+- **Fixed (partial):** the small-multiples SVG grew but nothing scrolled;
+  `.chart-area` now scrolls vertically.
+- **Fixed (partial):** same Escape-listener gap as Line; also the cleanup
+  nulled the local handler before comparing it with the instance field.
+- Spec: duplicate-role rule says "first row carrying a numeric value wins".
+
+### WSU Lattice Scatter 1.1.1
+- **Fixed (partial):** progress classification did not trim the letter, so
+  `" W "` with points displayed `W` but was classed Eligible.
+
+### WSU Network 1.2.1
+- **Fixed (partial):** edge keys are JSON tuples (see Sankey).
+
+### Docs
+- `oac_design.md` §6.18.3 no longer prescribes `fit({padding})` (vis-network
+  ignores it; describes the post-fit scale instead); §6.19 hit-area recipe
+  uses `x.step()` with no minimum.
+
 ## Unreleased — branch `fix/data-correctness` (candidate v1.2.0)
 
 Every valid finding from the 2026-09-12 code review (Codex, 35 numbered items

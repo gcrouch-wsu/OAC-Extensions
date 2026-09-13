@@ -242,7 +242,7 @@ define(['jquery',
     };
   }
 
-  WsuLatticeScatterViz.VERSION = "1.1.0";
+  WsuLatticeScatterViz.VERSION = "1.1.1";
   jsx.extend(WsuLatticeScatterViz, dataviz.DataVisualization);
 
   WsuLatticeScatterViz.prototype._saveSettings = function() {
@@ -267,12 +267,12 @@ define(['jquery',
   WsuLatticeScatterViz.prototype._gradePoints = function(p) {
     var gp = num(p.gradePoints);
     if (gp !== null) return gp;
-    var gl = str(p.gradeLetter).toUpperCase();
+    var gl = str(p.gradeLetter).trim().toUpperCase();
     return Object.prototype.hasOwnProperty.call(LETTER_TO_POINTS, gl) ? LETTER_TO_POINTS[gl] : null;
   };
 
   WsuLatticeScatterViz.prototype._progressStatus = function(p) {
-    var letter = str(p.gradeLetter).toUpperCase();
+    var letter = str(p.gradeLetter).trim().toUpperCase();
     if (letter === "W" || letter === "I" || letter === "IP") return LBL.BLOCKED;
     var gp = this._gradePoints(p);
     if (gp === null) return LBL.BLOCKED;

@@ -125,9 +125,11 @@ define(['jquery',
       .replace(/'/g, "&#39;");
   }
 
-  // Composite dictionary keys use a control character no label can contain,
-  // so "A||B" + "C" and "A" + "B||C" never collide.
-  var KEY_SEP = "\u001f";
+  // Composite dictionary keys are JSON tuples, so no label content can make
+  // two different (from, to) pairs produce the same key.
+  function tupleKey() {
+    return JSON.stringify(Array.prototype.slice.call(arguments));
+  }
 
   // Recorded in a detail's value set when a contributing row had no value, so
   // "Pass" on some rows and blank on others is not reported as "Pass".
@@ -314,7 +316,7 @@ define(['jquery',
     };
   }
 
-  WsuNetworkViz.VERSION = "1.2.0";
+  WsuNetworkViz.VERSION = "1.2.1";
   jsx.extend(WsuNetworkViz, dataviz.DataVisualization);
 
   WsuNetworkViz.prototype._saveSettings = function() {
@@ -504,7 +506,7 @@ define(['jquery',
         }
       }
 
-      var edgeKey = from + KEY_SEP + to;
+      var edgeKey = tupleKey(from, to);
       if (!aggEdges[edgeKey]) {
         aggEdges[edgeKey] = {
           key: edgeKey,
