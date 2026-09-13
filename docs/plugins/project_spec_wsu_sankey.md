@@ -13,7 +13,7 @@ development without re-deriving design decisions from built-in Sankey limits.
 - **Short name**: WSU Sankey
 - **Category**: WSU
 - **Root id**: `com-wsu-sankey`
-- **Version constant**: `WsuSankeyViz.VERSION = "1.0.2"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuSankeyViz.VERSION = "1.1.0"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-sankey/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-sankey.zip`
 
@@ -117,7 +117,7 @@ Example outbound-from-source row:
   and `D` in the same lanes.
 
 ### Ordering semantics
-- `Sort Key (STRM)` is ordering evidence metadata, not the display
+- `Sorting Term Code (STRM)` is ordering evidence metadata, not the display
   label for stages.
 - Prefer numeric dataset sort keys over label parsing.
 - Do not parse chronology from display labels in Sankey v1.
@@ -294,7 +294,7 @@ Course-path rules:
 | `item` | `ITEM` | categorical | 1 | 1 | End Node |
 | `glyph` | `GLYPH` | categorical | 0 | 5 | Intermediate Nodes |
 | `measures` | `MEASURES` | measures | 0 | 1 | Flow Weight |
-| `size` | `SIZE` | both | 0 | 1 | Sort Key (STRM) |
+| `size` | `SIZE` | both | 0 | 1 | Sorting Term Code (STRM) |
 | `color` | `COLOR` | categorical | 0 | 1 | Path Group |
 | `detail` | `CATEGORY` | both | 0 | 20 | Tooltip Detail |
 
@@ -312,7 +312,7 @@ Notes:
   acceptable when plugin-side canonical routing should create `No Completion`.
 - `Flow Weight`: optional measure. Omit it when one source row should equal one
   pathway count.
-- `Sort Key (STRM)`: chronology or ordering evidence only; it should not replace
+- `Sorting Term Code (STRM)`: chronology or ordering evidence only; it should not replace
   display labels.
 - `Path Group`: optional color grouping. Incomplete-path highlighting still wins
   when enabled.
@@ -383,9 +383,18 @@ right-to-left). It does not change logical path semantics, which remain
 
 ### Noise reduction
 - `minFlowThreshold`: numeric (default `0`)
-- `thresholdMode`: `absolute|percent` (default `absolute`)
+- `thresholdMode`: `absolute|percent` (default `absolute`). In `percent`
+  mode the denominator is the **total path weight** (one weight per source
+  row), not the sum of every rendered segment, so adding an intermediate
+  stage does not change which flows pass the threshold (1.1.0). The same
+  denominator is used for the tooltip's `% of Total`.
 - `topNPerStage`: integer `0..50` (default `0`, off)
-- `collapseOther`: `on|off` (default `off`)
+- `collapseOther`: `on|off` (default `off`). Collapsed flows keep their
+  incomplete status (one `Other` per status), their aggregate-safe tooltip
+  details, and their earliest term code (1.1.0).
+- Flows removed by the threshold or by Top N are counted in the warning
+  strip (`flows under threshold: N`, `flows beyond top N: N`) when
+  `showWarnings=on` (1.1.0).
 - `dropOrphans`: `on|off` (default `on`)
 
 ### Incomplete outcomes
@@ -461,6 +470,10 @@ Term Code bucket only influences node ordering within a stage.
   incomplete End node rather than a workbook-authored COALESCE dependency.
 
 ### Incomplete color precedence
+- Complete and incomplete traffic between the same two nodes are kept as
+  **separate edges** (1.1.0), so nine completed paths and one incomplete
+  path through `A → B` render as a wide complete link plus a thin incomplete
+  link rather than one link painted incomplete.
 - When `highlightIncompletePaths=on`, every rendered edge belonging to an
   incomplete pathway uses `incompletePathColor` before `colorSource` and
   `colorBy` logic.
@@ -510,6 +523,13 @@ distinct pathways into noisy comma-separated lists; node detail rollups return
 only when derived metrics are explicitly enabled.
 
 ### Marking behavior
+- **Click focus** highlights only edges that carry a row passing through the
+  clicked node or edge (row membership), never edges merely connected by
+  graph adjacency — `A→X→C` and `B→X→D` do not make `A` reach `D` (1.1.0).
+- With `xSortDirection=desc` links leave the source's left side and enter
+  the target's right side (1.1.0).
+- Link widths have a 1 px floor, but a node's stacked links are shrunk to
+  fit its height so they never spill past the node (1.1.0).
 - **Edge click** marks all source rows contributing to that aggregated edge.
 - **Node click** marks all source rows where that node appears in any rendered
   stage.

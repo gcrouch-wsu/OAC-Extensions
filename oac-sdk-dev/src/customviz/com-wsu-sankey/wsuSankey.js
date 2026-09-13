@@ -33,6 +33,12 @@ define(['jquery',
   var _logger = new logger.Logger(MODULE_NAME);
   _logger.info("Initializing WSU Sankey plugin");
 
+  jsx.assertObject(datamodelshapes.Physical, MODULE_NAME + " datamodelshapes.Physical");
+  jsx.assertObject(datamodelshapes.Logical, MODULE_NAME + " datamodelshapes.Logical");
+  jsx.assertObject(dataviz.SettingsNS, MODULE_NAME + " dataviz.SettingsNS");
+  jsx.assertObject(dataviz.DataContextProperty, MODULE_NAME + " dataviz.DataContextProperty");
+  jsx.assertObject(data.LayerMetadata, MODULE_NAME + " data.LayerMetadata");
+
   var PHYS_DATA = datamodelshapes.Physical.DATA;
   var PHYS_ROW = datamodelshapes.Physical.ROW;
   var PHYS_COLUMN = datamodelshapes.Physical.COLUMN;
@@ -206,7 +212,7 @@ define(['jquery',
     };
   }
 
-  WsuSankeyViz.VERSION = "1.0.2";
+  WsuSankeyViz.VERSION = "1.1.0";
   jsx.extend(WsuSankeyViz, dataviz.DataVisualization);
 
   WsuSankeyViz.prototype._saveSettings = function() {
@@ -311,9 +317,12 @@ define(['jquery',
       topNDropped: 0
     };
     var raw = [];
+    var pathWeightTotal = 0;
     var useOacColor = this.Config.colorSource !== "custom";
     var weightLayer = dataMeasureLayers.filter(function(layer) { return layer.logical === "measures"; })[0];
     var hasMeasureRoleInfo = dataMeasureLayers.some(function(layer) { return !!layer.logical; });
+    var hasDataColumn = false;
+    try { hasDataColumn = (oDataLayout.getEdgeExtent(PHYS_DATA) || 0) > 0; } catch (e) { hasDataColumn = false; }
 
     for (var r = 0; r < nRows; r++) {
       var start = "";
@@ -387,8 +396,9 @@ define(['jquery',
       path.push({stage: depth + 1, label: str(end).trim()});
       var weight = weightLayer
         ? num(oDataLayout.getValue(PHYS_DATA, r, weightLayer.index))
-        : (hasMeasureRoleInfo ? null : num(oDataLayout.getValue(PHYS_DATA, r, 0)));
+        : ((hasMeasureRoleInfo || !hasDataColumn) ? null : num(oDataLayout.getValue(PHYS_DATA, r, 0)));
       if (weight === null || weight < 0) weight = 1;
+      pathWeightTotal += weight;
       var color = useOacColor ? this._resolveThemeColor(oTransientRenderingContext, helper, r) : "";
       for (var s = 0; s < path.length - 1; s++) {
         var from = path[s].label;
@@ -413,15 +423,19 @@ define(['jquery',
         });
       }
     }
-    return {rawEdges: raw, warnings: warnings};
+    return {rawEdges: raw, warnings: warnings, pathWeightTotal: pathWeightTotal};
   };
 
-  WsuSankeyViz.prototype._aggregateEdges = function(rawEdges, warnings) {
+  WsuSankeyViz.prototype._aggregateEdges = function(rawEdges, warnings, pathWeightTotal) {
     var byKey = Object.create(null);
-    var total = 0;
+    // Denominator for percent thresholds and "% of Total": the weight of the
+    // paths (one per row), not the sum of every segment, so adding an
+    // intermediate stage does not change what gets filtered.
+    var total = Number(pathWeightTotal) || 0;
     rawEdges.forEach(function(e) {
-      total += e.value;
-      var key = [e.stageIndex, e.toStage, e.from, e.to, e.group || ""].join(KEY_SEP);
+      // #34: complete and incomplete traffic between the same nodes stay
+      // separate edges so a mostly-complete flow is not painted incomplete.
+      var key = [e.stageIndex, e.toStage, e.from, e.to, e.group || "", e.incompletePath ? 1 : 0].join(KEY_SEP);
       if (!byKey[key]) {
         byKey[key] = {
           stageIndex: e.stageIndex,
@@ -476,12 +490,27 @@ define(['jquery',
         drop.forEach(function() { warnings.topNDropped += 1; });
         next = next.concat(keep);
         if (this.Config.collapseOther === "on" && drop.length) {
-          var other = {stageIndex: Number(sk), toStage: Number(sk) + 1, from: "Other", to: "Other", group: "", value: 0, rows: [], color: ""};
+          var others = Object.create(null);
           drop.forEach(function(d) {
-            other.value += d.value;
-            d.rows.forEach(function(r) { addUnique(other.rows, r); });
+            var k = (d.incompletePath ? "i" : "c") + KEY_SEP + edgeToStage(d);
+            if (!others[k]) {
+              others[k] = {stageIndex: Number(sk), toStage: edgeToStage(d), from: "Other", to: "Other", group: "",
+                value: 0, rows: [], color: "", incompletePath: !!d.incompletePath, termCode: null, detailsMap: {}};
+            }
+            var o = others[k];
+            o.value += d.value;
+            d.rows.forEach(function(r) { addUnique(o.rows, r); });
+            if (typeof d.termCode === "number" && !isNaN(d.termCode)) {
+              o.termCode = o.termCode === null ? d.termCode : Math.min(o.termCode, d.termCode);
+            }
+            mergeDetailRows(o.detailsMap, d.details || []);
           });
-          if (other.value > 0) next.push(other);
+          Object.keys(others).forEach(function(k) {
+            var o = others[k];
+            o.details = detailsMapToRows(o.detailsMap);
+            delete o.detailsMap;
+            if (o.value > 0) next.push(o);
+          });
         }
       }, this);
       edges = next;
@@ -603,11 +632,27 @@ define(['jquery',
       if (aHas !== bHas) return aHas ? -1 : 1;
       if (a.from !== b.from) return a.from.localeCompare(b.from);
       return a.to.localeCompare(b.to);
-    }).map(function(e, idx) {
+    });
+    // First pass: natural widths (1px floor). Second pass: where the floors
+    // stack past a node's height, shrink that node's links to fit.
+    var naturalWidth = outEdges.map(function(e) {
+      var edgeScale = Math.min(stageScales[e.stageIndex] || 1, stageScales[edgeToStage(e)] || 1);
+      return Math.max(1, e.value * edgeScale);
+    });
+    var outSum = Object.create(null), inSum = Object.create(null);
+    outEdges.forEach(function(e, i) {
+      var sk = e.stageIndex + KEY_SEP + e.from, tk = edgeToStage(e) + KEY_SEP + e.to;
+      outSum[sk] = (outSum[sk] || 0) + naturalWidth[i];
+      inSum[tk] = (inSum[tk] || 0) + naturalWidth[i];
+    });
+    outEdges = outEdges.map(function(e, idx) {
       var source = nodesByKey[e.stageIndex + KEY_SEP + e.from];
       var target = nodesByKey[edgeToStage(e) + KEY_SEP + e.to];
-      var edgeScale = Math.min(stageScales[e.stageIndex] || 1, stageScales[edgeToStage(e)] || 1);
-      var w = Math.max(1, e.value * edgeScale);
+      var sk = e.stageIndex + KEY_SEP + e.from, tk = edgeToStage(e) + KEY_SEP + e.to;
+      var fit = Math.min(1,
+        outSum[sk] > source.h ? source.h / outSum[sk] : 1,
+        inSum[tk] > target.h ? target.h / inSum[tk] : 1);
+      var w = Math.max(0.5, naturalWidth[idx] * fit);
       var sy = source.y + source._sourceOffset + (w / 2);
       var ty = target.y + target._targetOffset + (w / 2);
       source._sourceOffset += w;
@@ -707,6 +752,10 @@ define(['jquery',
     var maxY = window.pageYOffset + window.innerHeight - h - 8;
     if (left > maxX) left = pageX - w - 12;
     if (top > maxY) top = pageY - h - 12;
+    var minX = window.pageXOffset + 8;
+    var minY = window.pageYOffset + 8;
+    if (left < minX) left = minX;
+    if (top < minY) top = minY;
     tooltip.style("left", left + "px").style("top", top + "px");
   };
 
@@ -796,9 +845,12 @@ define(['jquery',
       .append("path")
       .attr("class", "link-path")
       .attr("d", function(e) {
-        var x0 = e.source.x + oViz.Config.nodeWidth;
-        var x1 = e.target.x;
-        var c = Math.abs(x1 - x0) * oViz.Config.linkCurve;
+        // Leave the side of the source that faces the target and enter the
+        // side of the target that faces the source; direction-agnostic.
+        var rtl = e.target.x < e.source.x;
+        var x0 = rtl ? e.source.x : e.source.x + oViz.Config.nodeWidth;
+        var x1 = rtl ? e.target.x + oViz.Config.nodeWidth : e.target.x;
+        var c = Math.abs(x1 - x0) * oViz.Config.linkCurve * (rtl ? -1 : 1);
         return "M" + x0 + "," + e.sy + " C" + (x0 + c) + "," + e.sy + " " + (x1 - c) + "," + e.ty + " " + x1 + "," + e.ty;
       })
       .attr("stroke-width", function(e) { return e.width; })
@@ -874,41 +926,43 @@ define(['jquery',
     var nodeLabels = nodes.selectAll(".node-label");
     var activeFocusKey = null;
     var legendItems = null;
-    function collectDownstreamFromNode(nodeKey) {
+    // An edge belongs to the focus only if it carries a row that actually
+    // passes through the focused node/edge. Following connectivity alone
+    // would join A->X->C with B->X->D and show A reaching D.
+    var nodeByKey = Object.create(null);
+    model.layout.nodes.forEach(function(n) { nodeByKey[n.key] = n; });
+    function rowSet(rows) {
+      var set = Object.create(null);
+      (rows || []).forEach(function(r) { set[r] = true; });
+      return set;
+    }
+    function sharesRow(edge, set) {
+      return (edge.rows || []).some(function(r) { return set[r]; });
+    }
+    function collectByRows(focusRows, anchorNodeKey, direction) {
       var connectedNodes = {};
       var connectedEdges = {};
-      var queue = [nodeKey];
-      connectedNodes[nodeKey] = true;
-      while (queue.length) {
-        var current = queue.shift();
-        model.layout.edges.forEach(function(e) {
-          if (e.source.key !== current) return;
-          connectedEdges[e.id] = true;
-          if (!connectedNodes[e.target.key]) {
-            connectedNodes[e.target.key] = true;
-            queue.push(e.target.key);
-          }
-        });
-      }
+      if (anchorNodeKey) connectedNodes[anchorNodeKey] = true;
+      var anchorStage = anchorNodeKey && nodeByKey[anchorNodeKey] ? nodeByKey[anchorNodeKey].stage : null;
+      model.layout.edges.forEach(function(e) {
+        if (!sharesRow(e, focusRows)) return;
+        if (anchorStage !== null) {
+          if (direction === "down" && e.stageIndex < anchorStage) return;
+          if (direction === "up" && e.toStage > anchorStage) return;
+        }
+        connectedEdges[e.id] = true;
+        connectedNodes[e.source.key] = true;
+        connectedNodes[e.target.key] = true;
+      });
       return {nodes: connectedNodes, edges: connectedEdges};
     }
+    function collectDownstreamFromNode(nodeKey) {
+      var n = nodeByKey[nodeKey];
+      return collectByRows(rowSet(n ? n.rows : []), nodeKey, "down");
+    }
     function collectUpstreamFromNode(nodeKey) {
-      var connectedNodes = {};
-      var connectedEdges = {};
-      var queue = [nodeKey];
-      connectedNodes[nodeKey] = true;
-      while (queue.length) {
-        var current = queue.shift();
-        model.layout.edges.forEach(function(e) {
-          if (e.target.key !== current) return;
-          connectedEdges[e.id] = true;
-          if (!connectedNodes[e.source.key]) {
-            connectedNodes[e.source.key] = true;
-            queue.push(e.source.key);
-          }
-        });
-      }
-      return {nodes: connectedNodes, edges: connectedEdges};
+      var n = nodeByKey[nodeKey];
+      return collectByRows(rowSet(n ? n.rows : []), nodeKey, "up");
     }
     function mergeFocus(a, b) {
       var nodesOut = {};
@@ -920,25 +974,16 @@ define(['jquery',
       return {nodes: nodesOut, edges: edgesOut};
     }
     function collectDownstreamFromEdge(edge) {
-      var connectedNodes = {};
-      var connectedEdges = {};
-      connectedEdges[edge.id] = true;
-      connectedNodes[edge.source.key] = true;
-      connectedNodes[edge.target.key] = true;
-      var queue = [edge.target.key];
-      while (queue.length) {
-        var current = queue.shift();
-        model.layout.edges.forEach(function(e) {
-          if (e.source.key === current) {
-            connectedEdges[e.id] = true;
-            if (!connectedNodes[e.target.key]) {
-              connectedNodes[e.target.key] = true;
-              queue.push(e.target.key);
-            }
-          }
-        });
-      }
-      return {nodes: connectedNodes, edges: connectedEdges};
+      var focus = collectByRows(rowSet(edge.rows), null, "down");
+      // Keep only segments at or after this edge's stage.
+      Object.keys(focus.edges).forEach(function(id) {
+        var e = model.layout.edges.filter(function(x) { return x.id === id; })[0];
+        if (e && e.stageIndex < edge.stageIndex) delete focus.edges[id];
+      });
+      focus.edges[edge.id] = true;
+      focus.nodes[edge.source.key] = true;
+      focus.nodes[edge.target.key] = true;
+      return focus;
     }
     function resetFocus() {
       activeFocusKey = null;
@@ -1065,6 +1110,8 @@ define(['jquery',
     if (model.warnings.orphanRows > 0) warningText.push("orphans dropped: " + model.warnings.orphanRows);
     if (model.warnings.selfLinkEdges > 0) warningText.push("self-links removed: " + model.warnings.selfLinkEdges);
     if (model.warnings.truncatedIntermediateRows > 0) warningText.push("rows truncated by max depth: " + model.warnings.truncatedIntermediateRows);
+    if (model.warnings.thresholdDropped > 0) warningText.push("flows under threshold: " + model.warnings.thresholdDropped);
+    if (model.warnings.topNDropped > 0) warningText.push("flows beyond top N: " + model.warnings.topNDropped + (this.Config.collapseOther === "on" ? " (collapsed to Other)" : ""));
     if (warningText.length && this.Config.showWarnings === "on") {
       g.append("text")
         .attr("class", "warning-text")
@@ -1076,7 +1123,7 @@ define(['jquery',
 
   WsuSankeyViz.prototype._buildModel = function(oDataLayout, oTransientRenderingContext, size) {
     var rawBuild = this._buildRawEdges(oDataLayout, oTransientRenderingContext);
-    var agg = this._aggregateEdges(rawBuild.rawEdges, rawBuild.warnings);
+    var agg = this._aggregateEdges(rawBuild.rawEdges, rawBuild.warnings, rawBuild.pathWeightTotal);
     var layout = this._layout(agg.edges, size.width, size.height);
     return {layout: layout, warnings: agg.warnings, totalFlow: agg.total};
   };
