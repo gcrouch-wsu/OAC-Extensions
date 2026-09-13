@@ -1210,6 +1210,66 @@ CSS variable (`.style("--bg-opacity", X)`) and read it from a CSS rule
 
 ---
 
+### 6.32 Currency policy — no legacy dependencies
+
+"Legacy" in this ecosystem is a short, concrete list. The plugin family
+must stay off all of it, and `oac-sdk-dev/tests/lint.js` (run by
+`node tests/run.js`) fails the build when any of it appears.
+
+| Legacy | Current | Why |
+|---|---|---|
+| hand-written `plugin.xml` in `src/` | JSON manifests under `extensions/` (`devMode=NEW`); the SDK generates `plugin.xml` | Oracle's own samples still ship `plugin.xml`; the JSON form is what the SDK validates |
+| `d3js` (D3 3.4.13) | `d3v6js` (D3 6.2.0) | Oracle re-published its samples in Jan–Feb 2026 replacing `d3js` with `d3v3`; the unversioned alias is being retired |
+| `d3v3` | `d3v6js` | Cloud-only alias; **not defined in OAD 26.01** — those re-published samples do not load on the desktop |
+| `obitech-legend/legendandvizcontainer` | SVG legend drawn by the plugin | Semi-private mixin, breaks on minor updates (section 2) |
+| `knockout`, `ojs/*` | none | Not needed; OAC samples are moving off them |
+| `obitech-report/visualization` | `obitech-report/datavisualization` | Superseded |
+
+### Allowlist tied to a host version
+
+`tests/lint.js` carries `HOST_VERSION` and `ALLOWED_MODULES`: every AMD id
+the plugins may depend on, verified present in that OAD build. Verified for
+**OAD 26.01.0.0.0 (2026-01-20)** by:
+
+```powershell
+cd "C:\Program Files\Oracle Analytics Desktop\war\va\plugins"
+Get-ChildItem thirdparty\obitech-thirdparty        # d3js.js, d3v6js.js -> the two D3 builds shipped
+Select-String -Path report\report.js,viz\viz.js -Pattern '"d3v6js"' -List
+```
+
+and, for the inherited host methods the plugins call (`getMarkingService`,
+`getCachedColorInterpolator`, `getSubElementIdFromParent`, ...):
+
+```powershell
+Select-String -Path report\report.js -Pattern 'getSubElementIdFromParent' | Measure-Object
+```
+
+A method with only one or two references in the bundle is real but thinly
+used — the likeliest to be renamed. The plugins wrap each of those in
+`try/catch` with a fallback (color service -> custom palette, container id
+-> `getID()`).
+
+### After every OAD / OAC upgrade
+
+1. Re-run the two checks above against the new install.
+2. If a module id or method disappeared, fix the plugins first, then update
+   `ALLOWED_MODULES` / `TOLERATED_PRIVATE_CALLS` and bump `HOST_VERSION`.
+3. If a *new* versioned id appears (for example `d3v7js`), decide whether to
+   move; do not depend on two D3 builds at once.
+4. In OAC Dev, DevTools console:
+   `require(["d3v6js"], function(d3){ console.log(d3.version); })` — the
+   cloud host updates quarterly and can be ahead of the desktop.
+
+### Language level
+
+The plugins are ES5 by convention (`var`, `function`), matching every Oracle
+sample including the 2026 re-publishes. This is compatibility, not legacy:
+the OAC upload path's optimizer has not been verified with ES2015+ syntax.
+Do not introduce `class`, arrow functions, or `let/const` until that is
+confirmed on OAC Dev.
+
+---
+
 ## 7. Build & Deployment
 
 ### 7.1 Project layout

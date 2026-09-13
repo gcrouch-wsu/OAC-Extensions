@@ -429,3 +429,6 @@ suite("WSU Network", function() {
 });
 
 H.summary();
+
+// Currency lint runs as part of the suite so a legacy dependency fails CI too.
+require("./lint");
