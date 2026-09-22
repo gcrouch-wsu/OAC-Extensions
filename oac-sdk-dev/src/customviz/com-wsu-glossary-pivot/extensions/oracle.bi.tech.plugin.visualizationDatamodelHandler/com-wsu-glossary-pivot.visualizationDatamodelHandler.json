@@ -1,0 +1,64 @@
+{
+    "module" : "com-wsu-glossary-pivot/glossaryPivotVizdatamodelhandler",
+    "method" : "getHandler",
+    "config" : {
+        "vizPreference" : 50,
+        "measureLabelConfig": {
+           "supportedEdges": ["col"],
+           "defaultEdge": "col",
+           "visibility": "visible"
+        },
+        "edgeConfig" : {
+            "measures" : {
+                "contentType": "measures",
+                "global": {
+                    "minCount": 1,
+                    "maxCount": 20,
+                    "priority": 10
+                },
+                "ui": {
+                    "customName": { "key": "GLOSSARYPIVOT_VALUES", "default": "Values" },
+                    "_forceCustomName": true,
+                    "order": 3
+                }
+            },
+            "row" : {
+                "contentType": "categorical",
+                "global": {
+                    "minCount": 0,
+                    "maxCount": 5,
+                    "priority": 1,
+                    "preferredMax": 3
+                },
+                "ui": {
+                    "customName": { "key": "GLOSSARYPIVOT_ROWS", "default": "Rows" },
+                    "_forceCustomName": true,
+                    "order": 1
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "row", "categoricalType"]
+                }
+            },
+            "col" : {
+                "contentType": "categorical",
+                "global": {
+                    "minCount": 0,
+                    "maxCount": 5,
+                    "priority": 2,
+                    "preferredMax": 2
+                },
+                "ui": {
+                    "customName": { "key": "GLOSSARYPIVOT_COLUMNS", "default": "Columns" },
+                    "_forceCustomName": true,
+                    "order": 2
+                },
+                "categorical": {
+                    "functionalInfo": ["inner", "col", "categoricalType"]
+                }
+            },
+            "color": "none",
+            "size": "none",
+            "glyph": "none"
+        }
+    }
+}

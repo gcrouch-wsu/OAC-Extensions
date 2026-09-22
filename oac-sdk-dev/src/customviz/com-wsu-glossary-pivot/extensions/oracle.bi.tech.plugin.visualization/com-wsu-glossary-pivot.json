@@ -1,0 +1,30 @@
+{
+   "host": {
+      "script": {
+            "module" : "com-wsu-glossary-pivot/glossaryPivotViz",
+            "method" : "createClientComponent"
+      },
+      "vizSettings": {
+         "_version":"1.0.0",
+         "viewConfig":{
+            "viz:chart":{
+               "type": "com-wsu-glossary-pivot",
+               "dataValues": true
+            }
+         }
+      }
+   },
+   "resourceBundle": "com-wsu-glossary-pivot/nls/messages",
+   "properties": {
+     "displayName": { "key" : "GLOSSARYPIVOT_DISPLAY_NAME", "default" : "WSU Glossary Pivot" },
+     "shortDisplayName": { "key" : "GLOSSARYPIVOT_SHORT_DISPLAY_NAME", "default" : "Glossary Pivot" },
+     "category": {"key":"GLOSSARYPIVOT_CATEGORY", "default":"WSU"},
+     "customSettings":{},
+     "categoryOrder": 500,
+     "icon": "glossaryPivotVizIcon",
+     "dataModelHandler" : "com-wsu-glossary-pivot.visualizationDatamodelHandler",
+     "dataModelGovernor": { "dm1": { "rows": 10000, "columns": 500 } },
+     "isEmbeddable": false,
+     "isMarkingSupported": true
+   }
+}

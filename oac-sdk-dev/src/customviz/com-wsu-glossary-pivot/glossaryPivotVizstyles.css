@@ -1,0 +1,209 @@
+/**************** WSU Glossary Pivot — plugin CSS ****************/
+
+.gp-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 12px;
+  color: #1b1f24;
+}
+
+.gp-empty {
+  padding: 16px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.gp-table {
+  border-collapse: collapse;
+  width: auto;
+  min-width: 100%;
+}
+
+.gp-table th,
+.gp-table td {
+  border: 1px solid #dcdfe3;
+  padding: 5px 10px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.gp-table th.gp-colhdr,
+.gp-table th.gp-corner {
+  background: #f0f2f4;
+  font-weight: 600;
+  text-align: center;
+}
+
+.gp-table th.gp-corner {
+  text-align: left;
+}
+
+.gp-table th.gp-rowhdr {
+  background: #f7f8f9;
+  font-weight: 500;
+  text-align: left;
+}
+
+.gp-table td.gp-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Heat-map cells set --gp-cell-bg/--gp-cell-fg inline rather than
+   background/color directly, so this rule (equal specificity to the two
+   below it) loses the cascade to .gp-marked and :hover, which are both
+   MORE specific (one extra type selector each). An inline background would
+   have won regardless of those rules and silently hidden row hover and the
+   mark-selection color whenever the heat map was on. */
+.gp-table td.gp-val.gp-heat {
+  background: var(--gp-cell-bg, transparent);
+  color: var(--gp-cell-fg, inherit);
+}
+
+.gp-table tbody tr:hover td.gp-val {
+  background: #f0f2f4;
+}
+
+/* Headers carrying a glossary description are the interactive surface. */
+.gp-table th.gp-has-desc {
+  cursor: help;
+}
+
+.gp-table th.gp-has-desc .gp-lbl {
+  border-bottom: 1px dotted #9aa1a9;
+}
+
+.gp-table th.gp-has-desc:hover,
+.gp-table th.gp-has-desc:focus {
+  background: #e3efee;
+}
+
+.gp-table th.gp-has-desc:hover .gp-lbl,
+.gp-table th.gp-has-desc:focus .gp-lbl {
+  border-bottom-color: #1f6f6b;
+}
+
+.gp-table th.gp-has-desc:focus {
+  outline: 2px solid #1f6f6b;
+  outline-offset: -2px;
+}
+
+/* ---- tooltip ---- */
+/* Fixed positioning: coordinates are computed in viewport space, so the tip
+   is immune to which ancestor is position:relative and to .gp-wrap's
+   overflow clipping. */
+.gp-tip {
+  position: fixed;
+  z-index: 1000;
+  max-width: 320px;
+  background: #ffffff;
+  color: #1b1f24;
+  border: 1px solid #c3c8ce;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10), 0 10px 28px rgba(0, 0, 0, 0.12);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, visibility 0.12s;
+}
+
+.gp-tip.gp-on {
+  opacity: 1;
+  visibility: visible;
+}
+
+.gp-tip-name {
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+
+.gp-tip-src {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: #ece6f5;
+  color: #6b4c9a;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.gp-tip-desc {
+  color: #545c66;
+}
+
+/* ---- marking (row-level click-to-select) ---- */
+.gp-table th.gp-rowhdr[data-gp-mark-rows],
+.gp-table td.gp-val[data-gp-mark-rows] {
+  cursor: pointer;
+}
+
+.gp-table tr.gp-marked td.gp-val,
+.gp-table tr.gp-marked th.gp-rowhdr {
+  background: #fff3d6;
+}
+
+.gp-table tr.gp-marked td.gp-val:hover {
+  background: #ffe9b3;
+}
+
+/* ---- totals ---- */
+.gp-table th.gp-total-colhdr {
+  background: #e4e7ea;
+}
+
+.gp-table tr.gp-total-row th.gp-total-label,
+.gp-table tr.gp-total-row td.gp-total-val {
+  background: #eef0f2;
+  font-weight: 600;
+}
+
+.gp-table td.gp-grand-total-val {
+  border-left: 2px solid #b7bec6;
+}
+
+/* ---- row group collapse ---- */
+.gp-table .gp-group-toggle {
+  display: inline-block;
+  width: 12px;
+  cursor: pointer;
+  user-select: none;
+  color: #6b7280;
+}
+
+.gp-table tr.gp-group-row th.gp-group-label,
+.gp-table tr.gp-group-row td.gp-group-val {
+  background: #f3f0fa;
+  font-weight: 600;
+}
+
+.gp-table tr.gp-group-row th.gp-group-label {
+  cursor: pointer;
+  text-align: left;
+}
+
+/* ---- click-to-sort ---- */
+/* Pointer wins over the glossary header's cursor:help (same specificity,
+   this rule comes later). The dotted underline on .gp-lbl is still the
+   cue that a description exists; the arrow is the cue that a sort is on. */
+.gp-table th.gp-sortable {
+  cursor: pointer;
+}
+
+.gp-table th.gp-sortable .gp-sort-ind {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 9px;
+  color: #1f6f6b;
+  vertical-align: 1px;
+}
