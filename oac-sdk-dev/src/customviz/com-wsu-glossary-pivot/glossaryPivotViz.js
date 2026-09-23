@@ -1295,12 +1295,13 @@ define(['jquery',
          "thead { display: table-header-group; }" +
          "tr { break-inside: avoid; page-break-inside: avoid; }" +
          "th { background: #f0f2f4; font-weight: 700; text-align: center; }" +
-         "th.gp-print-title { background: #ffffff; font-size: 13pt; text-align: left; border: 0; padding: 0 0 8px; }" +
-         "th.gp-rowhdr, th.gp-corner { text-align: left; background: #f7f8f9; }" +
-         "td.gp-val { text-align: right; font-variant-numeric: tabular-nums; }" +
-         "tr.gp-total-row th, tr.gp-total-row td { font-weight: 700; background: #eef2f4; }" +
+         "th.gp-print-title, th.title { background: #ffffff; font-size: 13pt; text-align: left; border: 0; padding: 0 0 8px; }" +
+         "th.gp-rowhdr, th.gp-corner, td.rh { text-align: left; background: #f7f8f9; }" +
+         "td.gp-val, td.num, td.total { text-align: right; font-variant-numeric: tabular-nums; }" +
+         "tr.gp-total-row th, tr.gp-total-row td, tr.total td { font-weight: 700; background: #eef2f4; }" +
+         "td.total .lbl { display: block; text-align: left; }" +
          "td.gp-heat { background: var(--gp-cell-bg); color: var(--gp-cell-fg); }" +
-         "th, tr.gp-total-row td, td.gp-heat { -webkit-print-color-adjust: exact; print-color-adjust: exact; }" +
+         "th, tr.gp-total-row td, tr.total td, td.gp-heat { -webkit-print-color-adjust: exact; print-color-adjust: exact; }" +
          "</style></head><body>" + bodyHtml + "</body></html>";
    }
 
@@ -1389,9 +1390,12 @@ define(['jquery',
          .filter(function (e) { return e && typeof e.build === "function"; });
       if (!entries.length) return { ok: false, error: "empty" };
 
+      function readContainer(entry) {
+         try { return entry.getContainer ? entry.getContainer() : null; } catch (e) { return null; }
+      }
       entries.sort(function (a, b) {
-         var elA = a.getContainer && a.getContainer();
-         var elB = b.getContainer && b.getContainer();
+         var elA = readContainer(a);
+         var elB = readContainer(b);
          if (!elA || !elB || elA === elB) return 0;
          var pos = elA.compareDocumentPosition(elB);
          if (pos & 4 /* Node.DOCUMENT_POSITION_FOLLOWING */) return -1;
@@ -1405,9 +1409,11 @@ define(['jquery',
          try { fragment = entry.build(); } catch (e) {
             _logger.error("canvas print: a section failed to build: " + (e && e.message ? e.message : e));
          }
-         if (!fragment) return;
-         var prepared = preparePrintTable(fragment.html, fragment.title);
-         if (prepared) tableHtmls.push(prepared);
+         /* build() already returned the table Print PDF would place in the
+            document. Preparing again would stamp a second title onto a
+            Report Print section, and a Report Print click would otherwise
+            receive this pivot's table with its rowspans still in place. */
+         if (fragment && fragment.html) tableHtmls.push(fragment.html);
       });
       if (!tableHtmls.length) return { ok: false, error: "empty" };
 
@@ -2386,7 +2392,13 @@ define(['jquery',
          window.__wsuPrintCanvas = window.__wsuPrintCanvas || {};
          window.__wsuPrintCanvas[this.getID()] = {
             getContainer: function () { return self.getContainerElem(); },
-            build: function () { return self._buildPrintFragment(); }
+            build: function () {
+               var fragment = self._buildPrintFragment();
+               if (!fragment) return null;
+               var prepared = preparePrintTable(fragment.html, fragment.title);
+               if (!prepared) return null;
+               return { title: fragment.title, html: prepared };
+            }
          };
       } catch (e) {
          _logger.warning("Print Canvas registration failed: " + (e && e.message ? e.message : e));

@@ -155,11 +155,13 @@ querying its neighbors. Print Canvas works around that without needing one:
 mechanism), keyed by `this.getID()`. Every print-capable plugin instance —
 this one and WSU Report Print — adds a `{getContainer, build}` entry on
 `_doInitializeComponent` and removes it on `_doStopComponent`. `build()`
-returns `{title, html}` (or `null`) by calling the SAME fragment-building
-path Print PDF already uses for that instance alone
-(`_buildPrintFragment`/`buildFragment`); the entry's closure only captures
-the instance, so it always reflects current data and Config, not whatever
-was true at registration time.
+returns `{title, html}` (or `null`). `html` is the table that instance's
+own Print PDF would place in the document: Glossary Pivot expands rowspans
+and stamps its title inside `build()`, and Report Print's fragment is
+already that table. A caller only joins `html`. It does not run the other
+plugin's preparation on it. The closure only captures the instance, so
+`build()` always reflects current data and Config, not whatever was true
+at registration time.
 
 Clicking Print Canvas on either plugin walks every currently registered
 entry, sorts them by DOM position (`compareDocumentPosition`, not

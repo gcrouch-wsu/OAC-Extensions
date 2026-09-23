@@ -230,12 +230,13 @@ define(['jquery',
          "thead { display: table-header-group; }" +
          "tr { break-inside: avoid; page-break-inside: avoid; }" +
          "th { background: #f0f2f4; font-weight: 700; text-align: center; }" +
-         "th.title { background: #ffffff; font-size: 13pt; text-align: left; border: 0; padding: 0 0 8px; }" +
-         "td.rh { text-align: left; background: #f7f8f9; }" +
-         "td.num, td.total { text-align: right; font-variant-numeric: tabular-nums; }" +
-         "tr.total td { font-weight: 700; background: #eef2f4; }" +
+         "th.gp-print-title, th.title { background: #ffffff; font-size: 13pt; text-align: left; border: 0; padding: 0 0 8px; }" +
+         "th.gp-rowhdr, th.gp-corner, td.rh { text-align: left; background: #f7f8f9; }" +
+         "td.gp-val, td.num, td.total { text-align: right; font-variant-numeric: tabular-nums; }" +
+         "tr.gp-total-row th, tr.gp-total-row td, tr.total td { font-weight: 700; background: #eef2f4; }" +
          "td.total .lbl { display: block; text-align: left; }" +
-         "th, tr.total td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }" +
+         "td.gp-heat { background: var(--gp-cell-bg); color: var(--gp-cell-fg); }" +
+         "th, tr.gp-total-row td, tr.total td, td.gp-heat { -webkit-print-color-adjust: exact; print-color-adjust: exact; }" +
          "</style></head><body>" + bodyHtml + "</body></html>";
    }
 
@@ -379,9 +380,12 @@ define(['jquery',
          .filter(function (e) { return e && typeof e.build === "function"; });
       if (!entries.length) return { ok: false, error: "empty" };
 
+      function readContainer(entry) {
+         try { return entry.getContainer ? entry.getContainer() : null; } catch (e) { return null; }
+      }
       entries.sort(function (a, b) {
-         var elA = a.getContainer && a.getContainer();
-         var elB = b.getContainer && b.getContainer();
+         var elA = readContainer(a);
+         var elB = readContainer(b);
          if (!elA || !elB || elA === elB) return 0;
          var pos = elA.compareDocumentPosition(elB);
          if (pos & 4 /* Node.DOCUMENT_POSITION_FOLLOWING */) return -1;

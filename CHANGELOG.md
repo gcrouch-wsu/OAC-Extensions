@@ -29,8 +29,10 @@ No OAC API lets one visualization read another's data (`docs/oac_design.md`
 §2), so this does not attempt to: `window.__wsuPrintCanvas` is a plain,
 same-page JS registry, not an OAC mechanism. Each print-capable instance
 registers a `{getContainer, build}` entry on init and removes it on stop;
-`build()` reuses the exact fragment-building path Print PDF already used
-for that instance alone. A section that fails to build (missing layout,
+`build()` returns the same table HTML that instance's Print PDF places
+in the document. Glossary Pivot expands rowspans and stamps its title
+inside that call, so a click on either plugin prints the other's table
+the same way. A section that fails to build (missing layout,
 zero columns, a thrown exception) is skipped, not fatal to the rest of the
 canvas. Sections are ordered by DOM position, not registration order.
 Orientation and the document title come from whichever instance's button
