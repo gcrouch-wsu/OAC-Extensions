@@ -5,11 +5,23 @@
  * the table bound to THIS visualization, with the column headers in thead
  * so they repeat on each page. The bar is not in that document.
  *
- * It cannot see another visualization. The report fields have to be dropped
- * on Rows, Columns, and Values here, the same way they are on the pivot.
+ * It cannot see another visualization through any OAC API — docs/oac_design.md
+ * §2: a plugin only sees data bound to its own grammar buckets. The report
+ * fields have to be dropped on Rows, Columns, and Values here, the same way
+ * they are on the pivot.
  *
  * Row labels are repeated on every body row. A rowspan that started on the
  * previous page would otherwise leave the next page with a blank stub.
+ *
+ * v1.1 — Print Canvas. window.__wsuPrintCanvas is a plain, same-page JS
+ * registry (not an OAC mechanism — there is no sanctioned generic cross-viz
+ * message channel; the only event type this codebase uses is the marking
+ * service's own typed MarkingEvent). This instance and any WSU Glossary
+ * Pivot instances on the same canvas register their own table-building
+ * closure there on init and remove it on stop. Print Canvas asks every
+ * registered instance for its own table fragment and assembles them into
+ * one document in canvas (DOM) order; a section that fails to build is
+ * skipped, not fatal to the rest.
  ******************************************************************************/
 
 define(['jquery',
@@ -56,6 +68,7 @@ define(['jquery',
    var LBL = {
       EMPTY: L("REPORTPRINT_LBL_EMPTY", "Add the report fields to Rows, Columns, and Values on this visualization."),
       BUTTON: L("REPORTPRINT_LBL_BUTTON", "Print PDF"),
+      PRINT_CANVAS: L("REPORTPRINT_LBL_PRINT_CANVAS", "Print Canvas"),
       HINT: L("REPORTPRINT_LBL_HINT", "Prints the fields dropped here. The button is not on the pages."),
       TOTAL: L("REPORTPRINT_LBL_TOTAL", "Total"),
       PRINT_ERROR: L("REPORTPRINT_LBL_PRINT_ERROR", "Print could not open. Use the browser print dialog if it appears, or allow this page to print.")
@@ -78,7 +91,7 @@ define(['jquery',
       };
    }
    jsx.extend(ReportPrintViz, dataviz.DataVisualization);
-   ReportPrintViz.VERSION = "1.0.0";
+   ReportPrintViz.VERSION = "1.1.0";
 
    function escapeHtml(s) {
       if (s == null) return "";
@@ -112,11 +125,15 @@ define(['jquery',
    }
 
    /**
-    * Printable pivot. Column headers stay in thead so the browser repeats
-    * them. Row labels are repeated on each body row so a page never opens
-    * on a blank spanned cell.
+    * Table fragment only — no document shell. Column headers stay in thead
+    * so the browser repeats them. Row labels are repeated on each body row
+    * (no rowspans used here at all, unlike Glossary Pivot's table, so there
+    * is no separate rowspan-expansion step needed before this can sit next
+    * to another visualization's fragment in a canvas print). wrapPrintDocument
+    * below supplies the shared <!DOCTYPE ...>/<style> shell, once, around
+    * either a single fragment or several joined by joinPrintSections.
     */
-   function buildPrintHtml(dl, Config) {
+   function buildReportTable(dl, Config) {
       var LM = data.LayerMetadata;
       var nRowLayers = dl.getLayerCount(PHYS_ROW) || 0;
       var nColLayers = dl.getLayerCount(PHYS_COLUMN) || 0;
@@ -126,26 +143,9 @@ define(['jquery',
       if (!nCols) return null;
 
       var title = (Config.reportTitle && String(Config.reportTitle).trim()) || "Report";
-      var orient = Config.orientation === "portrait" ? "portrait" : "landscape";
       var span = nRowLayers + nCols;
       var html = [];
-      html.push("<!DOCTYPE html><html><head><meta charset='utf-8'><title>");
-      html.push(escapeHtml(title));
-      html.push("</title><style>");
-      html.push("@page { size: " + orient + "; margin: 0.5in; }");
-      html.push("body { margin: 0; color: #1b1f24; font-family: Arial, Helvetica, sans-serif; font-size: 9pt; }");
-      html.push("table { border-collapse: collapse; width: 100%; }");
-      html.push("th, td { border: 1px solid #b7bcc2; padding: 3px 6px; vertical-align: top; }");
-      html.push("thead { display: table-header-group; }");
-      html.push("tr { break-inside: avoid; page-break-inside: avoid; }");
-      html.push("th { background: #f0f2f4; font-weight: 700; text-align: center; }");
-      html.push("th.title { background: #ffffff; font-size: 13pt; text-align: left; border: 0; padding: 0 0 8px; }");
-      html.push("td.rh { text-align: left; background: #f7f8f9; }");
-      html.push("td.num, td.total { text-align: right; font-variant-numeric: tabular-nums; }");
-      html.push("tr.total td { font-weight: 700; background: #eef2f4; }");
-      html.push("td.total .lbl { display: block; text-align: left; }");
-      html.push("th, tr.total td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }");
-      html.push("</style></head><body><table><thead>");
+      html.push("<table><thead>");
       html.push("<tr><th class='title' colspan='" + span + "'>" + escapeHtml(title) + "</th></tr>");
 
       var headerRows = Math.max(nColLayers, 1);
@@ -209,18 +209,64 @@ define(['jquery',
          }
          html.push("</tr>");
       }
-      html.push("</tbody></table></body></html>");
+      html.push("</tbody></table>");
       return html.join("");
    }
 
-   function preparePrint(layout, config) {
-      if (!layout) return { html: null, error: "empty" };
-      var html = null;
-      try { html = buildPrintHtml(layout, config); } catch (err) {
+   /**
+    * The shared document shell — one <!DOCTYPE .../<style> around either a
+    * single fragment (Print PDF) or several joined by joinPrintSections
+    * (Print Canvas). Every rule here was already in the single-table
+    * document before v1.1; nothing changed except that it now wraps
+    * `bodyHtml` instead of building one table itself.
+    */
+   function wrapPrintDocument(title, orient, bodyHtml) {
+      return "<!DOCTYPE html><html><head><meta charset='utf-8'><title>" +
+         escapeHtml(title) + "</title><style>" +
+         "@page { size: " + orient + "; margin: 0.5in; }" +
+         "body { margin: 0; color: #1b1f24; font-family: Arial, Helvetica, sans-serif; font-size: 9pt; }" +
+         "table { border-collapse: collapse; width: 100%; }" +
+         "th, td { border: 1px solid #b7bcc2; padding: 3px 6px; vertical-align: top; }" +
+         "thead { display: table-header-group; }" +
+         "tr { break-inside: avoid; page-break-inside: avoid; }" +
+         "th { background: #f0f2f4; font-weight: 700; text-align: center; }" +
+         "th.title { background: #ffffff; font-size: 13pt; text-align: left; border: 0; padding: 0 0 8px; }" +
+         "td.rh { text-align: left; background: #f7f8f9; }" +
+         "td.num, td.total { text-align: right; font-variant-numeric: tabular-nums; }" +
+         "tr.total td { font-weight: 700; background: #eef2f4; }" +
+         "td.total .lbl { display: block; text-align: left; }" +
+         "th, tr.total td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }" +
+         "</style></head><body>" + bodyHtml + "</body></html>";
+   }
+
+   /**
+    * Page break before every section after the first, so a single-table
+    * print (one section) and a canvas print (several) share one code path.
+    * Pure string work; unit-tested directly (tests/run.js), same as
+    * Glossary Pivot's identical helper.
+    */
+   function joinPrintSections(tableHtmls) {
+      return tableHtmls.map(function (html, i) {
+         return "<div" + (i > 0 ? " style='page-break-before:always'" : "") + ">" + html + "</div>";
+      }).join("");
+   }
+
+   /**
+    * This instance's own printable fragment — {title, html} where html is
+    * just the <table>, or null on a missing layout / zero columns / a build
+    * that throws. Shared by the Print PDF button and the Print Canvas
+    * registry entry (see _doInitializeComponent) — same fragment either
+    * way, only the document wrapper differs.
+    */
+   function buildFragment(layout, config) {
+      if (!layout) return null;
+      var tableHtml = null;
+      try { tableHtml = buildReportTable(layout, config); } catch (err) {
          _logger.error("build print html failed: " + (err && err.message ? err.message : err));
       }
-      if (!html) return { html: null, error: "empty" };
-      return { html: html, error: null };
+      if (!tableHtml) return null;
+      var title = (config.reportTitle && String(config.reportTitle).trim()) || "Report";
+      return { title: title, html: tableHtml };
    }
 
    function openPrint(self, html) {
@@ -281,20 +327,83 @@ define(['jquery',
       }
       $text.append($("<div class='rp-hint'></div>").text(hint));
       $text.append($("<div class='rp-error' style='display:none'></div>").text(LBL.PRINT_ERROR));
+      var $canvasBtn = $("<button type='button' class='rp-canvasbtn'></button>").text(LBL.PRINT_CANVAS);
       var $btn = $("<button type='button' class='rp-btn'></button>").text(LBL.BUTTON);
       var self = this;
       $btn.on("click", function () {
          var $err = $bar.find(".rp-error");
          $err.hide();
-         var prepared = preparePrint(self._layout, self.Config);
-         if (prepared.error === "empty") {
-            $err.text(LBL.EMPTY).show();
-            return;
-         }
-         if (!openPrint(self, prepared.html)) $err.text(LBL.PRINT_ERROR).show();
+         var result = self._printTable();
+         if (result.ok) return;
+         $err.text(result.error === "print" ? LBL.PRINT_ERROR : LBL.EMPTY).show();
       });
-      $bar.append($text).append($btn);
+      $canvasBtn.on("click", function () {
+         var $err = $bar.find(".rp-error");
+         $err.hide();
+         var result = self._printCanvas();
+         if (result.ok) return;
+         $err.text(result.error === "print" ? LBL.PRINT_ERROR : LBL.EMPTY).show();
+      });
+      $bar.append($text).append($canvasBtn).append($btn);
       $(elContainer).empty().append($bar);
+   };
+
+   /** This instance's own fragment — see buildFragment above. */
+   ReportPrintViz.prototype._buildFragment = function () {
+      return buildFragment(this._layout, this.Config);
+   };
+
+   ReportPrintViz.prototype._printTable = function () {
+      var fragment = this._buildFragment();
+      if (!fragment) return { ok: false, error: "empty" };
+      var orient = this.Config.orientation === "portrait" ? "portrait" : "landscape";
+      var docHtml = wrapPrintDocument(fragment.title, orient, joinPrintSections([fragment.html]));
+      if (!openPrint(this, docHtml)) return { ok: false, error: "print" };
+      return { ok: true };
+   };
+
+   /**
+    * Print Canvas: every print-capable instance currently registered in
+    * window.__wsuPrintCanvas (see _doInitializeComponent) — including this
+    * one, and any WSU Glossary Pivot instances on the same canvas — is
+    * asked to build its own fragment. A section whose build() throws or
+    * returns nothing is skipped, not fatal to the rest of the canvas.
+    * Sections are ordered by DOM position (compareDocumentPosition), not
+    * registration order. Orientation and the overall document title come
+    * from the instance whose button was clicked — @page is document-wide,
+    * there is no per-section override.
+    */
+   ReportPrintViz.prototype._printCanvas = function () {
+      var registry = window.__wsuPrintCanvas || {};
+      var entries = Object.keys(registry).map(function (id) { return registry[id]; })
+         .filter(function (e) { return e && typeof e.build === "function"; });
+      if (!entries.length) return { ok: false, error: "empty" };
+
+      entries.sort(function (a, b) {
+         var elA = a.getContainer && a.getContainer();
+         var elB = b.getContainer && b.getContainer();
+         if (!elA || !elB || elA === elB) return 0;
+         var pos = elA.compareDocumentPosition(elB);
+         if (pos & 4 /* Node.DOCUMENT_POSITION_FOLLOWING */) return -1;
+         if (pos & 2 /* Node.DOCUMENT_POSITION_PRECEDING */) return 1;
+         return 0;
+      });
+
+      var tableHtmls = [];
+      entries.forEach(function (entry) {
+         var fragment = null;
+         try { fragment = entry.build(); } catch (e) {
+            _logger.error("canvas print: a section failed to build: " + (e && e.message ? e.message : e));
+         }
+         if (fragment && fragment.html) tableHtmls.push(fragment.html);
+      });
+      if (!tableHtmls.length) return { ok: false, error: "empty" };
+
+      var docTitle = (this.Config.reportTitle && String(this.Config.reportTitle).trim()) || "Report";
+      var orient = this.Config.orientation === "portrait" ? "portrait" : "landscape";
+      var docHtml = wrapPrintDocument(docTitle, orient, joinPrintSections(tableHtmls));
+      if (!openPrint(this, docHtml)) return { ok: false, error: "print" };
+      return { ok: true };
    };
 
    ReportPrintViz.prototype.render = function (oTransientRenderingContext) {
@@ -305,8 +414,26 @@ define(['jquery',
       this._render(this.createRenderingContext(oTransientVizContext));
    };
 
+   /**
+    * Registers this instance in window.__wsuPrintCanvas (see the file-header
+    * v1.1 note) so a Print Canvas click anywhere on the page — including
+    * from a WSU Glossary Pivot instance on the same canvas — can ask this
+    * instance for its own fragment. The closure only captures `self`;
+    * build() reads self._layout/self.Config lazily, at print time, so the
+    * entry is never stale between registration and a later click.
+    */
    ReportPrintViz.prototype._doInitializeComponent = function () {
       ReportPrintViz.superClass._doInitializeComponent.call(this);
+      var self = this;
+      try {
+         window.__wsuPrintCanvas = window.__wsuPrintCanvas || {};
+         window.__wsuPrintCanvas[this.getID()] = {
+            getContainer: function () { return self.getContainerElem(); },
+            build: function () { return self._buildFragment(); }
+         };
+      } catch (e) {
+         _logger.warning("Print Canvas registration failed: " + (e && e.message ? e.message : e));
+      }
    };
 
    ReportPrintViz.prototype._doStopComponent = function () {
@@ -314,6 +441,9 @@ define(['jquery',
          this._printFrame.parentNode.removeChild(this._printFrame);
       }
       this._printFrame = null;
+      try {
+         if (window.__wsuPrintCanvas) delete window.__wsuPrintCanvas[this.getID()];
+      } catch (e) {}
       ReportPrintViz.superClass._doStopComponent.apply(this, arguments);
    };
 
@@ -376,7 +506,8 @@ define(['jquery',
 
    return {
       createClientComponent: createClientComponent,
-      _preparePrint: preparePrint,
-      _buildPrintHtml: buildPrintHtml
+      _buildFragment: buildFragment,
+      _buildReportTable: buildReportTable,
+      _joinPrintSections: joinPrintSections
    };
 });

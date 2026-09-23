@@ -3,16 +3,50 @@
 Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 `docs/plugins/`. Those constants are the versions in this folder. Network
 1.2.2, Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, and Lattice Scatter 1.1.2
-are on `main`. Glossary Pivot in this folder is 0.13.0. The commit on
-`origin/main` (`a15f2bf`) is Glossary Pivot 0.10.0; 0.13.0 is local until
-it is committed.
+are on `main`. Glossary Pivot in this folder is 0.14.0, Report Print 1.1.0.
+The commit on `origin/main` (`a15f2bf`) is Glossary Pivot 0.10.0 only;
+Report Print does not exist there yet. `814a660` (local, not yet on
+`origin/main`) is Glossary Pivot 0.13.0 and Report Print 1.0.0 — the
+checkpoint immediately before Print Canvas.
 
-The newest git tag is `v1.1.1`. It does not contain the 1.2.x / 1.1.2 work
-or Glossary Pivot. Headings below that say "Unreleased" mean "no git tag".
-The 1.x commits they describe are on `main`.
+The newest git tag is `v1.1.1`. It does not contain the 1.2.x / 1.1.2 work,
+Glossary Pivot, or Report Print. Headings below that say "Unreleased" mean
+"no git tag". The 1.x commits they describe are on `main`.
 
-Glossary Pivot versions on its own line (`GlossaryPivotViz.VERSION`), not on
-the 1.x tags.
+Glossary Pivot and Report Print version on their own lines, not on the 1.x
+tags.
+
+## 2026-09-23 — WSU Glossary Pivot 0.14.0 and WSU Report Print 1.1.0 — Print Canvas
+
+A second button, Print Canvas, next to each plugin's existing Print PDF.
+Print PDF still prints only the one visualization's own table. Print Canvas
+prints every print-capable visualization currently on the same canvas — this
+plugin and the other one, in any mix and any count — as one document, one
+table per visualization, in canvas position order, from whichever button
+was clicked.
+
+No OAC API lets one visualization read another's data (`docs/oac_design.md`
+§2), so this does not attempt to: `window.__wsuPrintCanvas` is a plain,
+same-page JS registry, not an OAC mechanism. Each print-capable instance
+registers a `{getContainer, build}` entry on init and removes it on stop;
+`build()` reuses the exact fragment-building path Print PDF already used
+for that instance alone. A section that fails to build (missing layout,
+zero columns, a thrown exception) is skipped, not fatal to the rest of the
+canvas. Sections are ordered by DOM position, not registration order.
+Orientation and the document title come from whichever instance's button
+was clicked — `@page` is document-wide, so two instances with different
+Page Orientation settings cannot both have their own orientation in one
+combined document.
+
+Not verified on the tenant: whether `iframe.contentWindow.print()` opens a
+dialog scoped to the iframe's own document across browsers, Safari
+specifically — already open for the single-table print, more consequential
+now since a combined document is larger and more likely to span pages.
+Full mechanism: `docs/plugins/project_spec_wsu_glossary_pivot.md` §3a.
+
+`node tests/run.js` from `oac-sdk-dev/`: 48 passed (4 new tests for the
+pure section-joining function, two per plugin, mirroring the existing
+`_expandBodyRowspans` test style). Currency lint clean.
 
 ## 2026-09-23 — WSU Glossary Pivot 0.13.0
 
@@ -367,9 +401,11 @@ unchanged from v1.1.0 and are re-attached to this release for convenience.
 
 - **Source in this folder:** Network 1.2.2, Line 1.2.2, Sankey 1.1.2,
   Dumbbell 1.1.2, Lattice Scatter 1.1.2 (those five are on `main`). Glossary
-  Pivot 0.13.0 is in the working tree. `origin/main` still has Glossary
-  Pivot 0.10.0 (`a15f2bf`). WSU Report Print 1.0.0 is in the working tree
-  only.
+  Pivot 0.14.0 and WSU Report Print 1.1.0 (Print Canvas) are in the working
+  tree, not yet committed. `origin/main` still has only Glossary Pivot
+  0.10.0 (`a15f2bf`); no Report Print at all. Commit `814a660` (on `main`
+  locally, not yet pushed) is the checkpoint just before Print Canvas:
+  Glossary Pivot 0.13.0, Report Print 1.0.0.
 - **Newest tag `v1.1.1`:** Network 1.1.1, Line 1.1.0, Sankey 1.0.1, Dumbbell
   1.0.1, Lattice Scatter 1.0.1. No Glossary Pivot. Behind `main`.
 - **Tag `v1.1.0`:** superseded by v1.1.1. Do not deploy it.

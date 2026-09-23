@@ -42,6 +42,27 @@
   outline-offset: 2px;
 }
 
+/* Secondary/outline, not the same solid fill as .rp-btn — matches Glossary
+   Pivot's .gp-printcanvasbtn treatment for the same reason: Print Canvas is
+   the less common action next to Print PDF. */
+.rp-canvasbtn {
+  flex: 0 0 auto;
+  border: 1px solid #1f6f6b;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #1f6f6b;
+  font: inherit;
+  font-weight: 700;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+
+.rp-canvasbtn:hover { background: #eef6f5; }
+.rp-canvasbtn:focus {
+  outline: 2px solid #1f6f6b;
+  outline-offset: 2px;
+}
+
 .rp-error {
   color: #8a2b2b;
   font-size: 12px;

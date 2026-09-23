@@ -37,6 +37,27 @@
   outline-offset: 2px;
 }
 
+/* Secondary/outline, not the same solid fill as .gp-printbtn — two adjacent
+   solid teal buttons read as equally important, and Print Canvas is the
+   less common action (this table alone vs. every print-capable viz on the
+   canvas). */
+.gp-printcanvasbtn {
+  border: 1px solid #1f6f6b;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #1f6f6b;
+  font: inherit;
+  font-weight: 700;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.gp-printcanvasbtn:hover { background: #eef6f5; }
+.gp-printcanvasbtn:focus {
+  outline: 2px solid #1f6f6b;
+  outline-offset: 2px;
+}
+
 .gp-printerr {
   color: #8a2b2b;
   font-size: 12px;

@@ -13,7 +13,7 @@ WSU Glossary Pivot development without re-deriving design decisions.
 - **Short name**: WSU Glossary Pivot
 - **Category**: WSU
 - **Root id**: `com-wsu-glossary-pivot`
-- **Version constant**: `GlossaryPivotViz.VERSION = "0.13.0"` (see `CHANGELOG.md`)
+- **Version constant**: `GlossaryPivotViz.VERSION = "0.14.0"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-glossary-pivot.zip`
 
@@ -53,6 +53,10 @@ It is not a reimplementation of every native-pivot command.
   on the table alone. The button is not on the pages. Set the title and
   page orientation in properties. Totals follow the total switches already
   on the pivot.
+- **Print Canvas** — a second button next to Print PDF. Prints every
+  print-capable visualization currently on the same canvas — this plugin
+  and WSU Report Print — as one document, one table per visualization, in
+  canvas position order, not just this pivot. See §3a.
 - **Property panel** — every gadget is on the General tab. Labels are
   English literals. Viewer strings (empty state, tooltip badges, "Total")
   come from `nls/root/messages.js`.
@@ -138,6 +142,41 @@ text are still resolved when it is on; an empty result shows no tooltip.
 **Debug: Log Column Metadata** prints the live map and the rendering context
 to the browser console on every full render. Leave it off. It is how the
 three description sources were confirmed.
+
+---
+
+## 3a. Print Canvas
+
+`docs/oac_design.md` §2: a plugin only sees data bound to its own grammar
+buckets. There is no OAC API for one visualization instance to read
+another's DataLayout, so one plugin cannot build a combined document by
+querying its neighbors. Print Canvas works around that without needing one:
+`window.__wsuPrintCanvas` is a plain, same-page JS object (not an OAC
+mechanism), keyed by `this.getID()`. Every print-capable plugin instance —
+this one and WSU Report Print — adds a `{getContainer, build}` entry on
+`_doInitializeComponent` and removes it on `_doStopComponent`. `build()`
+returns `{title, html}` (or `null`) by calling the SAME fragment-building
+path Print PDF already uses for that instance alone
+(`_buildPrintFragment`/`buildFragment`); the entry's closure only captures
+the instance, so it always reflects current data and Config, not whatever
+was true at registration time.
+
+Clicking Print Canvas on either plugin walks every currently registered
+entry, sorts them by DOM position (`compareDocumentPosition`, not
+registration order, so the printed order matches canvas layout), and joins
+each returned fragment into one document with a page break before every
+section after the first (`joinPrintSections`). A section whose `build()`
+throws, or returns nothing (missing layout, zero columns), is skipped —
+one bad visualization does not block the rest of the canvas from printing.
+Orientation and the overall document title come from whichever instance's
+own Config the click came from; `@page` is document-wide, so there is no
+per-section override when two instances disagree.
+
+Not verified on the tenant: whether `iframe.contentWindow.print()` opens a
+dialog scoped to the iframe's document across the browsers WSU staff use,
+including Safari specifically — same open question as the single-table
+Print PDF, now more consequential since a canvas document is larger and
+more likely to span pages. See `docs/plugins/project_spec_wsu_report_print.md`.
 
 ---
 
@@ -358,9 +397,10 @@ forbidden; this plugin uses `obitech-report/datavisualization`.
 ### Not in this plugin
 Column-group collapse, sorting by more than one column, a manual column
 order, a conditional-format rule builder, and native drill, include,
-exclude, and export. Print PDF on this visualization is the table, opened
-from the button, not the host's canvas PDF. The host already supplies the Filters shelf and
-the visualization title; this plugin does not add a filter bucket.
+exclude, and export. Print PDF and Print Canvas (§3a) are the browser print
+dialog on a document this family builds itself, opened from a button — not
+the host's own canvas PDF export. The host already supplies the Filters
+shelf and the visualization title; this plugin does not add a filter bucket.
 
 ---
 

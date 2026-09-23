@@ -12,5 +12,6 @@ define({
     "GLOSSARYPIVOT_LBL_SRC_BUNDLED": "Bundled fallback",
     "GLOSSARYPIVOT_LBL_TOTAL": "Total",
     "GLOSSARYPIVOT_LBL_PRINT": "Print PDF",
+    "GLOSSARYPIVOT_LBL_PRINT_CANVAS": "Print Canvas",
     "GLOSSARYPIVOT_LBL_PRINT_ERROR": "Print could not open. Use the browser print dialog if it appears, or allow this page to print."
 });

@@ -179,6 +179,18 @@
  * expanded for the print so a page is not missing rows someone folded while
  * looking. Row labels are repeated on every body row so a page break does
  * not open on a blank spanned cell. Column headers repeat on each page.
+ *
+ * v0.14 — Print Canvas. A plugin instance only ever sees its own bound
+ * data (docs/oac_design.md §2) — there is no OAC API for one visualization
+ * to read another's DataLayout. window.__wsuPrintCanvas is a plain, same-
+ * page JS registry (not an OAC mechanism) that each print-capable instance
+ * on the canvas — this plugin and WSU Report Print — adds itself to on init
+ * and removes itself from on stop. Print Canvas walks that registry, asks
+ * every registered instance to build its own table fragment, and assembles
+ * them into one print document in canvas (DOM) order. A section that fails
+ * to build is skipped, not fatal to the rest. Orientation is whichever
+ * instance's own button was clicked; @page is document-wide and there is no
+ * per-section override.
  ******************************************************************************/
 
 define(['jquery',
@@ -248,10 +260,11 @@ define(['jquery',
       SRC_BUNDLED: L("GLOSSARYPIVOT_LBL_SRC_BUNDLED", "Bundled fallback"),
       TOTAL: L("GLOSSARYPIVOT_LBL_TOTAL", "Total"),
       PRINT: L("GLOSSARYPIVOT_LBL_PRINT", "Print PDF"),
+      PRINT_CANVAS: L("GLOSSARYPIVOT_LBL_PRINT_CANVAS", "Print Canvas"),
       PRINT_ERROR: L("GLOSSARYPIVOT_LBL_PRINT_ERROR", "Print could not open. Use the browser print dialog if it appears, or allow this page to print.")
    };
 
-   GlossaryPivotViz.VERSION = "0.13.0";
+   GlossaryPivotViz.VERSION = "0.14.0";
 
    /**
     * @constructor
@@ -1211,7 +1224,17 @@ define(['jquery',
       }
    }
 
-   function tableHtmlForPrint(tableHtml, title, orient) {
+   /**
+    * DOM half of print prep: expand rowspans, stamp a title row into the
+    * table's own thead (so it repeats per page for THIS table, same as the
+    * column headers), and hand back the table's own outerHTML — nothing
+    * document-level yet. Returns null when tableHtml has no <table> (mirrors
+    * _buildTable's empty-state markup, which is a <div>, not a table).
+    * Reused for both a single-table print and one section of a canvas print;
+    * the canvas case calls this once per registered instance so every
+    * section's headers repeat on their own pages independently.
+    */
+   function preparePrintTable(tableHtml, title) {
       var holder = document.createElement("div");
       holder.innerHTML = tableHtml;
       var table = holder.getElementsByTagName("table")[0];
@@ -1246,6 +1269,23 @@ define(['jquery',
          titleRow.appendChild(titleCell);
          head.insertBefore(titleRow, head.firstChild);
       }
+      return table.outerHTML;
+   }
+
+   /**
+    * Joins one or more prepared (preparePrintTable output) table sections
+    * into one print body, with a page break before every section after the
+    * first — so a single-table print (one section) and a canvas print
+    * (several) share the exact same document wrapper below. Pure string
+    * work, no DOM; unit-tested directly (tests/run.js).
+    */
+   function joinPrintSections(tableHtmls) {
+      return tableHtmls.map(function (html, i) {
+         return "<div" + (i > 0 ? " style='page-break-before:always'" : "") + ">" + html + "</div>";
+      }).join("");
+   }
+
+   function wrapPrintDocument(title, orient, bodyHtml) {
       return "<!DOCTYPE html><html><head><meta charset='utf-8'><title>" +
          escapeHtml(title) + "</title><style>" +
          "@page { size: " + orient + "; margin: 0.5in; }" +
@@ -1261,7 +1301,7 @@ define(['jquery',
          "tr.gp-total-row th, tr.gp-total-row td { font-weight: 700; background: #eef2f4; }" +
          "td.gp-heat { background: var(--gp-cell-bg); color: var(--gp-cell-fg); }" +
          "th, tr.gp-total-row td, td.gp-heat { -webkit-print-color-adjust: exact; print-color-adjust: exact; }" +
-         "</style></head><body>" + table.outerHTML + "</body></html>";
+         "</style></head><body>" + bodyHtml + "</body></html>";
    }
 
    function openGlossaryPrint(self, html) {
@@ -1292,9 +1332,20 @@ define(['jquery',
       }
    }
 
-   GlossaryPivotViz.prototype._printTable = function () {
+   /**
+    * Builds this instance's own printable fragment: raw table markup (not
+    * yet rowspan-expanded — preparePrintTable does that) plus the title to
+    * stamp on it. Collapsed groups are expanded for the duration of the
+    * build only; the finally restores _collapsedGroups even if _buildTable
+    * throws, so a failed print build never leaves the on-screen pivot
+    * showing a different collapse state than the viewer left it in. Shared
+    * by _printTable (this instance alone) and the Print Canvas registry
+    * entry (see _doInitializeComponent) — same fragment either way, only
+    * the document wrapper differs.
+    */
+   GlossaryPivotViz.prototype._buildPrintFragment = function () {
       var dl = this._lastDataLayout;
-      if (!dl) return { ok: false, error: "empty" };
+      if (!dl) return null;
       var saved = this._collapsedGroups;
       this._collapsedGroups = Object.create(null);
       var tableHtml = null;
@@ -1305,11 +1356,64 @@ define(['jquery',
       } finally {
          this._collapsedGroups = saved;
       }
-      if (!tableHtml || tableHtml.indexOf("<table") < 0) return { ok: false, error: "empty" };
+      if (!tableHtml || tableHtml.indexOf("<table") < 0) return null;
       var title = (this.Config.printTitle && String(this.Config.printTitle).trim()) || "Report";
+      return { title: title, html: tableHtml };
+   };
+
+   GlossaryPivotViz.prototype._printTable = function () {
+      var fragment = this._buildPrintFragment();
+      if (!fragment) return { ok: false, error: "empty" };
+      var prepared = preparePrintTable(fragment.html, fragment.title);
+      if (!prepared) return { ok: false, error: "empty" };
       var orient = this.Config.printOrientation === "portrait" ? "portrait" : "landscape";
-      var docHtml = tableHtmlForPrint(tableHtml, title, orient);
-      if (!docHtml) return { ok: false, error: "empty" };
+      var docHtml = wrapPrintDocument(fragment.title, orient, joinPrintSections([prepared]));
+      if (!openGlossaryPrint(this, docHtml)) return { ok: false, error: "print" };
+      return { ok: true };
+   };
+
+   /**
+    * Print Canvas: every print-capable instance currently registered in
+    * window.__wsuPrintCanvas (see _doInitializeComponent) — including this
+    * one — is asked to build its own fragment. A section whose build()
+    * throws or returns nothing is skipped, not fatal to the rest of the
+    * canvas. Sections are ordered by DOM position (compareDocumentPosition),
+    * not registration order, so the printed order matches the canvas layout
+    * regardless of which viz mounted first. Orientation and the overall
+    * document title come from the instance whose button was clicked — @page
+    * is document-wide, there is no per-section override.
+    */
+   GlossaryPivotViz.prototype._printCanvas = function () {
+      var registry = window.__wsuPrintCanvas || {};
+      var entries = Object.keys(registry).map(function (id) { return registry[id]; })
+         .filter(function (e) { return e && typeof e.build === "function"; });
+      if (!entries.length) return { ok: false, error: "empty" };
+
+      entries.sort(function (a, b) {
+         var elA = a.getContainer && a.getContainer();
+         var elB = b.getContainer && b.getContainer();
+         if (!elA || !elB || elA === elB) return 0;
+         var pos = elA.compareDocumentPosition(elB);
+         if (pos & 4 /* Node.DOCUMENT_POSITION_FOLLOWING */) return -1;
+         if (pos & 2 /* Node.DOCUMENT_POSITION_PRECEDING */) return 1;
+         return 0;
+      });
+
+      var tableHtmls = [];
+      entries.forEach(function (entry) {
+         var fragment = null;
+         try { fragment = entry.build(); } catch (e) {
+            _logger.error("canvas print: a section failed to build: " + (e && e.message ? e.message : e));
+         }
+         if (!fragment) return;
+         var prepared = preparePrintTable(fragment.html, fragment.title);
+         if (prepared) tableHtmls.push(prepared);
+      });
+      if (!tableHtmls.length) return { ok: false, error: "empty" };
+
+      var docTitle = (this.Config.printTitle && String(this.Config.printTitle).trim()) || "Report";
+      var orient = this.Config.printOrientation === "portrait" ? "portrait" : "landscape";
+      var docHtml = wrapPrintDocument(docTitle, orient, joinPrintSections(tableHtmls));
       if (!openGlossaryPrint(this, docHtml)) return { ok: false, error: "print" };
       return { ok: true };
    };
@@ -1320,6 +1424,13 @@ define(['jquery',
          var $err = $c.find(".gp-printerr");
          $err.hide();
          var result = self._printTable();
+         if (result.ok) return;
+         $err.text(result.error === "print" ? LBL.PRINT_ERROR : LBL.EMPTY_STATE).show();
+      });
+      $c.find(".gp-printcanvasbtn").off("click.gpprintcanvas").on("click.gpprintcanvas", function () {
+         var $err = $c.find(".gp-printerr");
+         $err.hide();
+         var result = self._printCanvas();
          if (result.ok) return;
          $err.text(result.error === "print" ? LBL.PRINT_ERROR : LBL.EMPTY_STATE).show();
       });
@@ -1334,6 +1445,7 @@ define(['jquery',
       if (this.Config.showPrintButton !== "off") {
          bar = "<div class='gp-printbar'>" +
                   "<span class='gp-printerr' style='display:none'></span>" +
+                  "<button type='button' class='gp-printcanvasbtn'>" + escapeHtml(LBL.PRINT_CANVAS) + "</button>" +
                   "<button type='button' class='gp-printbtn'>" + escapeHtml(LBL.PRINT) + "</button>" +
                "</div>";
       }
@@ -2252,6 +2364,14 @@ define(['jquery',
    /**
     * One-time init. NOTE: there is no data model here — no rendering context,
     * no columns. Anything that needs data belongs in the first render() pass.
+    *
+    * Also registers this instance in window.__wsuPrintCanvas — a plain,
+    * same-page registry (not an OAC API; see the v0.14 file-header note) —
+    * so a Print Canvas click anywhere on the page, including from a WSU
+    * Report Print instance on the same canvas, can ask this instance for
+    * its own fragment. The closure only captures `self`; build() reads
+    * self._lastDataLayout/self.Config lazily, at print time, so the entry
+    * never goes stale between registration and a later click.
     */
    GlossaryPivotViz.prototype._doInitializeComponent = function () {
       GlossaryPivotViz.superClass._doInitializeComponent.call(this);
@@ -2261,6 +2381,16 @@ define(['jquery',
       } catch (e) {
          _logger.warning("Could not subscribe to INTERACTION_HIGHLIGHT: " + (e && e.message ? e.message : e));
       }
+      var self = this;
+      try {
+         window.__wsuPrintCanvas = window.__wsuPrintCanvas || {};
+         window.__wsuPrintCanvas[this.getID()] = {
+            getContainer: function () { return self.getContainerElem(); },
+            build: function () { return self._buildPrintFragment(); }
+         };
+      } catch (e) {
+         _logger.warning("Print Canvas registration failed: " + (e && e.message ? e.message : e));
+      }
    };
 
    /**
@@ -2269,16 +2399,18 @@ define(['jquery',
     * subscribeToEvent calls either (checked: WSU Dumbbell's _doStopComponent
     * only tears down its own body-attached tooltip and D3-specific state
     * before calling super — INTERACTION_HIGHLIGHT is never unsubscribed
-    * there). This plugin has no DOM attached outside its own container (the
-    * tooltip div lives inside elContainer, not body), so there is nothing
-    * extra to clean up here — this exists for lifecycle symmetry with the
-    * rest of the family, not because a specific leak was found.
+    * there). Two things ARE attached outside elContainer as of v0.13/v0.14
+    * and are cleaned up below: the print iframe (document.body) and this
+    * instance's window.__wsuPrintCanvas registry entry.
     */
    GlossaryPivotViz.prototype._doStopComponent = function () {
       if (this._printFrame && this._printFrame.parentNode) {
          this._printFrame.parentNode.removeChild(this._printFrame);
       }
       this._printFrame = null;
+      try {
+         if (window.__wsuPrintCanvas) delete window.__wsuPrintCanvas[this.getID()];
+      } catch (e) {}
       GlossaryPivotViz.superClass._doStopComponent.apply(this, arguments);
    };
 
@@ -2291,6 +2423,7 @@ define(['jquery',
 
    return {
       createClientComponent: createClientComponent,
-      _expandBodyRowspans: expandBodyRowspans
+      _expandBodyRowspans: expandBodyRowspans,
+      _joinPrintSections: joinPrintSections
    };
 });

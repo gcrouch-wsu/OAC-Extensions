@@ -464,19 +464,17 @@ suite("WSU Report Print", function() {
   }
 
   test("Print with no layout reports empty instead of doing nothing", function() {
-    var prepared = mod._preparePrint(null, config);
-    assert.strictEqual(prepared.html, null);
-    assert.strictEqual(prepared.error, "empty");
+    var fragment = mod._buildFragment(null, config);
+    assert.strictEqual(fragment, null);
   });
 
   test("zero columns reports empty", function() {
-    var prepared = mod._preparePrint(pivot({ headers: [[]], values: [[]] }), config);
-    assert.strictEqual(prepared.html, null);
-    assert.strictEqual(prepared.error, "empty");
+    var fragment = mod._buildFragment(pivot({ headers: [[]], values: [[]] }), config);
+    assert.strictEqual(fragment, null);
   });
 
   test("row labels repeat on every body row and the total row is labeled", function() {
-    var html = mod._buildPrintHtml(pivot({
+    var html = mod._buildReportTable(pivot({
       rowLayers: [{ name: "College", values: ["A", "A"] }],
       headers: [["Fall", "Spring"]],
       values: [[1000, 20], [500, null]]
@@ -491,7 +489,7 @@ suite("WSU Report Print", function() {
   });
 
   test("a report with no row fields still prints the word Total", function() {
-    var html = mod._buildPrintHtml(pivot({
+    var html = mod._buildReportTable(pivot({
       headers: [["Headcount"]],
       values: [[1200], [300]]
     }), config);
@@ -500,13 +498,27 @@ suite("WSU Report Print", function() {
   });
 
   test("cell text is escaped", function() {
-    var html = mod._buildPrintHtml(pivot({
+    var html = mod._buildReportTable(pivot({
       rowLayers: [{ name: "College", values: ["<b>"] }],
       headers: [["Fall"]],
       values: [[1]]
     }), config);
     assert.ok(html.indexOf("&lt;b&gt;") >= 0);
     assert.ok(html.indexOf("<b>") < 0);
+  });
+
+  test("Print Canvas: a page break separates two sections but not before the first", function() {
+    var joined = mod._joinPrintSections(["<table>A</table>", "<table>B</table>"]);
+    var firstWrapper = joined.split("<table>A</table>")[0];
+    var secondWrapper = joined.split("<table>A</table>")[1].split("<table>B</table>")[0];
+    assert.ok(firstWrapper.indexOf("page-break-before") < 0);
+    assert.ok(secondWrapper.indexOf("page-break-before:always") >= 0);
+  });
+
+  test("Print Canvas: a single section gets no page break", function() {
+    var joined = mod._joinPrintSections(["<table>Only</table>"]);
+    assert.ok(joined.indexOf("page-break-before") < 0);
+    assert.ok(joined.indexOf("<table>Only</table>") >= 0);
   });
 });
 
@@ -541,6 +553,20 @@ suite("WSU Glossary Pivot", function() {
     assert.strictEqual(flat[0].length, 2);
     assert.strictEqual(flat[0][0].html, "Total");
     assert.strictEqual(flat[0][0].colspan, 2);
+  });
+
+  test("Print Canvas: a page break separates two sections but not before the first", function() {
+    var joined = mod._joinPrintSections(["<table>A</table>", "<table>B</table>"]);
+    var firstWrapper = joined.split("<table>A</table>")[0];
+    var secondWrapper = joined.split("<table>A</table>")[1].split("<table>B</table>")[0];
+    assert.ok(firstWrapper.indexOf("page-break-before") < 0);
+    assert.ok(secondWrapper.indexOf("page-break-before:always") >= 0);
+  });
+
+  test("Print Canvas: a single section gets no page break", function() {
+    var joined = mod._joinPrintSections(["<table>Only</table>"]);
+    assert.ok(joined.indexOf("page-break-before") < 0);
+    assert.ok(joined.indexOf("<table>Only</table>") >= 0);
   });
 });
 
