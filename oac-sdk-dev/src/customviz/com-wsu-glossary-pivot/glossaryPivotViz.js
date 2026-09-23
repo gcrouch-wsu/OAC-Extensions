@@ -153,6 +153,32 @@
  * move anything. State is session-only, same as _collapsedGroups — a saved
  * sort key goes stale the moment the trays change, and the requirement is
  * that the workbook opens fresh.
+ *
+ * v0.11 — the pivot operations the data team uses on the native table and
+ * this plugin did not have. A hidden column stays in the query (so row
+ * order and group boundaries still follow it) and is omitted from the
+ * drawing: a Rows field drops its header column, a Columns field drops
+ * its header row, a measure drops its data columns. Display-header text
+ * replaces what the cell shows and does not replace the id the glossary
+ * and the sort key use. Header color paints field-name headers; header
+ * data color paints column headers whose text is a member value (Fall,
+ * Full-Time). Both are a single hex, empty meaning the stylesheet default.
+ * Totals are unchanged: still a sum of the numbers on screen, still off
+ * until turned on.
+ *
+ * v0.12 — Number format groups thousands the same way currency already did
+ * (1,234), without a dollar sign. Tooltip: the Live and Workbook override
+ * chips are off until asked for; the Bundled fallback chip stays, because
+ * that one says the text did not come from OAC. The dotted header underline
+ * is off until asked for; the tooltip, hover, and focus stay. Tooltip text
+ * aligns left, center, or right. The bubble stays centered under the header.
+ *
+ * v0.13 — Print PDF on the pivot itself. The button stays on the canvas.
+ * The printed document is the table: hidden columns, display labels, number
+ * formats, and the total rows that are turned on. Collapsed groups are
+ * expanded for the print so a page is not missing rows someone folded while
+ * looking. Row labels are repeated on every body row so a page break does
+ * not open on a blank spanned cell. Column headers repeat on each page.
  ******************************************************************************/
 
 define(['jquery',
@@ -165,7 +191,6 @@ define(['jquery',
         'obitech-application/gadgets',
         'obitech-report/gadgetdialog',
         'obitech-application/extendable-ui-definitions',
-        'obitech-report/visualization',
         'obitech-appservices/logger',
         'ojL10n!com-wsu-glossary-pivot/nls/messages',
         'obitech-reportservices/data',
@@ -180,7 +205,6 @@ define(['jquery',
                  gadgets,
                  gadgetdialog,
                  euidef,
-                 viz,
                  logger,
                  messages,
                  data) {
@@ -222,14 +246,16 @@ define(['jquery',
       SRC_LIVE: L("GLOSSARYPIVOT_LBL_SRC_LIVE", "Live"),
       SRC_OVERRIDE: L("GLOSSARYPIVOT_LBL_SRC_OVERRIDE", "Workbook override"),
       SRC_BUNDLED: L("GLOSSARYPIVOT_LBL_SRC_BUNDLED", "Bundled fallback"),
-      TOTAL: L("GLOSSARYPIVOT_LBL_TOTAL", "Total")
+      TOTAL: L("GLOSSARYPIVOT_LBL_TOTAL", "Total"),
+      PRINT: L("GLOSSARYPIVOT_LBL_PRINT", "Print PDF"),
+      PRINT_ERROR: L("GLOSSARYPIVOT_LBL_PRINT_ERROR", "Print could not open. Use the browser print dialog if it appears, or allow this page to print.")
    };
 
-   GlossaryPivotViz.VERSION = "0.10.0";
+   GlossaryPivotViz.VERSION = "0.13.0";
 
    /**
     * @constructor
-    * @extends {module:obitech-report/visualization.Visualization}
+    * @extends {module:obitech-report/datavisualization.DataVisualization}
     */
    function GlossaryPivotViz(sID, sDisplayName, sOrigin, sVersion) {
       GlossaryPivotViz.baseConstructor.call(this, sID, sDisplayName, sOrigin, sVersion);
@@ -242,12 +268,23 @@ define(['jquery',
          _doInitializeComponent does not reset _collapsedGroups (a new instance
          already starts empty), so sort state is not reset there either. */
       this._sortState = null;
+      this._printFrame = null;
 
       this.Config = {
          // Format
          numberFormat: "auto",             // auto | number | percent | currency | compact
          decimalPlaces: "auto",            // auto | "0" | "1" | "2" | "3" | "4"
          measureFormatOverrides: "",        // "MEASURE_ID:format:decimals; MEASURE_ID:format:decimals; ..." — wins over the two switches above for the named measure
+         // Header — the field stays in the layout either way. Hidden columns
+         // still order and group; display labels change the text, not the
+         // glossary id. Empty hex means the stylesheet color.
+         headerLabels: "",                 // "COLUMN_ID: Display text; COLUMN_ID: Display text; ..."
+         hiddenColumns: "",                // "STRM; REPORTING_SEQUENCE; ..."
+         headerColor: "",                  // hex for field-name headers (corner, measure names)
+         headerDataColor: "",              // hex for column headers that show a member value
+         printTitle: "Report",
+         printOrientation: "landscape",    // landscape | portrait
+         showPrintButton: "on",            // on | off — the Print PDF bar on the canvas. The printed pages never include it.
          // Totals (SUM of displayed values — see the v0.5 header note on why this is not the same as re-running each measure's aggregation rule)
          showGrandTotalRow: "off",
          showRowSubtotals: "off",           // only takes effect with 2+ Row layers
@@ -259,6 +296,9 @@ define(['jquery',
          cellColorHigh: "#1e3a8a",          // background at the measure's maximum value
          // Tooltip
          showDescriptions: "on",            // on | off — glossary hover tooltips on headers
+         showSourceBadges: "off",           // on | off — Live and Workbook override chips. Bundled fallback still shows.
+         showHeaderUnderline: "off",        // on | off — dotted underline on headers that have a description
+         tooltipAlign: "left",              // left | center | right — text inside the tooltip, not the bubble's position
          // Debug
          debugLogMetadata: "off"            // on | off — console-dump the live column-info map once per render, for investigating the 3-source description question
       };
@@ -545,6 +585,61 @@ define(['jquery',
       return out;
    }
 
+   /* Keys a column can be named by: the id OAC stored, the last segment of
+      a qualified id, and the display name. Hidden-column and display-label
+      lists are matched against all three so "STRM" hits a row layer whose
+      id is a qualified subject-area path. */
+   function nameKeys(id, name) {
+      var keys = [];
+      function add(s) {
+         var k = exactKey(s);
+         if (k && keys.indexOf(k) < 0) keys.push(k);
+      }
+      if (id != null && id !== "") { add(id); add(tailName(id)); }
+      if (name != null && name !== "") add(name);
+      return keys;
+   }
+
+   function parseHiddenColumns(str) {
+      var out = Object.create(null);
+      if (!str) return out;
+      String(str).split(";").forEach(function (seg) {
+         nameKeys(seg.trim(), null).forEach(function (k) { out[k] = true; });
+      });
+      return out;
+   }
+
+   function columnListed(set, id, name) {
+      if (!set) return false;
+      var keys = nameKeys(id, name);
+      for (var i = 0; i < keys.length; i++) if (set[keys[i]]) return true;
+      return false;
+   }
+
+   /* "ID: Display text" split on the first colon so a label may contain
+      one. The glossary lookup keeps the original name; only the painted
+      header text changes. */
+   function parseHeaderLabels(str) {
+      var out = Object.create(null);
+      if (!str) return out;
+      String(str).split(";").forEach(function (seg) {
+         var idx = seg.indexOf(":");
+         if (idx <= 0) return;
+         var id = seg.slice(0, idx).trim();
+         var label = seg.slice(idx + 1).trim();
+         if (!id || !label) return;
+         nameKeys(id, null).forEach(function (k) { out[k] = label; });
+      });
+      return out;
+   }
+
+   function resolveHeaderLabel(map, id, name, fallback) {
+      if (!map) return fallback;
+      var keys = nameKeys(id, name);
+      for (var i = 0; i < keys.length; i++) if (map[keys[i]]) return map[keys[i]];
+      return fallback;
+   }
+
    function resolveFormat(Config, overrides, measureId) {
       var o = measureId != null ? overrides[String(measureId).toUpperCase()] : null;
       return o || { numberFormat: Config.numberFormat, decimalPlaces: Config.decimalPlaces };
@@ -576,7 +671,15 @@ define(['jquery',
             parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
             return sign + "$" + parts.join(".");
          case "compact":  return compactNumber(n, dp);
-         case "number":   return dp == null ? String(n) : n.toFixed(dp);
+         case "number":
+            /* Same thousands grouping as currency, without the $. Auto
+               decimals keep the number's own fraction; an explicit count
+               uses toFixed. */
+            var nSign = n < 0 ? "-" : "";
+            var nBody = dp == null ? String(Math.abs(n)) : Math.abs(n).toFixed(dp);
+            var nParts = nBody.split(".");
+            nParts[0] = nParts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            return nSign + nParts.join(".");
          default:         return raw;   // "auto" — leave OAC's own formatting alone
       }
    }
@@ -668,9 +771,10 @@ define(['jquery',
       as a sum and defeat the scale.
       ========================================================================= */
 
-   function computeMeasureRanges(dl, nRows, nCols, measureIdByCol) {
+   function computeMeasureRanges(dl, nRows, nCols, measureIdByCol, colHidden) {
       var ranges = Object.create(null);
       for (var cc = 0; cc < nCols; cc++) {
+         if (colHidden && colHidden[cc]) continue;
          var mId = measureIdByCol[cc];
          var range = ranges[mId] || (ranges[mId] = { min: null, max: null });
          for (var r = 0; r < nRows; r++) {
@@ -691,6 +795,20 @@ define(['jquery',
    function hexToRgb(hex) {
       var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex || "").trim());
       return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : null;
+   }
+
+   /* Empty or invalid hex paints nothing, so the stylesheet default stays.
+      Custom properties, not an inline background: the glossary hover rule
+      is more specific and must still be able to cover the header. */
+   function headerPaint(hex) {
+      var rgb = hexToRgb(hex);
+      if (!rgb) return { cls: "", style: "" };
+      var luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+      var fg = luminance > 0.55 ? "#1b1f24" : "#ffffff";
+      return {
+         cls: " gp-hdr-paint",
+         style: " style='--gp-hdr-bg:rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ");--gp-hdr-fg:" + fg + "'"
+      };
    }
 
    /** @returns {{bg:string, fg:string}|null} background + a readable foreground for it, or null on bad input */
@@ -1007,15 +1125,227 @@ define(['jquery',
     * tall pivot, a group-collapse click or a resize would otherwise always
     * jump the viewer back to the top-left, discarding wherever they were.
     */
+   /**
+    * Repeats a rowspan's text on each body row it covered, then drops the
+    * span. A page break otherwise opens on the blank cells under a span
+    * that started on the previous page. `rows` is an array of cell arrays.
+    * A cell is {html, colspan, rowspan}. Colspan is unchanged.
+    */
+   function expandBodyRowspans(rows) {
+      var pending = [];
+      var out = [];
+      function waiting(col) { return pending[col] && pending[col].left > 0; }
+      for (var r = 0; r < rows.length; r++) {
+         var src = rows[r];
+         var dst = [];
+         var col = 0;
+         var si = 0;
+         while (si < src.length || waiting(col)) {
+            if (waiting(col)) {
+               var hold = pending[col];
+               dst.push({ html: hold.html, colspan: hold.colspan, tag: hold.tag, className: hold.className, style: hold.style });
+               hold.left -= 1;
+               if (hold.left <= 0) pending[col] = null;
+               col += hold.colspan;
+            } else {
+               var cell = src[si++];
+               var colspan = cell.colspan || 1;
+               var rowspan = cell.rowspan || 1;
+               dst.push({ html: cell.html, colspan: colspan, tag: cell.tag, className: cell.className, style: cell.style });
+               if (rowspan > 1) {
+                  pending[col] = {
+                     html: cell.html, colspan: colspan, left: rowspan - 1,
+                     tag: cell.tag, className: cell.className, style: cell.style
+                  };
+               }
+               col += colspan;
+            }
+         }
+         out.push(dst);
+      }
+      return out;
+   }
+
+   function stripInteractive(el) {
+      if (!el.querySelectorAll) return;
+      var junk = el.querySelectorAll(".gp-group-toggle, .gp-sort-ind");
+      for (var i = junk.length - 1; i >= 0; i--) {
+         if (junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
+      }
+   }
+
+   function cellsFromRow(tr) {
+      var cells = tr.cells;
+      var out = [];
+      for (var i = 0; i < cells.length; i++) {
+         var el = cells[i];
+         stripInteractive(el);
+         out.push({
+            tag: el.tagName.toLowerCase(),
+            className: el.className || "",
+            style: el.getAttribute("style") || "",
+            html: el.innerHTML,
+            colspan: el.colSpan || 1,
+            rowspan: el.rowSpan || 1
+         });
+      }
+      return out;
+   }
+
+   function rebuildBody(body, flat, classNames) {
+      while (body.firstChild) body.removeChild(body.firstChild);
+      for (var r = 0; r < flat.length; r++) {
+         var tr = document.createElement("tr");
+         if (classNames[r]) tr.className = classNames[r];
+         var cells = flat[r];
+         for (var c = 0; c < cells.length; c++) {
+            var cell = cells[c];
+            var el = document.createElement(cell.tag || "td");
+            if (cell.className) el.className = cell.className;
+            if (cell.style) el.setAttribute("style", cell.style);
+            if (cell.colspan > 1) el.colSpan = cell.colspan;
+            el.innerHTML = cell.html;
+            tr.appendChild(el);
+         }
+         body.appendChild(tr);
+      }
+   }
+
+   function tableHtmlForPrint(tableHtml, title, orient) {
+      var holder = document.createElement("div");
+      holder.innerHTML = tableHtml;
+      var table = holder.getElementsByTagName("table")[0];
+      if (!table) return null;
+      var bodies = table.getElementsByTagName("tbody");
+      if (bodies.length) {
+         var body = bodies[0];
+         var trs = body.getElementsByTagName("tr");
+         var model = [];
+         var classNames = [];
+         for (var i = 0; i < trs.length; i++) {
+            classNames.push(trs[i].className || "");
+            model.push(cellsFromRow(trs[i]));
+         }
+         rebuildBody(body, expandBodyRowspans(model), classNames);
+      }
+      var heads = table.getElementsByTagName("thead");
+      if (heads.length) {
+         var head = heads[0];
+         var first = head.getElementsByTagName("tr")[0];
+         var span = 1;
+         if (first && first.cells) {
+            span = 0;
+            for (var h = 0; h < first.cells.length; h++) span += first.cells[h].colSpan || 1;
+            if (!span) span = 1;
+         }
+         var titleRow = document.createElement("tr");
+         var titleCell = document.createElement("th");
+         titleCell.className = "gp-print-title";
+         titleCell.colSpan = span;
+         titleCell.appendChild(document.createTextNode(title));
+         titleRow.appendChild(titleCell);
+         head.insertBefore(titleRow, head.firstChild);
+      }
+      return "<!DOCTYPE html><html><head><meta charset='utf-8'><title>" +
+         escapeHtml(title) + "</title><style>" +
+         "@page { size: " + orient + "; margin: 0.5in; }" +
+         "body { margin: 0; color: #1b1f24; font-family: Arial, Helvetica, sans-serif; font-size: 9pt; }" +
+         "table { border-collapse: collapse; width: 100%; }" +
+         "th, td { border: 1px solid #b7bcc2; padding: 3px 6px; vertical-align: top; white-space: normal; }" +
+         "thead { display: table-header-group; }" +
+         "tr { break-inside: avoid; page-break-inside: avoid; }" +
+         "th { background: #f0f2f4; font-weight: 700; text-align: center; }" +
+         "th.gp-print-title { background: #ffffff; font-size: 13pt; text-align: left; border: 0; padding: 0 0 8px; }" +
+         "th.gp-rowhdr, th.gp-corner { text-align: left; background: #f7f8f9; }" +
+         "td.gp-val { text-align: right; font-variant-numeric: tabular-nums; }" +
+         "tr.gp-total-row th, tr.gp-total-row td { font-weight: 700; background: #eef2f4; }" +
+         "td.gp-heat { background: var(--gp-cell-bg); color: var(--gp-cell-fg); }" +
+         "th, tr.gp-total-row td, td.gp-heat { -webkit-print-color-adjust: exact; print-color-adjust: exact; }" +
+         "</style></head><body>" + table.outerHTML + "</body></html>";
+   }
+
+   function openGlossaryPrint(self, html) {
+      try {
+         if (self._printFrame && self._printFrame.parentNode) {
+            self._printFrame.parentNode.removeChild(self._printFrame);
+         }
+         var iframe = document.createElement("iframe");
+         iframe.setAttribute("title", "Report print");
+         iframe.setAttribute("style", "position:fixed;width:0;height:0;border:0;right:0;bottom:0;");
+         document.body.appendChild(iframe);
+         self._printFrame = iframe;
+         var win = iframe.contentWindow;
+         var doc = win.document;
+         doc.open();
+         doc.write(html);
+         doc.close();
+         win.focus();
+         win.print();
+         win.onafterprint = function () {
+            if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+            if (self._printFrame === iframe) self._printFrame = null;
+         };
+         return true;
+      } catch (e) {
+         _logger.error("print failed: " + (e && e.message ? e.message : e));
+         return false;
+      }
+   }
+
+   GlossaryPivotViz.prototype._printTable = function () {
+      var dl = this._lastDataLayout;
+      if (!dl) return { ok: false, error: "empty" };
+      var saved = this._collapsedGroups;
+      this._collapsedGroups = Object.create(null);
+      var tableHtml = null;
+      try {
+         tableHtml = this._buildTable(dl);
+      } catch (e) {
+         _logger.error("print build failed: " + (e && e.message ? e.message : e));
+      } finally {
+         this._collapsedGroups = saved;
+      }
+      if (!tableHtml || tableHtml.indexOf("<table") < 0) return { ok: false, error: "empty" };
+      var title = (this.Config.printTitle && String(this.Config.printTitle).trim()) || "Report";
+      var orient = this.Config.printOrientation === "portrait" ? "portrait" : "landscape";
+      var docHtml = tableHtmlForPrint(tableHtml, title, orient);
+      if (!docHtml) return { ok: false, error: "empty" };
+      if (!openGlossaryPrint(this, docHtml)) return { ok: false, error: "print" };
+      return { ok: true };
+   };
+
+   GlossaryPivotViz.prototype._wirePrint = function ($c) {
+      var self = this;
+      $c.find(".gp-printbtn").off("click.gpprint").on("click.gpprint", function () {
+         var $err = $c.find(".gp-printerr");
+         $err.hide();
+         var result = self._printTable();
+         if (result.ok) return;
+         $err.text(result.error === "print" ? LBL.PRINT_ERROR : LBL.EMPTY_STATE).show();
+      });
+   };
+
    GlossaryPivotViz.prototype._replaceTableHtml = function (elContainer, html) {
       var $c = $(elContainer);
       var $oldWrap = $c.find(".gp-wrap");
       var scrollTop = $oldWrap.length ? $oldWrap.scrollTop() : 0;
       var scrollLeft = $oldWrap.length ? $oldWrap.scrollLeft() : 0;
-      $c.html("<div class='gp-wrap'>" + html + "</div>");
+      var bar = "";
+      if (this.Config.showPrintButton !== "off") {
+         bar = "<div class='gp-printbar'>" +
+                  "<span class='gp-printerr' style='display:none'></span>" +
+                  "<button type='button' class='gp-printbtn'>" + escapeHtml(LBL.PRINT) + "</button>" +
+               "</div>";
+      }
+      $c.html(
+         "<div class='gp-shell'>" + bar +
+            "<div class='gp-wrap'>" + html + "</div>" +
+         "</div>"
+      );
       if (scrollTop || scrollLeft) {
          $c.find(".gp-wrap").scrollTop(scrollTop).scrollLeft(scrollLeft);
       }
+      if (bar) this._wirePrint($c);
    };
 
    /**
@@ -1083,9 +1413,91 @@ define(['jquery',
       var wantTotalCol = this.Config.showGrandTotalColumn === "on" && nColLayers > 0 && nCols > 0;
       var buckets = wantTotalCol ? bucketColsByMeasure(measureIdByCol) : null;
       var wantCellColor = this.Config.cellColor === "on";
-      var colorRanges = wantCellColor ? computeMeasureRanges(dl, nRows, nCols, measureIdByCol) : null;
+      var colorRanges = null;
       var wantCollapse = this.Config.rowGroupCollapse === "on" && nRowLayers > 1;
       var sortState = usableSort(this._sortState, nRowLayers, nCols, nColLayers);
+      var hiddenSet = parseHiddenColumns(this.Config.hiddenColumns);
+      var headerLabelMap = parseHeaderLabels(this.Config.headerLabels);
+
+      /* A hidden field stays in the layout. Rows: the header column is not
+         drawn, and grouping/sort still use its values so two groups that
+         share a visible label do not merge. Columns: the header row is not
+         drawn, and the data columns stay split by that dimension. A measure
+         is hidden as data columns, not by dropping the measure-labels layer
+         (that layer's name is every measure). */
+      var rowLayerHidden = [];
+      var visibleRowLayers = [];
+      for (var rli = 0; rli < nRowLayers; rli++) {
+         var hid = false;
+         try {
+            hid = columnListed(hiddenSet,
+               dl.getLayerMetadata(ROW, rli, LM.LAYER_ID),
+               dl.getLayerMetadata(ROW, rli, LM.LAYER_DISPLAY_NAME));
+         } catch (e) {}
+         rowLayerHidden[rli] = hid;
+         if (!hid) visibleRowLayers.push(rli);
+      }
+      var nVisRows = visibleRowLayers.length;
+      var firstVisibleRowLayer = nVisRows ? visibleRowLayers[0] : -1;
+
+      var colLayerHidden = [];
+      var colLayerIsMeasure = [];
+      var colLayerName = [];
+      for (var cli = 0; cli < nColLayers; cli++) {
+         var cIsM = false, cName = null, cId = null;
+         try { cIsM = !!dl.getLayerMetadata(COL, cli, LM.LAYER_ISMEASURE_LABELS); } catch (e) {}
+         try { cId = dl.getLayerMetadata(COL, cli, LM.LAYER_ID); } catch (e) {}
+         if (!cIsM) { try { cIsM = tailName(cId) === MEASURE_LAYER_ID; } catch (e) {} }
+         try { cName = dl.getLayerMetadata(COL, cli, LM.LAYER_DISPLAY_NAME); } catch (e) {}
+         colLayerIsMeasure[cli] = cIsM;
+         colLayerName[cli] = cName;
+         colLayerHidden[cli] = !cIsM && columnListed(hiddenSet, cId, cName);
+      }
+      var headerLayerIdx = [];
+      for (cli = 0; cli < nColLayers; cli++) if (!colLayerHidden[cli]) headerLayerIdx.push(cli);
+      /* No visible column layer (none existed, or every attribute layer is
+         hidden): one pad row so the corner names and the body columns still
+         line up. */
+      if (!headerLayerIdx.length) headerLayerIdx = [-1];
+      var nHeaderRows = headerLayerIdx.length;
+
+      var colHidden = [];
+      for (var hc = 0; hc < nCols; hc++) {
+         var hMid = measureIdByCol[hc];
+         colHidden[hc] = hMid !== "__single__" &&
+            columnListed(hiddenSet, hMid, measureNameById[hMid]);
+      }
+      if (wantCellColor) colorRanges = computeMeasureRanges(dl, nRows, nCols, measureIdByCol, colHidden);
+      if (wantTotalCol && buckets) {
+         var keptBuckets = [];
+         buckets.order.forEach(function (bid) {
+            var cols = [];
+            buckets.map[bid].forEach(function (cc) { if (!colHidden[cc]) cols.push(cc); });
+            if (!cols.length) return;
+            buckets.map[bid] = cols;
+            keptBuckets.push(bid);
+         });
+         buckets.order = keptBuckets;
+         if (!keptBuckets.length) wantTotalCol = false;
+      }
+
+      function visibleSpan(c, end) {
+         var n = 0, one = -1;
+         for (var i = c; i <= end; i++) {
+            if (colHidden[i]) continue;
+            n++;
+            one = i;
+         }
+         return { n: n, sortCol: n === 1 ? one : -1 };
+      }
+
+      /* Collapsed and subtotal labels use the first VISIBLE row layer. When
+         the outer layer is hidden (STRM sitting under Term), printing
+         rowVals[0] would put the hidden code back on screen. */
+      function visibleGroupLabel(row) {
+         if (firstVisibleRowLayer < 0) return "";
+         return row.rowVals[firstVisibleRowLayer] || "";
+      }
 
       /* Header cell. `label` is what the cell SHOWS; `lookupName` is the
          COLUMN it belongs to — on a column-edge layer they differ (the cell
@@ -1109,12 +1521,13 @@ define(['jquery',
          return parseInt(p[1], 10) === sortState.layer && parseInt(p[2], 10) === sortState.key;
       }
 
-      function headerCell(tag, label, lookupName, columnId, span, spanAttr, cls, markRows, sortKey) {
+      function headerCell(tag, label, lookupName, columnId, span, spanAttr, cls, markRows, sortKey, paintHex) {
          var d = null;
          if (self.Config.showDescriptions !== "off") {
             try { d = self._glossary.getDescription(lookupName, columnId); } catch (e) {}
          }
-         var attrs = " class='" + cls + (d ? " gp-has-desc" : "") + (sortKey ? " gp-sortable" : "") + "'";
+         var paint = headerPaint(paintHex);
+         var attrs = " class='" + cls + (d ? " gp-has-desc" : "") + (sortKey ? " gp-sortable" : "") + paint.cls + "'" + paint.style;
          if (span > 1) attrs += " " + spanAttr + "='" + span + "'";
          if (d) {
             attrs += " data-gp-name='" + escapeHtml(lookupName == null ? "" : lookupName) + "'";
@@ -1135,88 +1548,104 @@ define(['jquery',
                 escapeHtml(label) + "</span>" + ind + "</" + tag + ">";
       }
 
-      var out = ["<table class='gp-table'>"];
+      /* The underline is a border on .gp-has-desc. That class also opens the
+         tooltip, so turning the line off must not remove the class. */
+      var tableClass = "gp-table" + (this.Config.showHeaderUnderline === "on" ? "" : " gp-no-underline");
+      var out = ["<table class='" + tableClass + "'>"];
 
-      /* ---- column headers, one row per column layer ---- */
+      /* ---- column headers, one row per VISIBLE column layer ---- */
       out.push("<thead>");
-      for (var cl = 0; cl < Math.max(nColLayers, 1); cl++) {
+      for (var hi = 0; hi < nHeaderRows; hi++) {
+         var cl = headerLayerIdx[hi];
+         var lastHeaderRow = hi === nHeaderRows - 1;
          out.push("<tr>");
 
-         /* corner: spans the row-header gutter. The LAST header row carries the
-            row layers' own names, which is where row-header descriptions live. */
-         if (nRowLayers > 0) {
-            if (cl < nColLayers - 1) {
-               out.push("<th class='gp-corner'" +
-                        (nRowLayers > 1 ? " colspan='" + nRowLayers + "'" : "") + "></th>");
+         /* corner: spans the visible row-header gutter. The LAST header row
+            carries the row layers' own names, which is where row-header
+            descriptions live. A hidden row layer has no corner cell. */
+         if (nVisRows > 0) {
+            if (!lastHeaderRow) {
+               var cornerPaint = headerPaint(self.Config.headerColor);
+               out.push("<th class='gp-corner" + cornerPaint.cls + "'" + cornerPaint.style +
+                        (nVisRows > 1 ? " colspan='" + nVisRows + "'" : "") + "></th>");
             } else {
-               for (var rl = 0; rl < nRowLayers; rl++) {
+               for (var vri = 0; vri < nVisRows; vri++) {
+                  var rl = visibleRowLayers[vri];
                   var rName = dl.getLayerMetadata(ROW, rl, LM.LAYER_DISPLAY_NAME);
                   var rId   = dl.getLayerMetadata(ROW, rl, LM.LAYER_ID);
-                  var rTxt  = rName == null ? "" : rName;
-                  out.push(headerCell("th", rTxt, rTxt, rId, 1, "colspan", "gp-corner", null, "row:" + rl));
+                  var rTxt  = rName == null ? "" : String(rName);
+                  var rShown = resolveHeaderLabel(headerLabelMap, rId, rTxt, rTxt);
+                  out.push(headerCell("th", rShown, rTxt, rId, 1, "colspan", "gp-corner", null, "row:" + rl, self.Config.headerColor));
                }
             }
          }
 
-         if (cl < nColLayers) {
-            /* Measure-labels layer: the flag, OR the id OAC was observed to
-               give that layer ("DM!MEASURE_DIMENSION") — so measure headers
-               keep their tooltips even if the flag is absent on a build. */
-            var isMeasureLayer = false;
-            try { isMeasureLayer = !!dl.getLayerMetadata(COL, cl, LM.LAYER_ISMEASURE_LABELS); } catch (e) {}
-            if (!isMeasureLayer) {
-               try { isMeasureLayer = tailName(dl.getLayerMetadata(COL, cl, LM.LAYER_ID)) === MEASURE_LAYER_ID; } catch (e) {}
-            }
-            var layerName = null;
-            try { layerName = dl.getLayerMetadata(COL, cl, LM.LAYER_DISPLAY_NAME); } catch (e) {}
-
+         if (cl >= 0) {
+            var isMeasureLayer = colLayerIsMeasure[cl];
+            var layerName = colLayerName[cl];
             var c = 0;
             while (c < nCols) {
                var end = c;
                try { end = dl.getItemEndSlice(COL, cl, c); } catch (e) { end = c; }
                if (end == null || end < c) end = c;
+               var span = visibleSpan(c, end);
+               /* A slice whose data columns are all hidden measures leaves
+                  no cell. Colspan counts only the columns still drawn, so
+                  a parent header still covers the visible children. */
+               if (span.n > 0) {
+                  var label = null;
+                  try { label = dl.getValue(COL, cl, c, false); } catch (e) {}
 
-               var label = null;
-               try { label = dl.getValue(COL, cl, c, false); } catch (e) {}
+                  var colId = null;
+                  try {
+                     colId = isMeasureLayer ? dl.getValue(COL, cl, c, true)
+                                            : dl.getLayerMetadata(COL, cl, LM.LAYER_ID);
+                  } catch (e) {}
 
-               var colId = null;
-               try {
-                  colId = isMeasureLayer ? dl.getValue(COL, cl, c, true)
-                                         : dl.getLayerMetadata(COL, cl, LM.LAYER_ID);
-               } catch (e) {}
+                  /* Measure-label cells ARE the column (label = CUM_GPA), so
+                     look up by label and honor a display-header override.
+                     Categorical cells show a VALUE (Fall 2024) that belongs
+                     to the layer's column — the override does not rename the
+                     member, and the glossary looks up the layer. */
+                  var lookup = isMeasureLayer ? label : (layerName ? layerName : label);
+                  var shown = label == null ? "" : String(label);
+                  var paintHex = self.Config.headerDataColor;
+                  if (isMeasureLayer) {
+                     shown = resolveHeaderLabel(headerLabelMap, colId, shown, shown);
+                     paintHex = self.Config.headerColor;
+                  }
 
-               /* Measure-label cells ARE the column (label = CUM_GPA), so look
-                  up by label. Categorical layer cells show a VALUE (Full-Time)
-                  that belongs to the layer's column — look up by layer name. */
-               var lookup = isMeasureLayer ? label : (layerName ? layerName : label);
-
-               /* A header that spans several data columns has no single
-                  value to sort by. Leaf cells (colspan 1) sort by that
-                  column's raw number. Grand-total headers are not cells
-                  of the layout, so they are not sort targets either. */
-               var sortKey = (end === c) ? ("col:" + cl + ":" + c) : null;
-               out.push(headerCell("th", label == null ? "" : label,
-                                   lookup == null ? "" : lookup, colId,
-                                   end - c + 1, "colspan", "gp-colhdr", null, sortKey));
+                  /* A header that spans several visible data columns has no
+                     single value to sort by. A leaf (one visible column)
+                     sorts by that column's raw number. */
+                  var sortKey = span.sortCol >= 0 ? ("col:" + cl + ":" + span.sortCol) : null;
+                  out.push(headerCell("th", shown,
+                                      lookup == null ? "" : lookup, colId,
+                                      span.n, "colspan", "gp-colhdr", null, sortKey, paintHex));
+               }
                c = end + 1;
             }
          } else if (nCols > 0) {
-            /* COLUMN edge has slices but no layers: pad so thead stays aligned
-               with the body's value cells. */
+            /* No column layer to label (or every attribute layer is hidden):
+               pad so thead stays aligned with the body's value cells. */
             for (var cp = 0; cp < nCols; cp++) {
-               out.push(headerCell("th", "", "", null, 1, "colspan", "gp-colhdr", null, "col:0:" + cp));
+               if (colHidden[cp]) continue;
+               out.push(headerCell("th", "", "", null, 1, "colspan", "gp-colhdr", null, "col:0:" + cp, self.Config.headerDataColor));
             }
          }
 
-         /* Grand-total column header(s): one per distinct measure, spanning
-            every column-header row via rowspan (emitted once, on the first
-            row, rather than a blank placeholder per row). */
-         if (wantTotalCol && cl === 0) {
+         /* Grand-total column header(s): one per distinct measure that still
+            has a visible column, spanning every header row via rowspan
+            (emitted once, on the first row). The label uses the display
+            header, not the raw measure id. */
+         if (wantTotalCol && hi === 0) {
             buckets.order.forEach(function (bid) {
                var measureName = measureNameById[bid] || bid;
-               var lbl = buckets.order.length > 1 && bid !== "__single__" ? measureName + " " + LBL.TOTAL : LBL.TOTAL;
-               var rs = nColLayers > 1 ? " rowspan='" + nColLayers + "'" : "";
-               out.push("<th class='gp-colhdr gp-total-colhdr'" + rs + ">" +
+               var shownName = resolveHeaderLabel(headerLabelMap, bid === "__single__" ? null : bid, measureName, measureName);
+               var lbl = buckets.order.length > 1 && bid !== "__single__" ? shownName + " " + LBL.TOTAL : LBL.TOTAL;
+               var rs = nHeaderRows > 1 ? " rowspan='" + nHeaderRows + "'" : "";
+               var totalPaint = headerPaint(self.Config.headerColor);
+               out.push("<th class='gp-colhdr gp-total-colhdr" + totalPaint.cls + "'" + totalPaint.style + rs + ">" +
                         "<span class='gp-lbl'>" + escapeHtml(lbl) + "</span></th>");
             });
          }
@@ -1229,12 +1658,13 @@ define(['jquery',
 
       function totalRowHtml(labelText, rStart, rEnd) {
          var cells = ["<tr class='gp-total-row'>"];
-         if (nRowLayers > 0) {
+         if (nVisRows > 0) {
             cells.push("<th class='gp-rowhdr gp-total-label'" +
-                       (nRowLayers > 1 ? " colspan='" + nRowLayers + "'" : "") +
+                       (nVisRows > 1 ? " colspan='" + nVisRows + "'" : "") +
                        ">" + escapeHtml(labelText) + "</th>");
          }
          for (var cc = 0; cc < nCols; cc++) {
+            if (colHidden[cc]) continue;
             var mId = measureIdByCol[cc];
             var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId);
             var val = sumBlock(dl, rStart, rEnd, [cc]);
@@ -1261,12 +1691,15 @@ define(['jquery',
          one. */
       function collapsedGroupRowHtml(labelText, rStart, rEnd, groupKey) {
          var cells = ["<tr class='gp-group-row gp-collapsed'>"];
-         cells.push("<th class='gp-rowhdr gp-group-label'" +
-                    (nRowLayers > 1 ? " colspan='" + nRowLayers + "'" : "") +
-                    " data-gp-toggle-group='" + groupKey + "'>" +
-                    "<span class='gp-group-toggle'>▸</span><span class='gp-lbl'>" +
-                    escapeHtml(labelText) + "</span></th>");
+         if (nVisRows > 0) {
+            cells.push("<th class='gp-rowhdr gp-group-label'" +
+                       (nVisRows > 1 ? " colspan='" + nVisRows + "'" : "") +
+                       " data-gp-toggle-group='" + groupKey + "'>" +
+                       "<span class='gp-group-toggle'>▸</span><span class='gp-lbl'>" +
+                       escapeHtml(labelText) + "</span></th>");
+         }
          for (var cc = 0; cc < nCols; cc++) {
+            if (colHidden[cc]) continue;
             var mId = measureIdByCol[cc];
             var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId);
             var val = sumBlock(dl, rStart, rEnd, [cc]);
@@ -1292,6 +1725,7 @@ define(['jquery',
          var parts = [];
          var layoutRow = row.r;
          for (var cc = 0; cc < nCols; cc++) {
+            if (colHidden[cc]) continue;
             var vRaw = row.raw[cc];
             var vFormatted = row.formatted[cc];
             var mId = measureIdByCol[cc];
@@ -1355,7 +1789,7 @@ define(['jquery',
                (lead.groupKey), not by whichever row sort put first and not
                by the label — two groups can still share a label. */
             if (wantCollapse && self._collapsedGroups[lead.groupKey]) {
-               out.push(collapsedGroupRowHtml(lead.rowVals[0] || "", lead.groupStart, lead.groupEnd, lead.groupKey));
+               out.push(collapsedGroupRowHtml(visibleGroupLabel(lead), lead.groupStart, lead.groupEnd, lead.groupKey));
                di = gLast + 1;
                continue;
             }
@@ -1364,17 +1798,22 @@ define(['jquery',
                var cur = displayRows[rowi];
                out.push("<tr data-gp-row='" + cur.r + "'>");
                for (var l = 0; l < nRowLayers; l++) {
+                  if (rowLayerHidden[l]) continue;
                   /* Span from adjacency in the sorted buffer. getItemEndSlice
                      would still report the host's grouping, which is no longer
-                     the order on screen. groupKey is part of the comparison
-                     so two groups that share a label do not merge. */
+                     the order on screen. groupKey and the hidden ancestor
+                     values are part of the comparison so two groups that
+                     share a visible label do not merge. */
                   if (rowi > 0 && sameHeaderRun(displayRows[rowi - 1], cur, l)) continue;
                   var spanEnd = rowi;
                   while (spanEnd + 1 <= gLast && sameHeaderRun(displayRows[spanEnd], displayRows[spanEnd + 1], l)) spanEnd++;
                   var indices = [];
                   for (var k = rowi; k <= spanEnd; k++) indices.push(displayRows[k].r);
                   var toggle = "";
-                  if (wantCollapse && l === 0) {
+                  /* Collapse still keys the outer group. When that layer is
+                     hidden the toggle sits on the first visible layer, and
+                     only on the group's first row so it is not repeated. */
+                  if (wantCollapse && l === firstVisibleRowLayer && rowi === di) {
                      toggle = "<span class='gp-group-toggle' data-gp-toggle-group='" + lead.groupKey + "'>▾</span>";
                   }
                   var span = spanEnd - rowi + 1;
@@ -1393,7 +1832,7 @@ define(['jquery',
                sumBlock over that slice is the group's rows and not a
                display-index range. */
             if (wantRowSubtotals) {
-               out.push(totalRowHtml((lead.rowVals[0] || "") + " " + LBL.TOTAL, lead.groupStart, lead.groupEnd));
+               out.push(totalRowHtml((visibleGroupLabel(lead) || "") + " " + LBL.TOTAL, lead.groupStart, lead.groupEnd));
             }
             di = gLast + 1;
          }
@@ -1430,13 +1869,21 @@ define(['jquery',
          var d = null;
          try { d = self._glossary.getDescription(name, key); } catch (e) {}
          if (!d) { hide(); return; }
+         /* Live and Workbook override chips are optional. Bundled fallback
+            stays visible: it is the chip that says the text is not from OAC. */
+         var showBadge = d.origin === "bundled" || self.Config.showSourceBadges === "on";
          var srcLabel = d.origin === "override" ? LBL.SRC_OVERRIDE
                        : d.origin === "live"     ? LBL.SRC_LIVE
                        :                           LBL.SRC_BUNDLED;
+         var $name = $("<div class='gp-tip-name'></div>").text(name);
+         if (showBadge) $name.append($("<span class='gp-tip-src'></span>").text(srcLabel));
+         var align = self.Config.tooltipAlign;
+         if (align !== "center" && align !== "right") align = "left";
          $tip.empty()
-             .append($("<div class='gp-tip-name'></div>").text(name)
-                        .append($("<span class='gp-tip-src'></span>").text(srcLabel)))
+             .append($name)
              .append($("<div class='gp-tip-desc'></div>").text(d.text))
+             .removeClass("gp-align-left gp-align-center gp-align-right")
+             .addClass("gp-align-" + align)
              .addClass("gp-on");
 
          /* Viewport coordinates: .gp-tip is position:fixed, so these are valid
@@ -1713,6 +2160,10 @@ define(['jquery',
           { value: "2", label: "2" }, { value: "3", label: "3" }, { value: "4", label: "4" }], nx("FMT"));
       addText(pGen, factory, "measureFormatOverridesGadget",
          "Format: Per-Measure Override (id:format:decimals; ...)", this.Config.measureFormatOverrides);
+      addText(pGen, factory, "headerLabelsGadget",
+         "Header: Display Label (id: label; ...)", this.Config.headerLabels);
+      addText(pGen, factory, "hiddenColumnsGadget",
+         "Header: Hidden Columns (id; id; ...)", this.Config.hiddenColumns);
 
       addToggle(pGen, "showGrandTotalRowGadget", "Totals: Grand Total Row", this.Config.showGrandTotalRow);
       addToggle(pGen, "showRowSubtotalsGadget", "Totals: Row Subtotals (2+ Row layers)", this.Config.showRowSubtotals);
@@ -1722,8 +2173,19 @@ define(['jquery',
       addToggle(pGen, "cellColorGadget", "Style: Cell Color (heat map)", this.Config.cellColor);
       addText(pGen, factory, "cellColorLowGadget", "Style: Cell Color Low (hex)", this.Config.cellColorLow);
       addText(pGen, factory, "cellColorHighGadget", "Style: Cell Color High (hex)", this.Config.cellColorHigh);
+      addText(pGen, factory, "headerColorGadget", "Style: Header Color (hex)", this.Config.headerColor);
+      addText(pGen, factory, "headerDataColorGadget", "Style: Header Data Color (hex)", this.Config.headerDataColor);
 
       addToggle(pGen, "showDescriptionsGadget", "Tooltip: Glossary Descriptions", this.Config.showDescriptions);
+      addToggle(pGen, "showSourceBadgesGadget", "Tooltip: Source Badges (Live / Workbook)", this.Config.showSourceBadges);
+      addToggle(pGen, "showHeaderUnderlineGadget", "Tooltip: Underline Headers", this.Config.showHeaderUnderline);
+      addToggle(pGen, "showPrintButtonGadget", "Print: Show Button", this.Config.showPrintButton);
+      addText(pGen, factory, "printTitleGadget", "Print: Report Title", this.Config.printTitle);
+      addSwitcher(pGen, "printOrientationGadget", "Print: Page Orientation", this.Config.printOrientation,
+         [{ value: "landscape", label: "Landscape" }, { value: "portrait", label: "Portrait" }], nx("FMT"));
+      addSwitcher(pGen, "tooltipAlignGadget", "Tooltip: Text Align", this.Config.tooltipAlign,
+         [{ value: "left", label: "Left" }, { value: "center", label: "Center" },
+          { value: "right", label: "Right" }], nx("FMT"));
 
       addToggle(pGen, "debugLogMetadataGadget", "Debug: Log Column Metadata (Console)", this.Config.debugLogMetadata);
 
@@ -1737,6 +2199,8 @@ define(['jquery',
          numberFormatGadget: "numberFormat",
          decimalPlacesGadget: "decimalPlaces",
          measureFormatOverridesGadget: "measureFormatOverrides",
+         headerLabelsGadget: "headerLabels",
+         hiddenColumnsGadget: "hiddenColumns",
          showGrandTotalRowGadget: "showGrandTotalRow",
          showRowSubtotalsGadget: "showRowSubtotals",
          showGrandTotalColumnGadget: "showGrandTotalColumn",
@@ -1744,14 +2208,23 @@ define(['jquery',
          cellColorGadget: "cellColor",
          cellColorLowGadget: "cellColorLow",
          cellColorHighGadget: "cellColorHigh",
+         headerColorGadget: "headerColor",
+         headerDataColorGadget: "headerDataColor",
          showDescriptionsGadget: "showDescriptions",
+         showSourceBadgesGadget: "showSourceBadges",
+         showHeaderUnderlineGadget: "showHeaderUnderline",
+         tooltipAlignGadget: "tooltipAlign",
+         printTitleGadget: "printTitle",
+         printOrientationGadget: "printOrientation",
+         showPrintButtonGadget: "showPrintButton",
          debugLogMetadataGadget: "debugLogMetadata"
       };
       var key = map[sGadgetID];
       if (!key) return false;
       var TOGGLE_GADGETS = {
          showGrandTotalRowGadget: 1, showRowSubtotalsGadget: 1, showGrandTotalColumnGadget: 1,
-         rowGroupCollapseGadget: 1, cellColorGadget: 1, showDescriptionsGadget: 1, debugLogMetadataGadget: 1
+         rowGroupCollapseGadget: 1, cellColorGadget: 1, showDescriptionsGadget: 1,
+         showSourceBadgesGadget: 1, showHeaderUnderlineGadget: 1, showPrintButtonGadget: 1, debugLogMetadataGadget: 1
       };
       if (TOGGLE_GADGETS[sGadgetID]) {
          this.Config[key] = oPropChange.checked ? "on" : "off";
@@ -1802,6 +2275,10 @@ define(['jquery',
     * rest of the family, not because a specific leak was found.
     */
    GlossaryPivotViz.prototype._doStopComponent = function () {
+      if (this._printFrame && this._printFrame.parentNode) {
+         this._printFrame.parentNode.removeChild(this._printFrame);
+      }
+      this._printFrame = null;
       GlossaryPivotViz.superClass._doStopComponent.apply(this, arguments);
    };
 
@@ -1813,6 +2290,7 @@ define(['jquery',
    }
 
    return {
-      createClientComponent: createClientComponent
+      createClientComponent: createClientComponent,
+      _expandBodyRowspans: expandBodyRowspans
    };
 });

@@ -429,12 +429,134 @@ suite("WSU Network", function() {
 });
 
 // ============================================================================
+suite("WSU Report Print", function() {
+  var mod = H.loadPlugin("com-wsu-report-print", "reportPrintViz.js");
+  var config = { reportTitle: "Enrollment", orientation: "landscape", showGrandTotal: "on" };
+
+  function pivot(opts) {
+    var rowLayers = opts.rowLayers || [];
+    var headers = opts.headers || [["A"]];
+    var values = opts.values || [[1]];
+    var nRows = values.length;
+    var nCols = nRows && values[0] ? values[0].length : 0;
+    return {
+      getEdgeExtent: function(edge) {
+        if (edge === "row") return nRows;
+        if (edge === "column") return nCols;
+        return 0;
+      },
+      getLayerCount: function(edge) {
+        if (edge === "row") return rowLayers.length;
+        if (edge === "column") return headers.length;
+        return 0;
+      },
+      getLayerMetadata: function(edge, i) {
+        return edge === "row" && rowLayers[i] ? rowLayers[i].name : "";
+      },
+      getItemEndSlice: function(edge, layer, index) { return index; },
+      getValue: function(edge, a, b) {
+        if (edge === "row") return rowLayers[a] ? rowLayers[a].values[b] : "";
+        if (edge === "column") return headers[a] ? headers[a][b] : "";
+        if (edge === "data") return values[a] ? values[a][b] : null;
+        return "";
+      }
+    };
+  }
+
+  test("Print with no layout reports empty instead of doing nothing", function() {
+    var prepared = mod._preparePrint(null, config);
+    assert.strictEqual(prepared.html, null);
+    assert.strictEqual(prepared.error, "empty");
+  });
+
+  test("zero columns reports empty", function() {
+    var prepared = mod._preparePrint(pivot({ headers: [[]], values: [[]] }), config);
+    assert.strictEqual(prepared.html, null);
+    assert.strictEqual(prepared.error, "empty");
+  });
+
+  test("row labels repeat on every body row and the total row is labeled", function() {
+    var html = mod._buildPrintHtml(pivot({
+      rowLayers: [{ name: "College", values: ["A", "A"] }],
+      headers: [["Fall", "Spring"]],
+      values: [[1000, 20], [500, null]]
+    }), config);
+    assert.ok(html.indexOf("<thead>") >= 0);
+    assert.ok(html.indexOf("rowspan") < 0);
+    var body = html.split("<tbody>")[1];
+    assert.strictEqual((body.match(/>A</g) || []).length, 2);
+    assert.ok(body.indexOf(">Total<") >= 0);
+    assert.ok(body.indexOf("1,500") >= 0);
+    assert.ok(body.indexOf(">20<") >= 0);
+  });
+
+  test("a report with no row fields still prints the word Total", function() {
+    var html = mod._buildPrintHtml(pivot({
+      headers: [["Headcount"]],
+      values: [[1200], [300]]
+    }), config);
+    assert.ok(html.indexOf("class='lbl'>Total<") >= 0);
+    assert.ok(html.indexOf("1,500") >= 0);
+  });
+
+  test("cell text is escaped", function() {
+    var html = mod._buildPrintHtml(pivot({
+      rowLayers: [{ name: "College", values: ["<b>"] }],
+      headers: [["Fall"]],
+      values: [[1]]
+    }), config);
+    assert.ok(html.indexOf("&lt;b&gt;") >= 0);
+    assert.ok(html.indexOf("<b>") < 0);
+  });
+});
+
+// ============================================================================
+suite("WSU Glossary Pivot", function() {
+  var mod = H.loadPlugin("com-wsu-glossary-pivot", "glossaryPivotViz.js");
+
+  test("a rowspan label is repeated on every printed body row", function() {
+    var flat = mod._expandBodyRowspans([
+      [
+        { html: "Fall", colspan: 1, rowspan: 2, tag: "th" },
+        { html: "A", colspan: 1, rowspan: 1, tag: "th" },
+        { html: "10", colspan: 1, rowspan: 1, tag: "td" }
+      ],
+      [
+        { html: "B", colspan: 1, rowspan: 1, tag: "th" },
+        { html: "20", colspan: 1, rowspan: 1, tag: "td" }
+      ]
+    ]);
+    assert.strictEqual(flat.length, 2);
+    assert.strictEqual(flat[1][0].html, "Fall");
+    assert.strictEqual(flat[1][1].html, "B");
+    assert.strictEqual(flat[1][2].html, "20");
+    assert.strictEqual(flat[1].length, 3);
+  });
+
+  test("a colspan total label stays one cell", function() {
+    var flat = mod._expandBodyRowspans([[
+      { html: "Total", colspan: 2, rowspan: 1, tag: "th" },
+      { html: "30", colspan: 1, rowspan: 1, tag: "td" }
+    ]]);
+    assert.strictEqual(flat[0].length, 2);
+    assert.strictEqual(flat[0][0].html, "Total");
+    assert.strictEqual(flat[0][0].colspan, 2);
+  });
+});
+
+// ============================================================================
 suite("NLS bundles", function() {
   var fs = require("fs"), path = require("path"), vm = require("vm");
   var SRC = path.join(__dirname, "..", "src", "customviz");
   fs.readdirSync(SRC).filter(function(d) { return /^com-wsu-/.test(d); }).forEach(function(plugin) {
     test(plugin + ": every L(key, fallback) in the renderer has the key in nls/root/messages.js", function() {
-      var js = fs.readdirSync(path.join(SRC, plugin)).filter(function(f) { return /^wsu.*\.js$/.test(f) && !/datamodelhandler/i.test(f); })[0];
+      /* The renderer is the top-level JS file that is not the datamodel
+         handler. The older wsu*.js filter missed glossaryPivotViz.js and
+         then passed undefined to readFileSync. */
+      var js = fs.readdirSync(path.join(SRC, plugin)).filter(function(f) {
+         return /\.js$/.test(f) && !/datamodelhandler/i.test(f);
+      })[0];
+      assert.ok(js, "no renderer JS in " + plugin);
       var code = fs.readFileSync(path.join(SRC, plugin, js), "utf8");
       var bundleCode = fs.readFileSync(path.join(SRC, plugin, "nls", "root", "messages.js"), "utf8");
       var bundle = null;

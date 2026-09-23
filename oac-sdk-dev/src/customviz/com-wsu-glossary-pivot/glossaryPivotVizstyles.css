@@ -1,5 +1,53 @@
 /**************** WSU Glossary Pivot — plugin CSS ****************/
 
+.gp-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+.gp-printbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 4px 8px;
+  background: #f7f8f9;
+  border-bottom: 1px solid #e2e5e8;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 12px;
+}
+
+.gp-printbtn {
+  border: 0;
+  border-radius: 4px;
+  background: #1f6f6b;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.gp-printbtn:hover { background: #185854; }
+.gp-printbtn:focus {
+  outline: 2px solid #1f6f6b;
+  outline-offset: 2px;
+}
+
+.gp-printerr {
+  color: #8a2b2b;
+  font-size: 12px;
+}
+
+.gp-shell > .gp-wrap {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
 .gp-wrap {
   position: relative;
   width: 100%;
@@ -41,6 +89,20 @@
   text-align: left;
 }
 
+/* Painted headers set --gp-hdr-bg/--gp-hdr-fg rather than an inline
+   background, so the glossary hover (more specific) still covers them.
+   The hover color is reset because a dark header's light text would
+   otherwise sit on the light hover fill. */
+.gp-table th.gp-hdr-paint {
+  background: var(--gp-hdr-bg);
+  color: var(--gp-hdr-fg);
+}
+
+.gp-table th.gp-hdr-paint.gp-has-desc:hover,
+.gp-table th.gp-hdr-paint.gp-has-desc:focus {
+  color: #1b1f24;
+}
+
 .gp-table th.gp-rowhdr {
   background: #f7f8f9;
   font-weight: 500;
@@ -74,6 +136,14 @@
 
 .gp-table th.gp-has-desc .gp-lbl {
   border-bottom: 1px dotted #9aa1a9;
+}
+
+/* Underline off keeps .gp-has-desc, so the tooltip and the hover wash stay.
+   The hover rule below is more specific, so it has to be cleared too. */
+.gp-table.gp-no-underline th.gp-has-desc .gp-lbl,
+.gp-table.gp-no-underline th.gp-has-desc:hover .gp-lbl,
+.gp-table.gp-no-underline th.gp-has-desc:focus .gp-lbl {
+  border-bottom: none;
 }
 
 .gp-table th.gp-has-desc:hover,
@@ -141,6 +211,9 @@
 .gp-tip-desc {
   color: #545c66;
 }
+
+.gp-tip.gp-align-center { text-align: center; }
+.gp-tip.gp-align-right { text-align: right; }
 
 /* ---- marking (row-level click-to-select) ---- */
 .gp-table th.gp-rowhdr[data-gp-mark-rows],

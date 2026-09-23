@@ -17,7 +17,7 @@
    "resourceBundle": "com-wsu-glossary-pivot/nls/messages",
    "properties": {
      "displayName": { "key" : "GLOSSARYPIVOT_DISPLAY_NAME", "default" : "WSU Glossary Pivot" },
-     "shortDisplayName": { "key" : "GLOSSARYPIVOT_SHORT_DISPLAY_NAME", "default" : "Glossary Pivot" },
+     "shortDisplayName": { "key" : "GLOSSARYPIVOT_SHORT_DISPLAY_NAME", "default" : "WSU Glossary Pivot" },
      "category": {"key":"GLOSSARYPIVOT_CATEGORY", "default":"WSU"},
      "customSettings":{},
      "categoryOrder": 500,

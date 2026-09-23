@@ -1,7 +1,86 @@
 # Changelog
 
 Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
-`docs/plugins/`. Repository tags mark the state of all five together.
+`docs/plugins/`. Those constants are the versions in this folder. Network
+1.2.2, Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, and Lattice Scatter 1.1.2
+are on `main`. Glossary Pivot in this folder is 0.13.0. The commit on
+`origin/main` (`a15f2bf`) is Glossary Pivot 0.10.0; 0.13.0 is local until
+it is committed.
+
+The newest git tag is `v1.1.1`. It does not contain the 1.2.x / 1.1.2 work
+or Glossary Pivot. Headings below that say "Unreleased" mean "no git tag".
+The 1.x commits they describe are on `main`.
+
+Glossary Pivot versions on its own line (`GlossaryPivotViz.VERSION`), not on
+the 1.x tags.
+
+## 2026-09-23 — WSU Glossary Pivot 0.13.0
+
+Print PDF is on the pivot. The button stays on the canvas. The printed
+document is this table: hidden columns, display labels, number formats, and
+whichever total rows are turned on. Collapsed groups are expanded for the
+print. Row labels repeat on every body row, and column headers repeat on
+each page. Properties: Print: Show Button (default on), Print: Report Title
+(default Report), and Print: Page Orientation (default Landscape).
+
+## 2026-09-23 — WSU Report Print 1.0.0
+
+New visualization, `com-wsu-report-print`. A bar for the top of a canvas.
+**Print PDF** opens the browser print dialog on a document that is only the
+table bound to this visualization. Column headers repeat on each page. The
+bar is not in the document. It cannot read a neighboring pivot; the report
+fields are dropped on this visualization too. Print with nothing dropped
+on the visualization shows that message on the bar. A report with no row
+fields still prints the word Total. The visualization list uses the short
+name, so Glossary Pivot and Report Print now show as WSU Glossary Pivot and
+WSU Report Print, matching the other extensions. Spec:
+`docs/plugins/project_spec_wsu_report_print.md`.
+
+## 2026-09-22 — WSU Glossary Pivot 0.12.0
+
+- **Number** format inserts thousands separators (`1,234`, and `1,234.50`
+  when a decimal count is set). Auto is unchanged: it still shows OAC's own
+  text. Currency still adds the dollar sign on top of the same grouping.
+- Tooltip chips for Live and Workbook override are off until
+  **Tooltip: Source Badges** is on. The Bundled fallback chip still shows.
+- The dotted underline on headers that have a description is off until
+  **Tooltip: Underline Headers** is on. The tooltip, hover, and focus stay.
+- **Tooltip: Text Align** is Left (default), Center, or Right. That aligns
+  the text inside the tooltip. The bubble stays centered under the header.
+
+## 2026-09-22 — WSU Glossary Pivot 0.11.0
+
+New visualization, `com-wsu-glossary-pivot`. Spec:
+`docs/plugins/project_spec_wsu_glossary_pivot.md`. Zip:
+`oac-sdk-dev/build/distributions/customviz_com-wsu-glossary-pivot.zip`.
+
+A pivot table with a glossary tooltip on headers. Rows, Columns, and Values.
+Description order is workbook override, then live `_info.desc`, then the
+bundled column dictionary. Confirmed on oac.wsu.edu the same day: Subject
+Area and Dataset text come from `_info.desc`; a Calculated Field's
+Description comes from `customColumnDescription`.
+
+Also in 0.11.0, carried forward from 0.5–0.10: row marking, sum totals
+(grand total row, grand total column, outer-group subtotals; default off),
+per-measure format override, heat map, row-group collapse, click-to-sort.
+0.11 adds hidden columns (the field stays in the query), display-header
+overrides (the glossary id does not change), and hex colors for the
+field-name band and for member column headers.
+
+Exercised on the tenant the same day: the per-measure override
+(`CUM_GPA:currency:2`), grand total row, and row subtotals. The right-hand
+total column is past the horizontal scrollbar on a wide table. Hide and
+display-label text fields were exercised. Number format does not insert
+thousands separators; currency does. Auto shows OAC's own formatted text.
+
+Not in this plugin: column-group collapse, multi-column sort, conditional
+formatting, and native drill / export / print. Totals remain a sum of the
+displayed numbers.
+
+The NLS test now finds a renderer that is not named `wsu*.js`. The unused
+`obitech-report/visualization` import was removed so the currency lint
+accepts the file. `node tests/run.js`: 36 passed. Host sections 2–7 of the
+verification guide are still unrecorded for this plugin.
 
 ## 2026-09-13 — tenant probe of oac.wsu.edu
 
@@ -286,10 +365,18 @@ unchanged from v1.1.0 and are re-attached to this release for convenience.
 
 ## Deployment status
 
-- **Production OAC (2026-09-11):** 1.0.0 builds of all five extensions.
-- **v1.1.1:** released on GitHub; the build to take to production once
-  [#1](https://github.com/gcrouch-wsu/OAC-Extensions/issues/1) (verification
-  in OAD/OAC Dev) is done. v1.1.0 is superseded; do not deploy it.
+- **Source in this folder:** Network 1.2.2, Line 1.2.2, Sankey 1.1.2,
+  Dumbbell 1.1.2, Lattice Scatter 1.1.2 (those five are on `main`). Glossary
+  Pivot 0.13.0 is in the working tree. `origin/main` still has Glossary
+  Pivot 0.10.0 (`a15f2bf`). WSU Report Print 1.0.0 is in the working tree
+  only.
+- **Newest tag `v1.1.1`:** Network 1.1.1, Line 1.1.0, Sankey 1.0.1, Dumbbell
+  1.0.1, Lattice Scatter 1.0.1. No Glossary Pivot. Behind `main`.
+- **Tag `v1.1.0`:** superseded by v1.1.1. Do not deploy it.
+- **Production OAC, five 1.x plugins (recorded 2026-09-11):** 1.0.0. No later
+  upload of those five has been recorded.
+- **WSU Glossary Pivot 0.11.0 (2026-09-22):** uploaded and exercised on
+  oac.wsu.edu. Spec: `docs/plugins/project_spec_wsu_glossary_pivot.md`.
 
 ## Known gaps
 
@@ -298,15 +385,15 @@ line pointers. This list is a summary only.
 
 | Issue | Item |
 |---|---|
-| [#1](https://github.com/gcrouch-wsu/OAC-Extensions/issues/1) | Verify v1.1.1 fixes in OAD/OAC before production upload |
+| [#1](https://github.com/gcrouch-wsu/OAC-Extensions/issues/1) | Host-verify the source on `main` (Network 1.2.2, Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, Lattice 1.1.2) before a production upload. The issue title still names v1.1.1, which is an older tag. |
 | [#3](https://github.com/gcrouch-wsu/OAC-Extensions/issues/3) | WSU Line: `@parameter(...)` in a categorical calc for Dynamic Value Label |
 | [#4](https://github.com/gcrouch-wsu/OAC-Extensions/issues/4) | WSU Line: native Color / Manage Color Assignments menu |
-| [#5](https://github.com/gcrouch-wsu/OAC-Extensions/issues/5) | Apply the Color: Source pattern to the other four plugins |
+| [#5](https://github.com/gcrouch-wsu/OAC-Extensions/issues/5) | Apply the Color: Source pattern to the plugins other than WSU Line. The issue text still says four plugins; Glossary Pivot is a sixth and does not have that switcher. |
 | [#6](https://github.com/gcrouch-wsu/OAC-Extensions/issues/6) | WSU Dumbbell: aggregate mode + viewer controls persisting to view settings |
 | [#7](https://github.com/gcrouch-wsu/OAC-Extensions/issues/7) | Which OAC/OAD versions honor custom property-panel tabs |
 | [#8](https://github.com/gcrouch-wsu/OAC-Extensions/issues/8) | Consolidate duplicated helper code |
 | — | **Toolchain expiry.** OAD/SDK deprecated (no downloads after Dec 2026). Archive the 26.01 installer; a manifest→`plugin.xml` packager is the fallback if the SDK stops installing. Ask Oracle for the replacement. |
-| — | **Every compatibility claim is desktop- or sample-derived.** No OAC Dev run has been recorded yet. `docs/guides/oac_dev_verification.md` is the procedure; results go here with the tenant build. |
+| — | **Verification guide sections 2–7 are still open.** A tenant module probe (2026-09-13) and a Glossary Pivot exercise (2026-09-22, glossary text, format, totals, hide, display labels) are recorded above. They are not a pass of `docs/guides/oac_dev_verification.md` §2–7. |
 | — | **Data-model governor behavior unknown.** Manifests cap rows (10k–70k); whether OAC truncates, warns or refuses above the cap is undocumented. The plugins' warning strips report only their own drops. Guide §3. |
 | — | **Localization is partial.** `LBL` tables are externalized; gadget labels and inline tooltip fragments are still literals; only the `root` bundle exists. |
 | — | **Marking uses undocumented, sample-precedented services** (`setMark`, `MarkingEvent`, `MARK_RELATED`). Brushing is documented as a user feature, not as a plugin API. Guide §4. Data actions are *not* a substitute (they consume marked context; documented event is `INVOKE_DATA_ACTION`). |
