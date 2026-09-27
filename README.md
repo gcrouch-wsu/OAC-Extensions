@@ -56,8 +56,12 @@ bucket and what to look for.
 ### Prerequisites
 
 - Windows (the build scripts are PowerShell; Gradle itself is cross-platform)
-- [Oracle Analytics Desktop](https://www.oracle.com/business-analytics/analytics-desktop.html)
-  — ships the SDK tools under `<OAD install>\tools`. **Deprecated by Oracle:**
+- [Oracle Analytics Desktop](https://www.oracle.com/solutions/analytics/analytics-desktop/oracle-analytics-desktop.html)
+  — download goes through Oracle eDelivery: sign in (or create a free Oracle
+  account), pick the Windows x64 platform, accept the license, and download
+  via the Download Manager as a zip — not a direct installer download.
+  Extract the zip and run the installer inside it. Ships the SDK tools under
+  `<OAD install>\tools`. **Deprecated by Oracle:**
   no downloads after December 2026; the final version (January 2026, 26.01)
   is the one this repository was built with. Archive the installer. See
   `docs/oac_design.md` §6.32 for what that means for this build.
