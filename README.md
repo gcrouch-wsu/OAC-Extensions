@@ -17,7 +17,7 @@ data, because that is what they were built to explain.
 | **WSU Line** | `com-wsu-line` | 1.2.2 | Multi-series line with a shared-X tooltip table (sortable, with vs-average / rank / year-over-year deltas), drag-to-zoom, header attribute chips, parameter-driven value labels. |
 | **WSU Dumbbell** | `com-wsu-dumbbell` | 1.1.2 | Paired before/after comparison from wide (two measures) or long (role column) data. In-chart sort/filter strips, group aggregation, small multiples. |
 | **WSU Lattice Scatter** | `com-wsu-lattice-scatter` | 1.1.2 | Course × term lattice with grade-letter or grade-point markers per student row. |
-| **WSU Glossary Pivot** | `com-wsu-glossary-pivot` | 0.14.15 | Pivot table with a glossary tooltip on headers. Rows, columns, and values; click-to-sort; sum totals; hide a field without dropping it from the query; rename the field title. Number format groups thousands. Print PDF prints this table. Print Canvas prints every Glossary Pivot on the active canvas tab. Versioned on its own line, not with the 1.x plugins. |
+| **WSU Glossary Pivot** | `com-wsu-glossary-pivot` | 0.16.2 | Pivot table with a glossary tooltip on headers. Rows, columns, and values; click-to-sort; sum totals; hide a field without dropping it from the query; rename the field title. Number format groups thousands. Print PDF prints this table. Print Canvas prints every Glossary Pivot on the active canvas tab. Versioned on its own line, not with the 1.x plugins. |
 
 Source for each lives in `oac-sdk-dev/src/customviz/<root id>/`. Each has a
 reference spec in `docs/plugins/`.
@@ -174,9 +174,9 @@ items labeled [`needs OAC access`](../../issues?q=is%3Aopen+label%3A%22needs+OAC
 are for people who can test on a live Oracle Analytics instance.
 
 **Versions in this folder** are the version column above. Network 1.2.2,
-Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, and Lattice Scatter 1.1.2 are on
-`main`. Glossary Pivot 0.14.15 is local, uncommitted; the commit on
-`origin/main` is 0.10.0. The newest git tag is **v1.1.1**, which is behind `main`: that tag
+Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, Lattice Scatter 1.1.2, and Glossary
+Pivot 0.16.2 are all on `origin/main` as of commit `2b42ee5` (2026-09-27).
+The newest git tag is **v1.1.1**, which is behind `main`: that tag
 is Network 1.1.1, Line 1.1.0, Sankey 1.0.1, Dumbbell 1.0.1, Lattice Scatter
 1.0.1, and it has no Glossary Pivot. Tag v1.1.0 is superseded. Do not deploy
 it.
