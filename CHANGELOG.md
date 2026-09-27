@@ -1,13 +1,19 @@
 # Changelog
 
 Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
-`docs/plugins/`. Those constants are the versions in this folder. Network
-1.2.2, Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, and Lattice Scatter 1.1.2
-are on `main`. Glossary Pivot in this folder is 0.16.2. WSU Report Print
-has been removed; Glossary Pivot prints its own table and the canvas.
-The commit on `origin/main` (`a15f2bf`) is Glossary Pivot 0.10.0 only.
-`814a660` (local, not yet on `origin/main`) is Glossary Pivot 0.13.0 and
-the removed Report Print 1.0.0 — the checkpoint immediately before Print Canvas.
+`docs/plugins/`. Those constants are the versions in this folder and are the
+source of truth — check them directly (`grep VERSION` in the plugin's own
+`.js` file) rather than trusting a number restated in prose here, including
+this one. As of commit `0e043f3` (2026-09-27), `main` and `origin/main` agree:
+Network 1.2.2, Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, Lattice Scatter
+1.1.2, Glossary Pivot 0.16.2. WSU Report Print has been removed; Glossary
+Pivot prints its own table and the canvas.
+
+This file's own history below predates that sync — entries before 2026-09-27
+were written while local `main` was ahead of `origin/main` by design (see
+those entries' own dates and commit references for what was true then). Don't
+extend that same gap forward: check `git log -1 origin/main` before trusting
+any "local vs. public" claim in this changelog as still current.
 
 The newest git tag is `v1.1.1`. It does not contain the 1.2.x / 1.1.2 work
 or Glossary Pivot. Headings below that say "Unreleased" mean "no git tag".
@@ -823,18 +829,18 @@ unchanged from v1.1.0 and are re-attached to this release for convenience.
 
 ## Deployment status
 
-- **Source in this folder:** Network 1.2.2, Line 1.2.2, Sankey 1.1.2,
-  Dumbbell 1.1.2, Lattice Scatter 1.1.2 (those five are on `main`). Glossary
-  Pivot 0.16.2 is in the working tree, uncommitted, on top of commit
-  `768cfb1` (a verified Print Canvas fragment-processing fix). WSU Report
-  Print has been removed from the working tree, not yet committed.
-  `origin/main` still has only Glossary Pivot 0.10.0 (`a15f2bf`); no Report
-  Print at all. Commit `814a660` (on `main` locally, not yet pushed) is the
-  checkpoint just before Print Canvas: Glossary Pivot 0.13.0, Report Print
-  1.0.0. 0.16.1 was uploaded and tested live 2026-09-25, confirmed running
-  (fetched and version-checked), and confirmed live to NOT fix the
-  reported calculated-measure format bug — see the 0.16.2 changelog entry
-  for the corrected diagnosis. 0.16.2 has not yet been uploaded.
+- **Source in this folder, as of commit `0e043f3` (2026-09-27):** Network
+  1.2.2, Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, Lattice Scatter 1.1.2,
+  Glossary Pivot 0.16.2 — all six on both `main` and `origin/main`. WSU Report
+  Print has been removed entirely. Re-check `git log -1 origin/main` before
+  trusting this bullet as still current.
+- **Tenant install status is a separate question from git state and is not
+  updated by a push.** 0.16.1 was uploaded and tested live 2026-09-25,
+  confirmed running (fetched and version-checked), and confirmed live to NOT
+  fix the reported calculated-measure format bug — see the 0.16.2 changelog
+  entry for the corrected diagnosis. As of this commit, 0.16.2 has not been
+  uploaded to any tenant; committing and pushing to GitHub does not install
+  anything on OAC or OAD.
 - **Newest tag `v1.1.1`:** Network 1.1.1, Line 1.1.0, Sankey 1.0.1, Dumbbell
   1.0.1, Lattice Scatter 1.0.1. No Glossary Pivot. Behind `main`.
 - **Tag `v1.1.0`:** superseded by v1.1.1. Do not deploy it.
