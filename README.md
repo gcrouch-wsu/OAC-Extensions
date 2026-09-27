@@ -12,11 +12,12 @@ data, because that is what they were built to explain.
 
 | Extension | Root id | Version | What it does |
 |---|---|---|---|
-| **WSU Network** | `com-wsu-network` | 1.1.1 | Directed, weighted transition graph (vis-network). Repeat self-loops, expanded repeat stages, terminal "no further step" routing, edge-type legend, large-graph stabilization. |
-| **WSU Sankey** | `com-wsu-sankey` | 1.0.1 | Explicit-stage Sankey: Start → up to five Intermediate → End buckets. Incomplete-path routing and highlight, threshold / Top-N noise control, click-to-focus upstream/downstream. |
-| **WSU Line** | `com-wsu-line` | 1.1.0 | Multi-series line with a shared-X tooltip table (sortable, with vs-average / rank / year-over-year deltas), drag-to-zoom, header attribute chips, parameter-driven value labels. |
-| **WSU Dumbbell** | `com-wsu-dumbbell` | 1.0.1 | Paired before/after comparison from wide (two measures) or long (role column) data. In-chart sort/filter strips, group aggregation, small multiples. |
-| **WSU Lattice Scatter** | `com-wsu-lattice-scatter` | 1.0.1 | Course × term lattice with grade-letter or grade-point markers per student row. |
+| **WSU Network** | `com-wsu-network` | 1.2.2 | Directed, weighted transition graph (vis-network). Repeat self-loops, expanded repeat stages, terminal "no further step" routing, edge-type legend, large-graph stabilization. |
+| **WSU Sankey** | `com-wsu-sankey` | 1.1.2 | Explicit-stage Sankey: Start → up to five Intermediate → End buckets. Incomplete-path routing and highlight, threshold / Top-N noise control, click-to-focus upstream/downstream. |
+| **WSU Line** | `com-wsu-line` | 1.2.2 | Multi-series line with a shared-X tooltip table (sortable, with vs-average / rank / year-over-year deltas), drag-to-zoom, header attribute chips, parameter-driven value labels. |
+| **WSU Dumbbell** | `com-wsu-dumbbell` | 1.1.2 | Paired before/after comparison from wide (two measures) or long (role column) data. In-chart sort/filter strips, group aggregation, small multiples. |
+| **WSU Lattice Scatter** | `com-wsu-lattice-scatter` | 1.1.2 | Course × term lattice with grade-letter or grade-point markers per student row. |
+| **WSU Glossary Pivot** | `com-wsu-glossary-pivot` | 0.14.15 | Pivot table with a glossary tooltip on headers. Rows, columns, and values; click-to-sort; sum totals; hide a field without dropping it from the query; rename the field title. Number format groups thousands. Print PDF prints this table. Print Canvas prints every Glossary Pivot on the active canvas tab. Versioned on its own line, not with the 1.x plugins. |
 
 Source for each lives in `oac-sdk-dev/src/customviz/<root id>/`. Each has a
 reference spec in `docs/plugins/`.
@@ -85,7 +86,8 @@ $env:JAVA_HOME = "C:\path\to\jdk-17"   # optional; script falls back to a defaul
 
 Gradle validates every plugin under `src/customviz/`, generates `plugin.xml`
 from the JSON manifests, and writes one zip per plugin to
-`oac-sdk-dev\build\distributions\customviz_<root id>.zip`. Takes about 30 s.
+`oac-sdk-dev\build\distributions\customviz_<root id>.zip`. A full build
+takes a couple of minutes.
 
 Before building, a cheap sanity check catches the two most common failures
 (a JS typo or a malformed manifest — both otherwise show up as a blank viz):
@@ -107,7 +109,8 @@ data. Every test encodes a defect found in review so it cannot return.
 
 ```powershell
 cd oac-sdk-dev
-node testsun.js
+node tests
+un.js
 ```
 
 No dependencies beyond Node. Host behavior (rendering, property panel,
@@ -170,10 +173,21 @@ Everything known to need doing is on the
 items labeled [`needs OAC access`](../../issues?q=is%3Aopen+label%3A%22needs+OAC+access%22)
 are for people who can test on a live Oracle Analytics instance.
 
-**Deployment status (2026-09-11):** production OAC runs the 1.0.0 builds of
-all five extensions. Release **v1.1.1** is the candidate for production; it
-is behavior-neutral for existing workbooks (no default changes) and is
-waiting on verification in OAD/OAC Dev ([#1](../../issues/1)).
+**Versions in this folder** are the version column above. Network 1.2.2,
+Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, and Lattice Scatter 1.1.2 are on
+`main`. Glossary Pivot 0.14.15 is local, uncommitted; the commit on
+`origin/main` is 0.10.0. The newest git tag is **v1.1.1**, which is behind `main`: that tag
+is Network 1.1.1, Line 1.1.0, Sankey 1.0.1, Dumbbell 1.0.1, Lattice Scatter
+1.0.1, and it has no Glossary Pivot. Tag v1.1.0 is superseded. Do not deploy
+it.
+
+**Last recorded production install of the five 1.x plugins (2026-09-11):**
+1.0.0. No later upload of those five has been recorded. Host verification of
+the versions on `main` is still open ([#1](../../issues/1)).
+
+**WSU Glossary Pivot 0.11.0** was uploaded and exercised on oac.wsu.edu on
+2026-09-22 (glossary text, per-measure format, totals, hide, and display
+labels). Its spec is `docs/plugins/project_spec_wsu_glossary_pivot.md`.
 
 ## Contributing
 

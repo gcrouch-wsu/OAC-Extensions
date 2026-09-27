@@ -9,9 +9,13 @@ define({
     "GLOSSARYPIVOT_LBL_RENDER_ERROR": "Render error: ",
     "GLOSSARYPIVOT_LBL_SRC_LIVE": "Live",
     "GLOSSARYPIVOT_LBL_SRC_OVERRIDE": "Workbook override",
-    "GLOSSARYPIVOT_LBL_SRC_BUNDLED": "Bundled fallback",
     "GLOSSARYPIVOT_LBL_TOTAL": "Total",
     "GLOSSARYPIVOT_LBL_PRINT": "Print PDF",
     "GLOSSARYPIVOT_LBL_PRINT_CANVAS": "Print Canvas",
-    "GLOSSARYPIVOT_LBL_PRINT_ERROR": "Print could not open. Use the browser print dialog if it appears, or allow this page to print."
+    "GLOSSARYPIVOT_LBL_PRINT_CANVAS_HELP": "Print the WSU Glossary Pivot tables on this canvas tab.",
+    "GLOSSARYPIVOT_LBL_PRINT_NONE": "No tables on this canvas could be printed.",
+    "GLOSSARYPIVOT_LBL_PRINT_ERROR": "Print could not open. Use the browser print dialog if it appears, or allow this page to print.",
+    "GLOSSARYPIVOT_LBL_PRINT_BUSY": "A print preview is already open. Close it before printing again.",
+    "GLOSSARYPIVOT_LBL_PRINT_OVERFLOW": "Printed. One table is still wide at the smallest print text size (6pt); for a single fully readable page, try fewer columns, shorter labels, landscape, or a smaller margin.",
+    "GLOSSARYPIVOT_LBL_PRINT_MIXED_ORIENTATION": "Tables use different page orientations; Print Canvas uses the orientation of the table whose button you clicked."
 });

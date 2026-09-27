@@ -42,13 +42,9 @@
  *   - Per-measure number-format override (text field: "MEASURE_ID:format:dp;
  *     ..."), closer to the native pivot's per-column format than one global
  *     switch, without building a per-column context-menu/dialog UI.
- *   - An opt-in "log column metadata" debug toggle. Off by default; when a
- *     viewer turns it on, EVERY render (including a resize; _rerenderTable
- *     after a group-collapse toggle does not, since it never touches
- *     descriptions) dumps the live column-info map and the rendering context
- *     to the console so the three-source description question (Subject Area
- *     vs. Dataset vs. workbook Calculated Field) can be investigated on a
- *     real tenant without a second temporary build.
+ *   - An opt-in "log column metadata" debug toggle. Current behavior logs
+ *     only metadata IDs and description origin labels through the OAC logger
+ *     on a full render, never DataLayout rows or the rendering context.
  *
  * v0.6 — the three-source question above is answered (2026-09-22, live tenant
  * test): Subject Area and Dataset columns both carry their description at
@@ -183,14 +179,47 @@
  * v0.14 — Print Canvas. A plugin instance only ever sees its own bound
  * data (docs/oac_design.md §2) — there is no OAC API for one visualization
  * to read another's DataLayout. window.__wsuPrintCanvas is a plain, same-
- * page JS registry (not an OAC mechanism) that each print-capable instance
- * on the canvas — this plugin and WSU Report Print — adds itself to on init
+ * page JS registry (not an OAC mechanism) that each Glossary Pivot instance
+ * on the canvas adds itself to on init
  * and removes itself from on stop. Print Canvas walks that registry, asks
  * every registered instance to build its own table fragment, and assembles
  * them into one print document in canvas (DOM) order. A section that fails
  * to build is skipped, not fatal to the rest. Orientation is whichever
  * instance's own button was clicked; @page is document-wide and there is no
  * per-section override.
+ *
+ * v0.15 — Print reliability and accessibility pass: font-fit floor with a
+ * nonblocking overflow warning, keyboard/ARIA reachability for sort and
+ * collapse, sanitized debug logging, and Print Canvas's active-canvas-tab
+ * selector reworked around OAC's own panel identity. v0.15.1 fixed that
+ * selector for the in-editor tab host (see the note above
+ * selectedCanvasPanel).
+ *
+ * v0.16.0 — FALLBACK_DESCRIPTIONS (the ~30-line hardcoded dictionary of 16
+ * Student Data Warehouse column descriptions the v0.4 note above
+ * introduced as tier 2/FALLBACK) is removed, at the data team's request:
+ * a copy of glossary text hand-maintained inside the renderer's own source,
+ * disconnected from the real data dictionary it was captured from, is not
+ * maintainable — nothing forces it to be re-checked as the source dictionary
+ * changes, and the "Bundled fallback" badge was the only signal that a
+ * viewer's tooltip text might be stale. The glossary is now exactly two
+ * tiers (live catalog text, workbook override); a column with neither shows
+ * no tooltip, same as any column that was never in the removed dictionary.
+ * See the removal note at the top of the GLOSSARY section, CHANGELOG.md,
+ * and SECURITY.md (which carried a reviewed exception for this dictionary
+ * specifically, now removed with it).
+ *
+ * v0.16.1 / v0.16.2 — a calculated measure (Full-Time, Part-Time, ...) on
+ * a live workbook showed no per-measure format even with a syntactically
+ * valid override typed for it. v0.16.1 shipped a fix (computeMeasureIdByCol
+ * falling back to a measure's display name when its raw id is null) based
+ * on a probe that turned out to prove less than it looked like. v0.16.2,
+ * after testing 0.16.1 against the actual tenant, found the real
+ * mechanism with stack-trace-precise instrumentation: the raw id is not
+ * null, it is a real but opaque, UI-invisible code OAC assigns calculated
+ * measures ("c34"), which never matches what an author can see to type.
+ * The actual fix is in resolveFormat (see its own note). Both fixes ship;
+ * neither hurts, only one mattered for the reported bug.
  ******************************************************************************/
 
 define(['jquery',
@@ -257,14 +286,21 @@ define(['jquery',
          actually known from this property alone. */
       SRC_LIVE: L("GLOSSARYPIVOT_LBL_SRC_LIVE", "Live"),
       SRC_OVERRIDE: L("GLOSSARYPIVOT_LBL_SRC_OVERRIDE", "Workbook override"),
-      SRC_BUNDLED: L("GLOSSARYPIVOT_LBL_SRC_BUNDLED", "Bundled fallback"),
+      /* SRC_BUNDLED ("Bundled fallback") removed in v0.16.0 along with the
+         bundled dictionary it labeled — see FALLBACK_DESCRIPTIONS' removal
+         note near the top of the GLOSSARY section. */
       TOTAL: L("GLOSSARYPIVOT_LBL_TOTAL", "Total"),
       PRINT: L("GLOSSARYPIVOT_LBL_PRINT", "Print PDF"),
       PRINT_CANVAS: L("GLOSSARYPIVOT_LBL_PRINT_CANVAS", "Print Canvas"),
-      PRINT_ERROR: L("GLOSSARYPIVOT_LBL_PRINT_ERROR", "Print could not open. Use the browser print dialog if it appears, or allow this page to print.")
+      PRINT_CANVAS_HELP: L("GLOSSARYPIVOT_LBL_PRINT_CANVAS_HELP", "Print the WSU Glossary Pivot tables on this canvas tab."),
+      PRINT_NONE: L("GLOSSARYPIVOT_LBL_PRINT_NONE", "No tables on this canvas could be printed."),
+      PRINT_ERROR: L("GLOSSARYPIVOT_LBL_PRINT_ERROR", "Print could not open. Use the browser print dialog if it appears, or allow this page to print."),
+      PRINT_BUSY: L("GLOSSARYPIVOT_LBL_PRINT_BUSY", "A print preview is already open. Close it before printing again."),
+      PRINT_OVERFLOW: L("GLOSSARYPIVOT_LBL_PRINT_OVERFLOW", "Printed. One table is still wide at the smallest print text size (6pt); for a single fully readable page, try fewer columns, shorter labels, landscape, or a smaller margin."),
+      PRINT_MIXED_ORIENTATION: L("GLOSSARYPIVOT_LBL_PRINT_MIXED_ORIENTATION", "Tables use different page orientations; Print Canvas uses the orientation of the table whose button you clicked.")
    };
 
-   GlossaryPivotViz.VERSION = "0.14.0";
+   GlossaryPivotViz.VERSION = "0.16.2";
 
    /**
     * @constructor
@@ -282,6 +318,8 @@ define(['jquery',
          already starts empty), so sort state is not reset there either. */
       this._sortState = null;
       this._printFrame = null;
+      this._lastDataLayout = null;
+      this._renderRevision = 0;
 
       this.Config = {
          // Format
@@ -295,9 +333,17 @@ define(['jquery',
          hiddenColumns: "",                // "STRM; REPORTING_SEQUENCE; ..."
          headerColor: "",                  // hex for field-name headers (corner, measure names)
          headerDataColor: "",              // hex for column headers that show a member value
-         printTitle: "Report",
          printOrientation: "landscape",    // landscape | portrait
-         showPrintButton: "on",            // on | off — the Print PDF bar on the canvas. The printed pages never include it.
+         showPrintPdf: "off",              // on | off — Print PDF on this visualization. Off until switched on.
+         showPrintCanvas: "off",           // on | off — Print Canvas. Leave off except on one visualization.
+         printMargin: "normal",            // narrow | normal | wide — @page margin, repeated on every page
+         printTableSize: "margins",        // margins | content — margins fills the page; content keeps header width
+         printCanvasSpacing: "perReport",   // perReport | compact — Print Canvas only. perReport (default) forces every
+                                            // report onto its own new page, even a one-row report with a mostly blank
+                                            // page left under it. compact packs reports together instead, breaking to
+                                            // a new page only when one does not fit (its own thead still repeats if
+                                            // it spans pages on its own).
+         printFollowTheme: "on",           // on | off — print buttons use the host accent. Off keeps the green.
          // Totals (SUM of displayed values — see the v0.5 header note on why this is not the same as re-running each measure's aggregation rule)
          showGrandTotalRow: "off",
          showRowSubtotals: "off",           // only takes effect with 2+ Row layers
@@ -309,11 +355,11 @@ define(['jquery',
          cellColorHigh: "#1e3a8a",          // background at the measure's maximum value
          // Tooltip
          showDescriptions: "on",            // on | off — glossary hover tooltips on headers
-         showSourceBadges: "off",           // on | off — Live and Workbook override chips. Bundled fallback still shows.
+         showSourceBadges: "off",           // on | off — Live and Workbook override chips
          showHeaderUnderline: "off",        // on | off — dotted underline on headers that have a description
          tooltipAlign: "left",              // left | center | right — text inside the tooltip, not the bubble's position
          // Debug
-         debugLogMetadata: "off"            // on | off — console-dump the live column-info map once per render, for investigating the 3-source description question
+         debugLogMetadata: "off"            // on | off — log metadata IDs and source labels, never cell values
       };
 
       this._saveSettings = function () {
@@ -332,52 +378,22 @@ define(['jquery',
    /* =========================================================================
       1. GLOSSARY — the seam.
       Every lookup goes through getDescription(); the two providers (OAC's
-      live column-info map, the bundled fallback) fill the index behind it
-      without the renderer knowing which one supplied a given column.
-      ========================================================================= */
+      live column-info map and a workbook-level override) fill the index
+      behind it without the renderer knowing which one supplied a given
+      column. A column neither provider has text for gets no tooltip.
 
-   /* FALLBACK ONLY. Used for a column only when the live column-info map has
-      no entry for it. Sourced from the WSU Reporting knowledge base's Student
-      Data Warehouse field dictionary (Student_DW_Baseline.xlsx), captured
-      2026-09-22 — each entry cites the KB field-map group page and workbook
-      row so it can be re-checked against the live dictionary later rather
-      than trusted forever. The tooltip badge says "Bundled fallback" when
-      this is the source, so stale text is visible as such.
-
-      Columns that appeared in the v0.3 map but could not be confirmed against
-      the dictionary (AMOUNT — ambiguous, several unrelated columns share that
-      exact name across tables, per the KB's own "repeated presentation names
-      can be different mappings" warning; NEGATIVE_SERVICE_INDICATORS(_DESCR),
-      SERVICE_IMPACT_CODES, SERVICE_IMPACTS — pipe-joined aggregates that read
-      like a report-specific calculation, not a raw Student Data Warehouse
-      column; STUDENT, ACADEMIC_LEVEL, FULL_PART_TIME, DEGREE_CHKOUT_STATUS —
-      no column by that exact name in the dictionary) are intentionally left
-      out rather than carried forward as unverified guesses. */
-   var FALLBACK_DESCRIPTIONS = {
-      // Student Records: enrollment and standing fields — Student Enrolled (ESG_STDNT_CAR_TERM)
-      "STRM": "This is the term code in YYYT format, where YYY is the year, and T is the term type of the season (3 = Spring, 5 = Summer, 7 = Fall).", // row 3
-      "TERM": "Short description of the term.", // TERM_DESCRSHORT, rows 5 & 716 — one logical column shared by Student Enrolled and Class Registration
-      "ACAD_CAREER": "This is the academic career code of the student. (UGRD = Undergraduate; GRAD = Graduate; BUSN = Business; PHAR = Pharmacy; VETM = Veterinary Medicine; MEDI = WA...)", // row 7
-      "ACADEMIC_LOAD": "Field displays students academic load. (i.e. F = Full-time, L = Less than 1/2 time, etc.)", // row 18
-      "ACAD_LEVEL_BOT": "Term Start Academic Level Code.", // row 28
-      "UNT_TAKEN_PRGRSS": "Term Credit Hours.", // row 43
-      "TOT_CUMULATIVE": "Total cumulative transfer units of all accepted work.", // row 68 — business label "Cumulative Credit Hours"
-      "CUM_GPA": "Cumulative GPA for WSU work.", // row 69
-
-      // Student Records: program, plan, and requirement fields — Student Academic Program (ESG_ACAD_PROG)
-      "CAMPUS": "5 character code associated with the Academic Program (e.g. PULLM = Pullman, VANCO = Vancouver).", // row 141
-      "ACAD_GROUP": "5 character academic group code (e.g. EBUSN, ECOMM, OGRAD).", // row 147
-      "ACAD_PROG": "5 digit academic program code (e.g. D0000 = Undergraduate Degree-Seeking, D0005 = Business Administration, BA).", // row 144
-      "ADMIT_TERM": "Term of Admission.", // row 161
-      "EXP_GRAD_TERM": "Expected Graduation Term (if applied).", // row 170
-      "DEGR_CHKOUT_STAT": "Degree Application Status Code (e.g. AG = Applied, EG = Eligible, AP = Approved).", // row 173
-
-      // Student Records: program, plan, and requirement fields — Student Academic Plan (ESG_ACAD_PLAN)
-      "ACAD_PLAN": "9 digit academic plan code (ie. - P6500_0005).", // row 190
-
-      // Person Data fields — Student Name (ESG_NAMES)
-      "NAME_DISPLAY": "First, Last Name." // row 2129
-   };
+      REMOVED in v0.16.0: a third, lowest-ranked tier, FALLBACK_DESCRIPTIONS —
+      a ~30-line hardcoded dictionary of 16 Student Data Warehouse column
+      descriptions (STRM, CUM_GPA, ACAD_PROG, and others), sourced from the
+      WSU Reporting knowledge base and used only when a column had neither
+      live nor override text. Removed at the data team's request: a
+      hand-maintained copy of glossary text living inside the renderer's
+      source, disconnected from the actual data dictionary it was copied
+      from, could silently drift out of date with no way for a viewer to
+      know it needed re-checking beyond the "Bundled fallback" badge. A
+      column that only ever had bundled text now shows no tooltip, the same
+      as any column that was never in that dictionary. See CHANGELOG.md's
+      v0.16.0 entry and SECURITY.md for the removed data-exception note. */
 
    /**
     * Strips a trailing " Attr" (the dataset's attribute-variant suffix) so
@@ -407,17 +423,16 @@ define(['jquery',
    function baseKey(s)  { return normaliseName(s).toUpperCase(); }
 
    /* Confidence ranking. "live" is OAC's own column-info map — exact, keyed
-      by column id — and outranks the bundled fallback. "override" (an
-      explicit per-workbook description, e.g. a Calculated Field's) outranks
-      a plain catalog-level "live" read, since it is more specific to what
-      this workbook's author actually meant for this column. */
-   var ORIGIN_RANK = { bundled: 0, live: 1, override: 2 };
+      by column id. "override" (an explicit per-workbook description, e.g.
+      a Calculated Field's) outranks a plain catalog-level "live" read,
+      since it is more specific to what this workbook's author actually
+      meant for this column. A third, lowest-ranked "bundled" tier (a
+      hardcoded dictionary) was removed in v0.16.0 — see the note at the
+      top of this section. */
+   var ORIGIN_RANK = { live: 0, override: 1 };
 
-   function buildGlossary(map) {
+   function buildGlossary() {
       var index = Object.create(null);
-      Object.keys(map).forEach(function (k) {
-         index[exactKey(k)] = { text: map[k], origin: "bundled" };
-      });
 
       function put(key, entry) {
          if (!key) return;
@@ -502,8 +517,9 @@ define(['jquery',
       experience" requirement.
 
       The map is read defensively (property-bag getter first, raw
-      _properties second); any failure yields {} and the bundled fallback
-      stays in play for OAC builds where the path differs.
+      _properties second); any failure yields {}, and every header on that
+      render simply shows no tooltip (no bundled tier to fall back to since
+      v0.16.0) for OAC builds where the path differs.
       ========================================================================= */
    var COLUMN_INFO_MAP_KEY = "obitech-report/datavisualization#columnInfoMap";
    /* LAYER_ID OAC was observed to assign the measure-labels layer. */
@@ -593,6 +609,8 @@ define(['jquery',
          if (!id) return;
          var fmt = (parts[1] || "auto").trim() || "auto";
          var dp = (parts[2] || "auto").trim() || "auto";
+         if (parts.length > 3 || !/^(auto|number|percent|currency|compact)$/.test(fmt) ||
+             !/^(auto|[0-4])$/.test(dp)) return;
          out[id.toUpperCase()] = { numberFormat: fmt, decimalPlaces: dp };
       });
       return out;
@@ -653,8 +671,20 @@ define(['jquery',
       return fallback;
    }
 
-   function resolveFormat(Config, overrides, measureId) {
+   /* A calculated measure's raw id is real, not null — confirmed live with
+      stack-trace-precise instrumentation (a synthetic "id is null" fallback
+      was tried first and shipped as 0.16.1; live testing after deploying it
+      proved that premise wrong before it fixed anything). OAC assigns it an
+      opaque, auto-generated code ("c34", not "CUM_GPA"-style) that is never
+      shown anywhere in the UI, so an author can only ever type the printed
+      header text into Format: Per-Measure Override, not this id — the two
+      never matched. Falls back to matching by measure name (confirmed live:
+      the same override text that failed to match "c34" matches "Full-Time"
+      directly) only when the id lookup misses, so a real id match — the
+      documented, primary behavior for a native measure — still wins. */
+   function resolveFormat(Config, overrides, measureId, measureName) {
       var o = measureId != null ? overrides[String(measureId).toUpperCase()] : null;
+      if (!o && measureName != null) o = overrides[String(measureName).toUpperCase()];
       return o || { numberFormat: Config.numberFormat, decimalPlaces: Config.decimalPlaces };
    }
 
@@ -671,7 +701,7 @@ define(['jquery',
       if (raw == null || raw === "") return raw;
       var n = Number(raw);
       if (isNaN(n)) return raw;   // not numeric — leave as OAC formatted it
-      var dp = fmtSpec.decimalPlaces === "auto" ? null : parseInt(fmtSpec.decimalPlaces, 10);
+      var dp = /^[0-4]$/.test(String(fmtSpec.decimalPlaces)) ? parseInt(fmtSpec.decimalPlaces, 10) : null;
       switch (fmtSpec.numberFormat) {
          case "percent":  return (n * 100).toFixed(dp == null ? 1 : dp) + "%";
          case "currency":
@@ -736,6 +766,21 @@ define(['jquery',
     * viewer recognizes ("Cumulative GPA"), not the raw measure id
     * ("CUM_GPA") that the bucket keys are built from.
     *
+    * CORRECTED in 0.16.2: 0.16.1 shipped believing a calculated measure's
+    * raw id (getValue(..., true)) comes back null, based on a probe that
+    * only proved no FULL/PART/FTE/-style string ever reached the format
+    * lookup — not that the id itself was null. Stack-trace-precise
+    * instrumentation against the actual reported workbook after 0.16.1 was
+    * deployed proved that premise wrong: the id is real, just an opaque,
+    * auto-generated code ("c34") never shown anywhere in the UI — see
+    * resolveFormat's own note for the fix that actually mattered
+    * (a name-based fallback there, not here). This null-to-name fallback
+    * is kept as defensive handling for the case its own name suggests —
+    * genuinely null — which was never disproven to be impossible, just not
+    * what caused the reported bug. If it never fires in practice, that is
+    * expected; do not treat it as the fix for an "opaque but non-null id"
+    * complaint — that one is resolveFormat's.
+    *
     * @returns {{idByCol: Array, nameById: Object}}
     */
    function computeMeasureIdByCol(dl, LM, nColLayers, nCols) {
@@ -752,11 +797,11 @@ define(['jquery',
          if (mLayer === -1) { idByCol[c] = "__single__"; continue; }
          var id = null;
          try { id = dl.getValue(PHYS_COLUMN, mLayer, c, true); } catch (e) {}
-         var idStr = id == null ? "__single__" : String(id);
+         var name = null;
+         try { name = dl.getValue(PHYS_COLUMN, mLayer, c, false); } catch (e) {}
+         var idStr = id != null ? String(id) : (name != null && name !== "" ? String(name) : "__single__");
          idByCol[c] = idStr;
          if (!(idStr in nameById)) {
-            var name = null;
-            try { name = dl.getValue(PHYS_COLUMN, mLayer, c, false); } catch (e) {}
             nameById[idStr] = name == null ? idStr : String(name);
          }
       }
@@ -810,14 +855,28 @@ define(['jquery',
       return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : null;
    }
 
+   function relativeLuminance(rgb) {
+      function linear(channel) {
+         var value = channel / 255;
+         return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+      }
+      return 0.2126 * linear(rgb.r) + 0.7152 * linear(rgb.g) + 0.0722 * linear(rgb.b);
+   }
+
+   function readableForeground(rgb) {
+      var bg = relativeLuminance(rgb);
+      var darkContrast = (bg + 0.05) / 0.05;
+      var lightContrast = 1.05 / (bg + 0.05);
+      return darkContrast >= lightContrast ? "#000000" : "#ffffff";
+   }
+
    /* Empty or invalid hex paints nothing, so the stylesheet default stays.
       Custom properties, not an inline background: the glossary hover rule
       is more specific and must still be able to cover the header. */
    function headerPaint(hex) {
       var rgb = hexToRgb(hex);
       if (!rgb) return { cls: "", style: "" };
-      var luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
-      var fg = luminance > 0.55 ? "#1b1f24" : "#ffffff";
+      var fg = readableForeground(rgb);
       return {
          cls: " gp-hdr-paint",
          style: " style='--gp-hdr-bg:rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ");--gp-hdr-fg:" + fg + "'"
@@ -832,8 +891,7 @@ define(['jquery',
       var r = Math.round(lo.r + (hi.r - lo.r) * t);
       var g = Math.round(lo.g + (hi.g - lo.g) * t);
       var b = Math.round(lo.b + (hi.b - lo.b) * t);
-      var luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      return { bg: "rgb(" + r + "," + g + "," + b + ")", fg: luminance > 0.55 ? "#1b1f24" : "#ffffff" };
+      return { bg: "rgb(" + r + "," + g + "," + b + ")", fg: readableForeground({ r: r, g: g, b: b }) };
    }
 
    /* =========================================================================
@@ -1062,6 +1120,12 @@ define(['jquery',
    };
 
    GlossaryPivotViz.prototype._doRender = function (oTransientRenderingContext) {
+      /* Resilience net for _doInitializeComponent, see _registerPrintCanvas —
+         called unconditionally, before the early returns below, so a canvas
+         whose init hook was skipped is still print-capable the moment it
+         renders anything, even an empty state. */
+      this._registerPrintCanvas();
+      this._renderRevision++;
       var elContainer = this.getContainerElem();
       if (!elContainer) return;
 
@@ -1069,14 +1133,16 @@ define(['jquery',
 
       var oDataLayout = oTransientRenderingContext.get(DCP_DATA_LAYOUT);
       if (!oDataLayout) {
+         this._lastDataLayout = null;
+         this._markedRows = Object.create(null);
          $(elContainer).html("<div class='gp-empty'>" + escapeHtml(LBL.EMPTY_STATE) + "</div>");
          return;
       }
       this._lastDataLayout = oDataLayout;
 
-      if (!this._glossary) {
-         this._glossary = buildGlossary(FALLBACK_DESCRIPTIONS);
-      }
+      /* The live map is a snapshot, not an append-only feed. Rebuilding the
+         index lets a deleted or changed workbook description disappear. */
+      this._glossary = buildGlossary();
 
       /* Live source: a synchronous, cheap map read on EVERY render, because
          OAC fills the column-info map as columns are added. Runs before the
@@ -1090,28 +1156,26 @@ define(['jquery',
                this._glossary.mergeLive(descriptionsFromColumnInfoMap(infoMap));
             } else if (!infoMap && !this._mapMissingLogged) {
                /* Loud, once: a future OAC build renaming the path must not
-                  degrade to bundled text silently. */
+                  silently drop every tooltip on this pivot — live text and
+                  workbook overrides both come from this one map, and there
+                  is no bundled tier left to fall back to since v0.16.0. */
                this._mapMissingLogged = true;
-               _logger.warning("column-info map not found on the rendering context — falling back to the bundled glossary");
+               _logger.warning("column-info map not found on the rendering context — no glossary tooltips will show");
             }
          } catch (e) {
             _logger.warning("column-info map read failed: " + (e && e.message ? e.message : e));
          }
       }
 
-      /* Opt-in diagnostic for the 3-source description question (Subject
-         Area vs. Dataset column vs. workbook Calculated Field). Off by
-         default; a viewer flips it on in the property panel, opens DevTools,
-         and expands the logged objects — nothing here decides or guesses at
-         an answer, it just surfaces what OAC actually handed the plugin. */
+      /* Opt-in metadata diagnostic. Log IDs and origins only; the complete
+         rendering context can contain student-level DataLayout values. */
       if (this.Config.debugLogMetadata === "on") {
          try {
-            _logger.info("[debug] column-info map (raw):");
-            console.log(infoMap);
-            _logger.info("[debug] resolved live descriptions:");
-            console.log(infoMap ? descriptionsFromColumnInfoMap(infoMap) : null);
-            _logger.info("[debug] rendering context (expand 'vizContext' and try other keys if the map above is empty for a Dataset/Calculated-Field column):");
-            console.log(oTransientRenderingContext);
+            _logger.info("[debug] column-info ids: " + (infoMap ? Object.keys(infoMap).join(", ") : "none"));
+            var debugDescriptions = infoMap ? descriptionsFromColumnInfoMap(infoMap) : {};
+            _logger.info("[debug] description origins: " + Object.keys(debugDescriptions).map(function (id) {
+               return id + "=" + debugDescriptions[id].origin;
+            }).join(", "));
          } catch (e) {}
       }
 
@@ -1127,6 +1191,7 @@ define(['jquery',
       this._replaceTableHtml(elContainer, html);
       if (this.Config.showDescriptions !== "off") this._wireTooltips(elContainer);
       this._wireMarking(elContainer);
+      this._wireKeyboardRows(elContainer);
       this._wireGroupToggle(elContainer);
       this._wireSort(elContainer);
       this._applyMarkedRows();
@@ -1153,10 +1218,13 @@ define(['jquery',
          var dst = [];
          var col = 0;
          var si = 0;
-         while (si < src.length || waiting(col)) {
+         var steps = 0;
+         var cap = (src.length + 1) * 8 + 32;
+         while ((si < src.length || waiting(col)) && steps < cap) {
+            steps++;
             if (waiting(col)) {
                var hold = pending[col];
-               dst.push({ html: hold.html, colspan: hold.colspan, tag: hold.tag, className: hold.className, style: hold.style });
+               dst.push({ html: hold.html, colspan: hold.colspan, tag: hold.tag, className: hold.className, style: hold.style, scope: hold.scope });
                hold.left -= 1;
                if (hold.left <= 0) pending[col] = null;
                col += hold.colspan;
@@ -1164,11 +1232,11 @@ define(['jquery',
                var cell = src[si++];
                var colspan = cell.colspan || 1;
                var rowspan = cell.rowspan || 1;
-               dst.push({ html: cell.html, colspan: colspan, tag: cell.tag, className: cell.className, style: cell.style });
+               dst.push({ html: cell.html, colspan: colspan, tag: cell.tag, className: cell.className, style: cell.style, scope: cell.scope });
                if (rowspan > 1) {
                   pending[col] = {
                      html: cell.html, colspan: colspan, left: rowspan - 1,
-                     tag: cell.tag, className: cell.className, style: cell.style
+                     tag: cell.tag, className: cell.className, style: cell.style, scope: cell.scope
                   };
                }
                col += colspan;
@@ -1197,6 +1265,7 @@ define(['jquery',
             tag: el.tagName.toLowerCase(),
             className: el.className || "",
             style: el.getAttribute("style") || "",
+            scope: el.getAttribute("scope") || "",
             html: el.innerHTML,
             colspan: el.colSpan || 1,
             rowspan: el.rowSpan || 1
@@ -1216,6 +1285,7 @@ define(['jquery',
             var el = document.createElement(cell.tag || "td");
             if (cell.className) el.className = cell.className;
             if (cell.style) el.setAttribute("style", cell.style);
+            if (cell.scope) el.setAttribute("scope", cell.scope);
             if (cell.colspan > 1) el.colSpan = cell.colspan;
             el.innerHTML = cell.html;
             tr.appendChild(el);
@@ -1263,39 +1333,212 @@ define(['jquery',
          }
          var titleRow = document.createElement("tr");
          var titleCell = document.createElement("th");
-         titleCell.className = "gp-print-title";
-         titleCell.colSpan = span;
-         titleCell.appendChild(document.createTextNode(title));
-         titleRow.appendChild(titleCell);
-         head.insertBefore(titleRow, head.firstChild);
+         titleCell.setAttribute("scope", "colgroup");
+         if (title && String(title).trim()) {
+            titleCell.className = "gp-print-title";
+            titleCell.colSpan = span;
+            titleCell.appendChild(document.createTextNode(String(title).trim()));
+            titleRow.appendChild(titleCell);
+            head.insertBefore(titleRow, head.firstChild);
+         }
       }
       return table.outerHTML;
    }
 
    /**
     * Joins one or more prepared (preparePrintTable output) table sections
-    * into one print body, with a page break before every section after the
-    * first — so a single-table print (one section) and a canvas print
-    * (several) share the exact same document wrapper below. Pure string
-    * work, no DOM; unit-tested directly (tests/run.js).
+    * into one print body — so a single-table print (one section) and a
+    * canvas print (several) share the exact same document wrapper below.
+    * Pure string work, no DOM; unit-tested directly (tests/run.js).
+    *
+    * forceBreaks true puts a page break before every section after the
+    * first (Print: Canvas Page Breaks = "One page per report") — a short
+    * report still gets a whole page to itself. false (the compact option)
+    * adds no break at all: sections just flow one after another, and a
+    * section only starts a new page when it does not fit on what is left
+    * of the current one. Either way, a section's own thead (title + column
+    * headers, from preparePrintTable) still repeats if THAT section alone
+    * spans more than one page — that repeat comes from
+    * `thead { display: table-header-group }` in wrapPrintDocument's CSS,
+    * not from anything here.
+    *
+    * The break style, when applied, is set on the <table> element itself,
+    * not on a wrapping <div>. A forced break on an ancestor that takes no
+    * part in the table's own pagination is a known Chrome source of an
+    * extra blank page between sections, or a break landing inside the
+    * header instead of before it — the table is the element actually being
+    * paginated, so the break belongs on it.
     */
-   function joinPrintSections(tableHtmls) {
+   function joinPrintSections(tableHtmls, forceBreaks) {
       return tableHtmls.map(function (html, i) {
-         return "<div" + (i > 0 ? " style='page-break-before:always'" : "") + ">" + html + "</div>";
+         if (i === 0 || !forceBreaks) return html;
+         return html.replace(/^<table\b/, "<table style='page-break-before:always;break-before:page'");
       }).join("");
    }
 
-   function wrapPrintDocument(title, orient, bodyHtml) {
+   /** Letter paper. @page margin repeats on every page; body padding does not. */
+   function marginInches(value) {
+      if (value === "narrow") return 0.25;
+      if (value === "wide") return 1;
+      return 0.5;
+   }
+
+   function printPageBox(marginValue, orient) {
+      var inches = marginInches(marginValue);
+      var landscape = orient !== "portrait";
+      var pageWidth = landscape ? 11 : 8.5;
+      var pageHeight = landscape ? 8.5 : 11;
+      return {
+         margin: inches + "in",
+         padding: "0",
+         orient: landscape ? "landscape" : "portrait",
+         /* Explicit inches. "letter landscape" is ignored when the print
+            frame itself is a wide rectangle, and the dialog stays on
+            whichever orientation was used last. */
+         size: pageWidth + "in " + pageHeight + "in",
+         contentWidthIn: pageWidth - inches * 2,
+         contentHeightIn: pageHeight - inches * 2
+      };
+   }
+
+   /** 1 when the table already fits. Otherwise the scale that fits the page width. */
+   function fitScale(contentPx, marginValue, orient) {
+      var target = printPageBox(marginValue, orient).contentWidthIn * 96;
+      if (!contentPx || contentPx <= target) return 1;
+      return Math.round((target / contentPx) * 1000) / 1000;
+   }
+
+   /* Matches the body font-size in wrapPrintDocument. fitPrintedReport scales
+      a too-wide table's own font-size down from this base — a table's own
+      inline style always wins the cascade over the body rule, so setting it
+      only on tables that need it leaves every other table at the base size. */
+   var BASE_FONT_PT = 9;
+   /* At this floor the author must reduce columns or labels, or change the
+      selected orientation or margins. The plugin does not squeeze further. */
+   var MIN_FONT_PT = 6;
+
+   /**
+    * An initial size estimate. fitPrintedReport remeasures after each font
+    * change because cell padding and title text do not shrink with it.
+    * Automatic table layout preserves readable column widths.
+    */
+   function printTableLayout(contentPx, marginValue, orient, tableSize) {
+      var scale = Math.max(MIN_FONT_PT / BASE_FONT_PT, fitScale(contentPx, marginValue, orient));
+      return {
+         scale: scale,
+         width: scale >= 1 && tableSize !== "content" ? "100%" : "max-content",
+         layout: "auto"
+      };
+   }
+
+   function measuredTableWidth(table) {
+      var rect = table.getBoundingClientRect();
+      return Math.max(rect ? rect.width || 0 : 0, table.scrollWidth || 0);
+   }
+
+   function fitPrintedReport(doc, orient, marginValue, tableSizes) {
+      var tables = doc.getElementsByTagName("table");
+      var target = printPageBox(marginValue, orient).contentWidthIn * 96;
+      var overflowCount = 0;
+      var i;
+      for (i = 0; i < tables.length; i++) {
+         var table = tables[i];
+         var size = tableSizes && tableSizes[i] === "content" ? "content" : "margins";
+         table.style.width = "max-content";
+         table.style.tableLayout = "auto";
+         table.style.fontSize = BASE_FONT_PT + "pt";
+         var natural = measuredTableWidth(table);
+         if (natural > target) {
+            var lower = MIN_FONT_PT * 10;
+            var upper = BASE_FONT_PT * 10;
+            table.style.fontSize = MIN_FONT_PT + "pt";
+            if (measuredTableWidth(table) > target) {
+               overflowCount++;
+               continue;
+            }
+            while (lower < upper) {
+               var mid = Math.ceil((lower + upper + 1) / 2);
+               table.style.fontSize = (mid / 10) + "pt";
+               if (measuredTableWidth(table) <= target) lower = mid;
+               else upper = mid - 1;
+            }
+            table.style.fontSize = (lower / 10) + "pt";
+         }
+         if (size === "margins") table.style.width = "100%";
+      }
+      return overflowCount;
+   }
+
+   function usableCssColor(value) {
+      if (value == null) return "";
+      var v = String(value).replace(/\s+/g, " ").trim();
+      if (!v || v === "initial" || v === "inherit" || v === "unset" || v === "transparent" || v === "rgba(0, 0, 0, 0)") return "";
+      var rgb = v.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      if (rgb && +rgb[1] > 245 && +rgb[2] > 245 && +rgb[3] > 245) return "";
+      return v;
+   }
+
+   /** A host call-to-action button, skipping anything inside this viz. */
+   function readHostButtonColor(fromEl) {
+      if (!document.querySelector) return null;
+      var selectors = [
+         "button.oj-button-cta",
+         ".oj-button-cta .oj-button-button",
+         ".oj-button-primary .oj-button-button"
+      ];
+      var i;
+      for (i = 0; i < selectors.length; i++) {
+         var node = null;
+         try { node = document.querySelector(selectors[i]); } catch (e) { node = null; }
+         if (!node) continue;
+         try { if (fromEl && (fromEl === node || fromEl.contains(node))) continue; } catch (e2) { continue; }
+         try {
+            var st = window.getComputedStyle(node);
+            var bg = usableCssColor(st.backgroundColor);
+            if (!bg) continue;
+            return { bg: bg, fg: usableCssColor(st.color) || "#ffffff" };
+         } catch (e3) {}
+      }
+      return null;
+   }
+
+   /**
+    * Follow Theme leaves --wsu-btn-bg unset so the stylesheet can use the
+    * host accent variables. A sampled host button wins when one is on the
+    * page. Off pins the original green.
+    */
+   function applyPrintTheme(el, follow) {
+      if (!el || !el.style) return;
+      if (follow !== "on") {
+         el.style.setProperty("--wsu-btn-bg", "#1f6f6b");
+         el.style.setProperty("--wsu-btn-fg", "#ffffff");
+         return;
+      }
+      var accent = null;
+      try { accent = readHostButtonColor(el); } catch (e) { accent = null; }
+      if (!accent) {
+         el.style.removeProperty("--wsu-btn-bg");
+         el.style.removeProperty("--wsu-btn-fg");
+         return;
+      }
+      el.style.setProperty("--wsu-btn-bg", accent.bg);
+      el.style.setProperty("--wsu-btn-fg", accent.fg);
+   }
+
+   function wrapPrintDocument(title, orient, bodyHtml, marginValue) {
+      var box = printPageBox(marginValue, orient);
       return "<!DOCTYPE html><html><head><meta charset='utf-8'><title>" +
          escapeHtml(title) + "</title><style>" +
-         "@page { size: " + orient + "; margin: 0.5in; }" +
-         "body { margin: 0; color: #1b1f24; font-family: Arial, Helvetica, sans-serif; font-size: 9pt; }" +
-         "table { border-collapse: collapse; width: 100%; }" +
-         "th, td { border: 1px solid #b7bcc2; padding: 3px 6px; vertical-align: top; white-space: normal; }" +
+         "@page { size: " + box.size + "; margin: " + box.margin + "; }" +
+         "html, body { margin: 0; padding: 0; width: " + box.contentWidthIn + "in; color: #1b1f24; font-family: Arial, Helvetica, sans-serif; font-size: 9pt; }" +
+         "table { border-collapse: collapse; width: max-content; }" +
+         /* Prefer a word boundary; force a mid-word break only when one word
+            exceeds its column. Keep automatic table layout for print. */
+         "th, td { border: 1px solid #b7bcc2; padding: 3px 6px; vertical-align: top; white-space: normal; word-break: normal; overflow-wrap: break-word; }" +
          "thead { display: table-header-group; }" +
          "tr { break-inside: avoid; page-break-inside: avoid; }" +
          "th { background: #f0f2f4; font-weight: 700; text-align: center; }" +
-         "th.gp-print-title, th.title { background: #ffffff; font-size: 13pt; text-align: left; border: 0; padding: 0 0 8px; }" +
+         "th.gp-print-title, th.title { background: #ffffff; color: #1b1f24; font-size: 13pt; font-weight: 700; text-align: left; border: none; border-bottom: 1px solid #b7bcc2; padding: 0 0 8px; }" +
          "th.gp-rowhdr, th.gp-corner, td.rh { text-align: left; background: #f7f8f9; }" +
          "td.gp-val, td.num, td.total { text-align: right; font-variant-numeric: tabular-nums; }" +
          "tr.gp-total-row th, tr.gp-total-row td, tr.total td { font-weight: 700; background: #eef2f4; }" +
@@ -1305,32 +1548,211 @@ define(['jquery',
          "</style></head><body>" + bodyHtml + "</body></html>";
    }
 
-   function openGlossaryPrint(self, html) {
+   /**
+    * A hidden iframe, not a real window/tab. Tried a real window in between
+    * (0.14.9–0.14.11) so the report was visible before printing — the
+    * visible surface it created (a tab with normal browser chrome) was
+    * itself the complaint: an extra tab to manage, on top of the print
+    * dialog. Back to invisible: the only thing a viewer ever sees now is
+    * the print dialog itself.
+    *
+    * The frame's own box must never be shorter than the document it holds.
+    * @page { size: ... }, already in the document, is what Chrome measures
+    * pagination and orientation against — the frame's pixel box only needs
+    * to be tall enough that no content sits outside it. Pinning it to
+    * exactly one page's worth of pixels (the version before 0.14.9) is
+    * what clipped a multi-page report down to a single printed page.
+    */
+   var activePrintJob = null;
+   /* Some engines return from print() before the preview is dismissed.
+      afterprint is the normal cleanup; this is only a recovery gate when an
+      engine never sends it, not a timer that destroys the live frame. */
+   var PRINT_RECOVERY_MS = 30000;
+
+   function cleanupPrintJob(job) {
+      if (!job || job.cleaned) return;
+      job.cleaned = true;
+      try { job.win.onafterprint = null; } catch (e) {}
+      try { if (job.iframe.parentNode) job.iframe.parentNode.removeChild(job.iframe); } catch (e2) {}
+      if (job.owner._printFrame === job.iframe) job.owner._printFrame = null;
+      if (activePrintJob === job) activePrintJob = null;
+   }
+
+   function openGlossaryPrint(self, html, orient, marginValue, tableSizes) {
+      var job = null;
       try {
-         if (self._printFrame && self._printFrame.parentNode) {
-            self._printFrame.parentNode.removeChild(self._printFrame);
+         if (activePrintJob) {
+            /* A fast second click must not remove the frame while a browser
+               is still creating its print preview. */
+            if (!activePrintJob.printReturned || Date.now() - activePrintJob.started < PRINT_RECOVERY_MS) {
+               return { ok: false, busy: true };
+            }
+            cleanupPrintJob(activePrintJob);
          }
+         var box = printPageBox(marginValue, orient);
+         var pageW = Math.max(1, Math.round(box.contentWidthIn * 96));
+         var pageH = Math.max(1, Math.round(box.contentHeightIn * 96));
          var iframe = document.createElement("iframe");
          iframe.setAttribute("title", "Report print");
-         iframe.setAttribute("style", "position:fixed;width:0;height:0;border:0;right:0;bottom:0;");
+         iframe.setAttribute("aria-hidden", "true");
+         iframe.setAttribute("tabindex", "-1");
+         /* Measure in a wide frame so a long table reports its real width. */
+         iframe.setAttribute("style",
+            "position:fixed;width:2400px;height:900px;border:0;left:-12000px;top:0;");
          document.body.appendChild(iframe);
          self._printFrame = iframe;
+         job = { owner: self, iframe: iframe, win: null, started: Date.now(), printReturned: false, cleaned: false };
+         activePrintJob = job;
          var win = iframe.contentWindow;
+         job.win = win;
          var doc = win.document;
          doc.open();
          doc.write(html);
          doc.close();
+         if (doc.body) doc.body.getBoundingClientRect();
+         var overflowCount = fitPrintedReport(doc, orient, marginValue, tableSizes);
+         iframe.style.width = pageW + "px";
+         /* Force layout at the narrower print width before measuring — a
+            table that now wraps onto more lines needs to report the height
+            it actually has at this width, not the one it measured in the
+            2400px-wide frame above. */
+         if (doc.body) doc.body.getBoundingClientRect();
+         var contentHeightPx = pageH;
+         try {
+            var measuredHeight = Math.max(
+               doc.documentElement ? doc.documentElement.scrollHeight : 0,
+               doc.body ? doc.body.scrollHeight : 0
+            );
+            if (measuredHeight > contentHeightPx) contentHeightPx = measuredHeight;
+         } catch (eH) {}
+         iframe.style.height = contentHeightPx + "px";
+         if (doc.body) doc.body.getBoundingClientRect();
+         win.onafterprint = function () { cleanupPrintJob(job); };
          win.focus();
          win.print();
-         win.onafterprint = function () {
-            if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-            if (self._printFrame === iframe) self._printFrame = null;
-         };
-         return true;
+         job.printReturned = true;
+         return { ok: true, overflowCount: overflowCount };
       } catch (e) {
+         cleanupPrintJob(job);
          _logger.error("print failed: " + (e && e.message ? e.message : e));
-         return false;
+         return { ok: false };
       }
+   }
+
+   function plainTitle(s) {
+      var text = String(s == null ? "" : s);
+      var prev = "";
+      var i;
+      /* Decode first, then strip tags, and repeat. A rich-text title arrives
+         either as <p><strong>Dataset</strong></p> or as the escaped form of
+         that same markup. */
+      for (i = 0; i < 3 && text !== prev; i++) {
+         prev = text;
+         text = text
+            .replace(/&nbsp;/gi, " ")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&quot;/g, "\"")
+            .replace(/&#39;|&apos;/g, "'")
+            .replace(/<[^>]*>/g, "");
+      }
+      return text.replace(/\s+/g, " ").trim();
+   }
+
+   function stringTitle(v) {
+      try {
+         if (v == null) return "";
+         if (typeof v === "string" || typeof v === "number") return plainTitle(v);
+         if (typeof v.text === "string") return plainTitle(v.text);
+         if (typeof v.html === "string") return plainTitle(v.html);
+         if (Object.prototype.toString.call(v) === "[object Array]") {
+            var parts = [];
+            var i;
+            for (i = 0; i < v.length; i++) {
+               var piece = stringTitle(v[i]);
+               if (piece) parts.push(piece);
+            }
+            return plainTitle(parts.join(" "));
+         }
+      } catch (e) {}
+      return "";
+   }
+
+   function titleFromObject(obj) {
+      if (!obj) return "";
+      var direct = "";
+      try {
+         direct = stringTitle(obj.title) || stringTitle(obj.vizTitle) || stringTitle(obj.caption) || stringTitle(obj.viewTitle);
+      } catch (e) { direct = ""; }
+      if (direct) return direct;
+      var names = ["getVisualizationTitle", "getVizTitle", "getViewTitle", "getTitle", "getCaption"];
+      var i;
+      for (i = 0; i < names.length; i++) {
+         if (typeof obj[names[i]] !== "function") continue;
+         try {
+            var called = stringTitle(obj[names[i]]());
+            if (called) return called;
+         } catch (e) {}
+      }
+      if (typeof obj.getProperty === "function") {
+         var keys = ["title", "vizTitle", "caption", "viewTitle"];
+         for (i = 0; i < keys.length; i++) {
+            try {
+               var prop = stringTitle(obj.getProperty(keys[i]));
+               if (prop) return prop;
+            } catch (e2) {}
+         }
+      }
+      return "";
+   }
+
+   /**
+    * The visualization title set in the editor. That title is host chrome,
+    * outside this plugin's container, so it is not Config. A blank editor
+    * title means the printed section has no title row.
+    */
+   function editorTitle(self) {
+      var fromHost = titleFromObject(self);
+      if (!fromHost) {
+         try { fromHost = titleFromObject(self.getViewModel && self.getViewModel()); } catch (e) {}
+      }
+      if (!fromHost) {
+         try {
+            var settings = self.getSettings && self.getSettings();
+            var ns = dataviz.SettingsNS || {};
+            var keys = [ns.GENERAL, ns.VIEW, "general", "view"];
+            for (var k = 0; k < keys.length && !fromHost; k++) {
+               if (!keys[k] || !settings || !settings.getViewConfigJSON) continue;
+               try { fromHost = titleFromObject(settings.getViewConfigJSON(keys[k])); } catch (e2) {}
+            }
+         } catch (e3) {}
+      }
+      if (fromHost) return fromHost;
+      var el = null;
+      try { el = self.getContainerElem(); } catch (e4) { el = null; }
+      if (!el || !el.parentNode || !document.querySelectorAll) return "";
+      var node = el.parentNode;
+      var hops = 0;
+      while (node && hops < 8 && node !== document.documentElement) {
+         var nodes = [];
+         try { nodes = node.querySelectorAll("[class*='title'], [class*='Title']"); } catch (e5) { nodes = []; }
+         for (var n = 0; n < nodes.length; n++) {
+            var candidate = nodes[n];
+            var inside = false;
+            try { inside = (el.contains && el.contains(candidate)) || (candidate.contains && candidate.contains(el)); } catch (e6) { inside = false; }
+            if (!candidate || candidate === el || inside) continue;
+            var tag = candidate.tagName;
+            if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "SCRIPT") continue;
+            var text = plainTitle(candidate.textContent || "");
+            if (!text || text.length > 180) continue;
+            if (text === "Title" || text === "Print PDF" || text === "Print Canvas") continue;
+            return text;
+         }
+         node = node.parentNode;
+         hops++;
+      }
+      return "";
    }
 
    /**
@@ -1345,32 +1767,67 @@ define(['jquery',
     * the document wrapper differs.
     */
    GlossaryPivotViz.prototype._buildPrintFragment = function () {
+      var container = null;
+      try { container = this.getContainerElem(); } catch (e0) { return null; }
+      if (!container || (document.documentElement && document.documentElement.contains &&
+          !document.documentElement.contains(container))) return null;
       var dl = this._lastDataLayout;
-      if (!dl) return null;
       var saved = this._collapsedGroups;
-      this._collapsedGroups = Object.create(null);
       var tableHtml = null;
-      try {
-         tableHtml = this._buildTable(dl);
-      } catch (e) {
-         _logger.error("print build failed: " + (e && e.message ? e.message : e));
-      } finally {
-         this._collapsedGroups = saved;
+      if (dl) {
+         this._collapsedGroups = Object.create(null);
+         try {
+            tableHtml = this._buildTable(dl);
+         } catch (e) {
+            _logger.error("print build failed: " + (e && e.message ? e.message : e));
+         } finally {
+            this._collapsedGroups = saved;
+         }
+      }
+      if (!tableHtml || tableHtml.indexOf("<table") < 0) {
+         try { tableHtml = tableHtmlFromDom(this); } catch (e2) { tableHtml = ""; }
       }
       if (!tableHtml || tableHtml.indexOf("<table") < 0) return null;
-      var title = (this.Config.printTitle && String(this.Config.printTitle).trim()) || "Report";
+      var title = "";
+      try { title = editorTitle(this); } catch (e3) { title = ""; }
       return { title: title, html: tableHtml };
    };
 
+   /** The table currently on screen. Used when a second layout read fails. */
+   function tableHtmlFromDom(self) {
+      var el = null;
+      try { el = self.getContainerElem(); } catch (e) { return ""; }
+      if (!el || !el.querySelector) return "";
+      var table = el.querySelector("table.gp-table");
+      return table ? table.outerHTML : "";
+   }
+
+   function printCanvasKey(self, prefix) {
+      var id = "";
+      try { id = String(self.getID() || ""); } catch (e) { id = ""; }
+      return prefix + id + "-" + Math.random().toString(36).slice(2);
+   }
+
    GlossaryPivotViz.prototype._printTable = function () {
-      var fragment = this._buildPrintFragment();
-      if (!fragment) return { ok: false, error: "empty" };
-      var prepared = preparePrintTable(fragment.html, fragment.title);
-      if (!prepared) return { ok: false, error: "empty" };
-      var orient = this.Config.printOrientation === "portrait" ? "portrait" : "landscape";
-      var docHtml = wrapPrintDocument(fragment.title, orient, joinPrintSections([prepared]));
-      if (!openGlossaryPrint(this, docHtml)) return { ok: false, error: "print" };
-      return { ok: true };
+      try {
+         var fragment = this._buildPrintFragment();
+         if (!fragment) return { ok: false, error: "empty" };
+         var prepared = null;
+         try { prepared = preparePrintTable(fragment.html, fragment.title); } catch (e) { prepared = null; }
+         var html = prepared || fragment.html;
+         if (!html || html.indexOf("<table") < 0) return { ok: false, error: "empty" };
+         var orient = this.Config.printOrientation === "portrait" ? "portrait" : "landscape";
+         /* Single section — forceBreaks is moot (there is no "before the
+            first section" break either way) but false documents that
+            Print: Canvas Page Breaks does not apply to a solo Print PDF. */
+         var docHtml = wrapPrintDocument(fragment.title || "Report", orient, joinPrintSections([html], false), this.Config.printMargin);
+         var printed = openGlossaryPrint(this, docHtml, orient, this.Config.printMargin, [this.Config.printTableSize]);
+         if (!printed.ok) return { ok: false, error: printed.busy ? "busy" : "print" };
+         return { ok: true, warning: printed.overflowCount ? LBL.PRINT_OVERFLOW : "" };
+      } catch (e) {
+         _logger.error("print failed: " + (e && e.message ? e.message : e));
+         return { ok: false, error: "print" };
+      }
    };
 
    /**
@@ -1378,67 +1835,178 @@ define(['jquery',
     * window.__wsuPrintCanvas (see _doInitializeComponent) — including this
     * one — is asked to build its own fragment. A section whose build()
     * throws or returns nothing is skipped, not fatal to the rest of the
-    * canvas. Sections are ordered by DOM position (compareDocumentPosition),
-    * not registration order, so the printed order matches the canvas layout
+    * canvas. Sections are ordered by panel-relative top/left position, with
+    * DOM position as a tie breaker, so the printed order matches the layout
     * regardless of which viz mounted first. Orientation and the overall
     * document title come from the instance whose button was clicked — @page
     * is document-wide, there is no per-section override.
     */
-   GlossaryPivotViz.prototype._printCanvas = function () {
-      var registry = window.__wsuPrintCanvas || {};
-      var entries = Object.keys(registry).map(function (id) { return registry[id]; })
-         .filter(function (e) { return e && typeof e.build === "function"; });
-      if (!entries.length) return { ok: false, error: "empty" };
-
-      function readContainer(entry) {
-         try { return entry.getContainer ? entry.getContainer() : null; } catch (e) { return null; }
+   function canvasPanelFor(el) {
+      var node = el;
+      while (node && node !== document.documentElement) {
+         if (typeof node.className === "string" &&
+             (" " + node.className + " ").indexOf(" bitech-rui-tab-panel-wrapper ") >= 0) return node;
+         node = node.parentNode;
       }
+      return null;
+   }
+
+   /* The selected tab's own DOM id is built from a DIFFERENT template
+      depending on which widget is currently hosting the canvas tabs:
+      confirmed live on the tenant, the read/view host
+      (insightComponentManager_N) ids its selected tab
+      "<mgr>-tabitem-snapshot!<suffix>", but the in-place editor host that
+      is live for the entire time a property panel is open
+      (canvasComponentManager_N — a different manager id, not just a
+      different id on the same one) ids the same tab
+      "<mgr>-tabitem-<suffix>", with no "snapshot!" infix. A template that
+      only matched the first form made every Print Canvas click taken
+      while editing properties (Print Orientation, or any other property)
+      see zero selected tabs and fail closed, even on the tab actually on
+      screen. `data-bi-item-id` is stable across both hosts: it is exactly
+      the panel suffix in the editor host, and "snapshot!" + the panel
+      suffix in the read host. Matching on that (with the optional
+      "snapshot!" prefix stripped) instead of reconstructing the id
+      string is what survives both conventions; re-check both hosts' live
+      DOM before changing this again. */
+   function selectedCanvasPanel(panel) {
+      if (!panel || !panel.id || !panel.parentNode || !panel.parentNode.parentNode) return false;
+      var manager = panel.parentNode.parentNode;
+      if (!manager.id || panel.id.indexOf(manager.id + "-") !== 0 || !manager.querySelector) return false;
+      var selected = manager.querySelector("[role='tab'][aria-selected='true']") ||
+         manager.querySelector("[role='tab'].bitech-rui-tab-selected");
+      if (!selected) return false;
+      var suffix = panel.id.slice(manager.id.length + 1);
+      var itemId = selected.getAttribute ? (selected.getAttribute("data-bi-item-id") || "") : "";
+      if (itemId) return itemId === suffix || itemId === "snapshot!" + suffix;
+      /* No data-bi-item-id on this host: fall back to the original id
+         template rather than fail open. */
+      return selected.id === manager.id + "-tabitem-snapshot!" + suffix;
+   }
+
+   function inVisibleCanvasTree(el, panel) {
+      if (!el || !el.getBoundingClientRect) return false;
+      if (document.documentElement && document.documentElement.contains &&
+          !document.documentElement.contains(el)) return false;
+      var node = el;
+      while (node) {
+         if (node.hidden || (node.getAttribute &&
+             (node.getAttribute("aria-hidden") === "true" || node.getAttribute("inert") !== null))) return false;
+         try {
+            var css = window.getComputedStyle(node);
+            if (css && (css.display === "none" || css.visibility === "hidden" || css.visibility === "collapse")) return false;
+         } catch (e) { return false; }
+         if (node === panel) break;
+         node = node.parentNode;
+      }
+      var rect;
+      try { rect = el.getBoundingClientRect(); } catch (e2) { return false; }
+      return !!rect && rect.width > 0 && rect.height > 0;
+   }
+
+   function collectPrintCanvasEntries(selfEl, registry) {
+      var panel = canvasPanelFor(selfEl);
+      if (panel && !selectedCanvasPanel(panel)) return [];
+      var panelRect = { top: 0, left: 0 };
+      if (panel) {
+         try { panelRect = panel.getBoundingClientRect(); } catch (e0) { return []; }
+         if (!panelRect) return [];
+      }
+      var entries = [];
+      Object.keys(registry || {}).forEach(function (id) {
+         var entry = registry[id];
+         if (!entry || typeof entry.build !== "function" || typeof entry.getContainer !== "function") return;
+         var el;
+         try { el = entry.getContainer(); } catch (e) { return; }
+         if (!el || (panel ? canvasPanelFor(el) !== panel : el !== selfEl)) return;
+         if (!inVisibleCanvasTree(el, panel || el)) return;
+         var rect;
+         try { rect = el.getBoundingClientRect(); } catch (e2) { return; }
+         entries.push({ entry: entry, el: el, top: rect.top - panelRect.top, left: rect.left - panelRect.left });
+      });
       entries.sort(function (a, b) {
-         var elA = readContainer(a);
-         var elB = readContainer(b);
-         if (!elA || !elB || elA === elB) return 0;
-         var pos = elA.compareDocumentPosition(elB);
-         if (pos & 4 /* Node.DOCUMENT_POSITION_FOLLOWING */) return -1;
-         if (pos & 2 /* Node.DOCUMENT_POSITION_PRECEDING */) return 1;
+         if (Math.abs(a.top - b.top) > 8) return a.top - b.top;
+         if (a.left !== b.left) return a.left - b.left;
+         try {
+            var pos = a.el.compareDocumentPosition(b.el);
+            if (pos & 4) return -1;
+            if (pos & 2) return 1;
+         } catch (e) {}
          return 0;
       });
+      return entries.map(function (item) { return item.entry; });
+   }
+
+   GlossaryPivotViz.prototype._printCanvas = function () {
+      try {
+      var registry = window.__wsuPrintCanvas || {};
+      var entries = collectPrintCanvasEntries(this.getContainerElem(), registry);
+      if (!entries.length) return { ok: false, error: "empty" };
 
       var tableHtmls = [];
+      var tableSizes = [];
+      var mixedOrientation = false;
+      var orient = this.Config.printOrientation === "portrait" ? "portrait" : "landscape";
       entries.forEach(function (entry) {
          var fragment = null;
          try { fragment = entry.build(); } catch (e) {
             _logger.error("canvas print: a section failed to build: " + (e && e.message ? e.message : e));
          }
          /* build() already returned the table Print PDF would place in the
-            document. Preparing again would stamp a second title onto a
-            Report Print section, and a Report Print click would otherwise
-            receive this pivot's table with its rowspans still in place. */
-         if (fragment && fragment.html) tableHtmls.push(fragment.html);
+            document. Joining that html is the whole step. */
+         if (fragment && fragment.html && fragment.html.indexOf("<table") >= 0) {
+            tableHtmls.push(fragment.html);
+            tableSizes.push(fragment.printTableSize === "content" ? "content" : "margins");
+            if (fragment.printOrientation && fragment.printOrientation !== orient) mixedOrientation = true;
+         }
       });
       if (!tableHtmls.length) return { ok: false, error: "empty" };
 
-      var docTitle = (this.Config.printTitle && String(this.Config.printTitle).trim()) || "Report";
-      var orient = this.Config.printOrientation === "portrait" ? "portrait" : "landscape";
-      var docHtml = wrapPrintDocument(docTitle, orient, joinPrintSections(tableHtmls));
-      if (!openGlossaryPrint(this, docHtml)) return { ok: false, error: "print" };
-      return { ok: true };
+      var docTitle = "Report";
+      try { docTitle = editorTitle(this) || "Report"; } catch (e) { docTitle = "Report"; }
+      var forceBreaks = this.Config.printCanvasSpacing === "perReport";
+      var docHtml = wrapPrintDocument(docTitle, orient, joinPrintSections(tableHtmls, forceBreaks), this.Config.printMargin);
+      var printed = openGlossaryPrint(this, docHtml, orient, this.Config.printMargin, tableSizes);
+      if (!printed.ok) return { ok: false, error: printed.busy ? "busy" : "print" };
+      var warnings = [];
+      if (mixedOrientation) warnings.push(LBL.PRINT_MIXED_ORIENTATION);
+      if (printed.overflowCount) warnings.push(LBL.PRINT_OVERFLOW);
+      return { ok: true, warning: warnings.join(" ") };
+      } catch (e) {
+         _logger.error("canvas print failed: " + (e && e.message ? e.message : e));
+         return { ok: false, error: "print" };
+      }
    };
 
    GlossaryPivotViz.prototype._wirePrint = function ($c) {
       var self = this;
+      /* A too-wide-at-6pt table or a mixed-orientation canvas are not
+         failures: printing already proceeded (openGlossaryPrint returned
+         ok, the dialog opened). gp-printnote overrides gp-printerr's red
+         with a neutral color so the message reads as an advisory, not an
+         error — a real failure (no tables, print blocked, busy) keeps the
+         plain gp-printerr red. */
+      function showPrintResult($err, result, emptyLabel) {
+         if (result.ok) {
+            $err.addClass("gp-printnote");
+            if (result.warning) $err.text(result.warning).show();
+            return;
+         }
+         $err.removeClass("gp-printnote");
+         $err.text(result.error === "busy" ? LBL.PRINT_BUSY :
+            (result.error === "print" ? LBL.PRINT_ERROR : emptyLabel)).show();
+      }
       $c.find(".gp-printbtn").off("click.gpprint").on("click.gpprint", function () {
          var $err = $c.find(".gp-printerr");
          $err.hide();
          var result = self._printTable();
-         if (result.ok) return;
-         $err.text(result.error === "print" ? LBL.PRINT_ERROR : LBL.EMPTY_STATE).show();
+         showPrintResult($err, result, LBL.EMPTY_STATE);
       });
       $c.find(".gp-printcanvasbtn").off("click.gpprintcanvas").on("click.gpprintcanvas", function () {
          var $err = $c.find(".gp-printerr");
          $err.hide();
          var result = self._printCanvas();
-         if (result.ok) return;
-         $err.text(result.error === "print" ? LBL.PRINT_ERROR : LBL.EMPTY_STATE).show();
+         showPrintResult($err, result, LBL.PRINT_NONE);
       });
    };
 
@@ -1447,12 +2015,14 @@ define(['jquery',
       var $oldWrap = $c.find(".gp-wrap");
       var scrollTop = $oldWrap.length ? $oldWrap.scrollTop() : 0;
       var scrollLeft = $oldWrap.length ? $oldWrap.scrollLeft() : 0;
+      var showPdf = this.Config.showPrintPdf === "on";
+      var showCanvas = this.Config.showPrintCanvas === "on";
       var bar = "";
-      if (this.Config.showPrintButton !== "off") {
+      if (showPdf || showCanvas) {
          bar = "<div class='gp-printbar'>" +
-                  "<span class='gp-printerr' style='display:none'></span>" +
-                  "<button type='button' class='gp-printcanvasbtn'>" + escapeHtml(LBL.PRINT_CANVAS) + "</button>" +
-                  "<button type='button' class='gp-printbtn'>" + escapeHtml(LBL.PRINT) + "</button>" +
+                  "<span class='gp-printerr' role='status' aria-live='polite' style='display:none'></span>" +
+                  (showCanvas ? "<button type='button' class='gp-printcanvasbtn' title='" + escapeHtml(LBL.PRINT_CANVAS_HELP) + "'>" + escapeHtml(LBL.PRINT_CANVAS) + "</button>" : "") +
+                  (showPdf ? "<button type='button' class='gp-printbtn'>" + escapeHtml(LBL.PRINT) + "</button>" : "") +
                "</div>";
       }
       $c.html(
@@ -1464,6 +2034,7 @@ define(['jquery',
          $c.find(".gp-wrap").scrollTop(scrollTop).scrollLeft(scrollLeft);
       }
       if (bar) this._wirePrint($c);
+      applyPrintTheme($c.find(".gp-shell")[0], this.Config.printFollowTheme);
    };
 
    /**
@@ -1475,6 +2046,18 @@ define(['jquery',
    GlossaryPivotViz.prototype._rerenderTable = function () {
       var elContainer = this.getContainerElem();
       if (!elContainer || !this._lastDataLayout) return;
+      var focusAttr = null, focusValue = null;
+      var active = document.activeElement;
+      if (active && elContainer.contains && elContainer.contains(active)) {
+         var focusAttrs = ["data-gp-toggle-group", "data-gp-sort", "data-gp-row"];
+         for (var fi = 0; fi < focusAttrs.length; fi++) {
+            if (active.getAttribute && active.getAttribute(focusAttrs[fi]) !== null) {
+               focusAttr = focusAttrs[fi];
+               focusValue = active.getAttribute(focusAttr);
+               break;
+            }
+         }
+      }
       var html;
       try {
          html = this._buildTable(this._lastDataLayout);
@@ -1486,9 +2069,23 @@ define(['jquery',
       this._replaceTableHtml(elContainer, html);
       if (this.Config.showDescriptions !== "off") this._wireTooltips(elContainer);
       this._wireMarking(elContainer);
+      this._wireKeyboardRows(elContainer);
       this._wireGroupToggle(elContainer);
       this._wireSort(elContainer);
       this._applyMarkedRows();
+      if (focusAttr && elContainer.querySelectorAll) {
+         var focusable = elContainer.querySelectorAll("[" + focusAttr + "]");
+         for (var f = 0; f < focusable.length; f++) {
+            if (focusable[f].getAttribute(focusAttr) !== focusValue) continue;
+            if (focusAttr === "data-gp-row") {
+               var rowStops = elContainer.querySelectorAll("tbody tr[data-gp-row]");
+               for (var rs = 0; rs < rowStops.length; rs++) rowStops[rs].setAttribute("tabindex", "-1");
+               focusable[f].setAttribute("tabindex", "0");
+            }
+            if (focusable[f].focus) focusable[f].focus();
+            break;
+         }
+      }
    };
 
    function escapeHtml(s) {
@@ -1557,6 +2154,7 @@ define(['jquery',
       }
       var nVisRows = visibleRowLayers.length;
       var firstVisibleRowLayer = nVisRows ? visibleRowLayers[0] : -1;
+      if (!nVisRows) wantCollapse = false;
 
       var colLayerHidden = [];
       var colLayerIsMeasure = [];
@@ -1645,21 +2243,22 @@ define(['jquery',
             try { d = self._glossary.getDescription(lookupName, columnId); } catch (e) {}
          }
          var paint = headerPaint(paintHex);
-         var attrs = " class='" + cls + (d ? " gp-has-desc" : "") + (sortKey ? " gp-sortable" : "") + paint.cls + "'" + paint.style;
+         var attrs = " class='" + cls + (d ? " gp-has-desc" : "") + (sortKey ? " gp-sortable" : "") + paint.cls + "' scope='col'" + paint.style;
          if (span > 1) attrs += " " + spanAttr + "='" + span + "'";
          if (d) {
             attrs += " data-gp-name='" + escapeHtml(lookupName == null ? "" : lookupName) + "'";
             if (columnId != null) attrs += " data-gp-key='" + escapeHtml(columnId) + "'";
-            attrs += " tabindex='0'";
          }
+         if (d || sortKey) attrs += " tabindex='0'";
          if (markRows) attrs += " data-gp-mark-rows='" + markRows[0] + ":" + markRows[1] + "'";
          var ind = "";
          if (sortKey) {
             attrs += " data-gp-sort='" + escapeHtml(sortKey) + "'";
+            attrs += " aria-sort='none'";
             if (sortIsActive(sortKey)) {
                var desc = sortState.dir === "desc";
-               ind = "<span class='gp-sort-ind'>" + (desc ? "▼" : "▲") + "</span>";
-               attrs += " aria-sort='" + (desc ? "descending" : "ascending") + "'";
+               ind = "<span class='gp-sort-ind' aria-hidden='true'>" + (desc ? "▼" : "▲") + "</span>";
+               attrs = attrs.replace(" aria-sort='none'", " aria-sort='" + (desc ? "descending" : "ascending") + "'");
             }
          }
          return "<" + tag + attrs + "><span class='gp-lbl'>" +
@@ -1684,7 +2283,7 @@ define(['jquery',
          if (nVisRows > 0) {
             if (!lastHeaderRow) {
                var cornerPaint = headerPaint(self.Config.headerColor);
-               out.push("<th class='gp-corner" + cornerPaint.cls + "'" + cornerPaint.style +
+               out.push("<th class='gp-corner" + cornerPaint.cls + "' scope='colgroup'" + cornerPaint.style +
                         (nVisRows > 1 ? " colspan='" + nVisRows + "'" : "") + "></th>");
             } else {
                for (var vri = 0; vri < nVisRows; vri++) {
@@ -1763,7 +2362,7 @@ define(['jquery',
                var lbl = buckets.order.length > 1 && bid !== "__single__" ? shownName + " " + LBL.TOTAL : LBL.TOTAL;
                var rs = nHeaderRows > 1 ? " rowspan='" + nHeaderRows + "'" : "";
                var totalPaint = headerPaint(self.Config.headerColor);
-               out.push("<th class='gp-colhdr gp-total-colhdr" + totalPaint.cls + "'" + totalPaint.style + rs + ">" +
+               out.push("<th class='gp-colhdr gp-total-colhdr" + totalPaint.cls + "' scope='col'" + totalPaint.style + rs + ">" +
                         "<span class='gp-lbl'>" + escapeHtml(lbl) + "</span></th>");
             });
          }
@@ -1777,20 +2376,20 @@ define(['jquery',
       function totalRowHtml(labelText, rStart, rEnd) {
          var cells = ["<tr class='gp-total-row'>"];
          if (nVisRows > 0) {
-            cells.push("<th class='gp-rowhdr gp-total-label'" +
+            cells.push("<th class='gp-rowhdr gp-total-label' scope='row'" +
                        (nVisRows > 1 ? " colspan='" + nVisRows + "'" : "") +
                        ">" + escapeHtml(labelText) + "</th>");
          }
          for (var cc = 0; cc < nCols; cc++) {
             if (colHidden[cc]) continue;
             var mId = measureIdByCol[cc];
-            var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId);
+            var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId, measureNameById[mId]);
             var val = sumBlock(dl, rStart, rEnd, [cc]);
             cells.push("<td class='gp-val gp-total-val'>" + escapeHtml(val == null ? "" : formatValue(val, fmt)) + "</td>");
          }
          if (wantTotalCol) {
             buckets.order.forEach(function (bid) {
-               var fmt = resolveFormat(self.Config, overrides, bid === "__single__" ? null : bid);
+               var fmt = resolveFormat(self.Config, overrides, bid === "__single__" ? null : bid, measureNameById[bid]);
                var val = sumBlock(dl, rStart, rEnd, buckets.map[bid]);
                cells.push("<td class='gp-val gp-total-val gp-grand-total-val'>" + escapeHtml(val == null ? "" : formatValue(val, fmt)) + "</td>");
             });
@@ -1810,22 +2409,23 @@ define(['jquery',
       function collapsedGroupRowHtml(labelText, rStart, rEnd, groupKey) {
          var cells = ["<tr class='gp-group-row gp-collapsed'>"];
          if (nVisRows > 0) {
-            cells.push("<th class='gp-rowhdr gp-group-label'" +
+            cells.push("<th class='gp-rowhdr gp-group-label' scope='row'" +
                        (nVisRows > 1 ? " colspan='" + nVisRows + "'" : "") +
-                       " data-gp-toggle-group='" + groupKey + "'>" +
-                       "<span class='gp-group-toggle'>▸</span><span class='gp-lbl'>" +
+                       ">" +
+                       "<button type='button' class='gp-group-toggle' data-gp-toggle-group='" + groupKey +
+                       "' aria-expanded='false' aria-label='Expand group " + escapeHtml(labelText) + "'>▸</button><span class='gp-lbl'>" +
                        escapeHtml(labelText) + "</span></th>");
          }
          for (var cc = 0; cc < nCols; cc++) {
             if (colHidden[cc]) continue;
             var mId = measureIdByCol[cc];
-            var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId);
+            var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId, measureNameById[mId]);
             var val = sumBlock(dl, rStart, rEnd, [cc]);
             cells.push("<td class='gp-val gp-group-val'>" + escapeHtml(val == null ? "" : formatValue(val, fmt)) + "</td>");
          }
          if (wantTotalCol) {
             buckets.order.forEach(function (bid) {
-               var fmt = resolveFormat(self.Config, overrides, bid === "__single__" ? null : bid);
+               var fmt = resolveFormat(self.Config, overrides, bid === "__single__" ? null : bid, measureNameById[bid]);
                var val = sumBlock(dl, rStart, rEnd, buckets.map[bid]);
                cells.push("<td class='gp-val gp-group-val gp-grand-total-val'>" + escapeHtml(val == null ? "" : formatValue(val, fmt)) + "</td>");
             });
@@ -1847,7 +2447,7 @@ define(['jquery',
             var vRaw = row.raw[cc];
             var vFormatted = row.formatted[cc];
             var mId = measureIdByCol[cc];
-            var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId);
+            var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId, measureNameById[mId]);
             var styleAttr = "", heatClass = "";
             if (wantCellColor) {
                var range = colorRanges[mId];
@@ -1877,7 +2477,7 @@ define(['jquery',
          }
          if (wantTotalCol) {
             buckets.order.forEach(function (bid) {
-               var fmt2 = resolveFormat(self.Config, overrides, bid === "__single__" ? null : bid);
+               var fmt2 = resolveFormat(self.Config, overrides, bid === "__single__" ? null : bid, measureNameById[bid]);
                var val = sumBlock(dl, layoutRow, layoutRow, buckets.map[bid]);
                parts.push("<td class='gp-val gp-total-val gp-grand-total-val' data-gp-mark-rows='" + layoutRow + ":" + layoutRow + "'>" +
                           escapeHtml(val == null ? "" : formatValue(val, fmt2)) + "</td>");
@@ -1932,10 +2532,11 @@ define(['jquery',
                      hidden the toggle sits on the first visible layer, and
                      only on the group's first row so it is not repeated. */
                   if (wantCollapse && l === firstVisibleRowLayer && rowi === di) {
-                     toggle = "<span class='gp-group-toggle' data-gp-toggle-group='" + lead.groupKey + "'>▾</span>";
+                     toggle = "<button type='button' class='gp-group-toggle' data-gp-toggle-group='" + lead.groupKey +
+                        "' aria-expanded='true' aria-label='Collapse group " + escapeHtml(visibleGroupLabel(lead)) + "'>▾</button>";
                   }
                   var span = spanEnd - rowi + 1;
-                  out.push("<th class='gp-rowhdr' data-gp-mark-rows='" + markRowsAttr(indices) + "'" +
+                  out.push("<th class='gp-rowhdr' scope='row' data-gp-mark-rows='" + markRowsAttr(indices) + "'" +
                            (span > 1 ? " rowspan='" + span + "'" : "") +
                            ">" + toggle + "<span class='gp-lbl'>" + escapeHtml(cur.rowVals[l]) + "</span></th>");
                }
@@ -1978,7 +2579,10 @@ define(['jquery',
       if (!$tip.length) {
          $tip = $("<div class='gp-tip' role='tooltip'></div>").appendTo($c);
       }
+      if (!this._tooltipId) this._tooltipId = printCanvasKey(this, "gp-tip-");
+      $tip.attr("id", this._tooltipId);
       this._$tip = $tip;
+      var activeEl = null;
 
       function show(el) {
          var $el = $(el);
@@ -1987,12 +2591,14 @@ define(['jquery',
          var d = null;
          try { d = self._glossary.getDescription(name, key); } catch (e) {}
          if (!d) { hide(); return; }
-         /* Live and Workbook override chips are optional. Bundled fallback
-            stays visible: it is the chip that says the text is not from OAC. */
-         var showBadge = d.origin === "bundled" || self.Config.showSourceBadges === "on";
-         var srcLabel = d.origin === "override" ? LBL.SRC_OVERRIDE
-                       : d.origin === "live"     ? LBL.SRC_LIVE
-                       :                           LBL.SRC_BUNDLED;
+         if (activeEl && activeEl !== el) $(activeEl).removeAttr("aria-describedby");
+         activeEl = el;
+         $el.attr("aria-describedby", self._tooltipId);
+         /* Live and Workbook override chips are both optional now that
+            there is no third, always-shown "not from OAC" source to
+            distinguish them from. */
+         var showBadge = self.Config.showSourceBadges === "on";
+         var srcLabel = d.origin === "override" ? LBL.SRC_OVERRIDE : LBL.SRC_LIVE;
          var $name = $("<div class='gp-tip-name'></div>").text(name);
          if (showBadge) $name.append($("<span class='gp-tip-src'></span>").text(srcLabel));
          var align = self.Config.tooltipAlign;
@@ -2025,7 +2631,11 @@ define(['jquery',
          } catch (e) {}
       }
 
-      function hide() { $tip.removeClass("gp-on"); }
+      function hide() {
+         if (activeEl) $(activeEl).removeAttr("aria-describedby");
+         activeEl = null;
+         $tip.removeClass("gp-on");
+      }
 
       $c.off(".gptip")
         .on("mouseenter.gptip", "th.gp-has-desc", function () { show(this); })
@@ -2069,7 +2679,33 @@ define(['jquery',
             for (var r = rStart; r <= rEnd; r++) rows.push(r);
          }
          if (!rows.length) return;
-         self._markRows(rows, !!event.ctrlKey);
+         self._markRows(rows, !!(event.ctrlKey || event.metaKey));
+      });
+   };
+
+   /* One row is in the tab sequence. Arrow keys move that stop; Enter/Space
+      marks the focused layout row without adding thousands of tab stops. */
+   GlossaryPivotViz.prototype._wireKeyboardRows = function (elContainer) {
+      var $c = $(elContainer);
+      var self = this;
+      var $rows = $c.find("tbody tr[data-gp-row]");
+      $rows.attr("tabindex", "-1");
+      if ($rows.length) $rows.first().attr("tabindex", "0");
+      $c.off(".gprowkeys").on("keydown.gprowkeys", "tbody tr[data-gp-row]", function (event) {
+         if (event.target !== this) return;
+         if (event.which === 38 || event.which === 40) {
+            var index = $rows.index(this);
+            var next = index + (event.which === 40 ? 1 : -1);
+            if (next < 0 || next >= $rows.length) return;
+            event.preventDefault();
+            $(this).attr("tabindex", "-1");
+            $rows.eq(next).attr("tabindex", "0").focus();
+         } else if (event.which === 13 || event.which === 32) {
+            var row = parseInt($(this).attr("data-gp-row"), 10);
+            if (isNaN(row)) return;
+            event.preventDefault();
+            self._markRows([row], !!(event.ctrlKey || event.metaKey));
+         }
       });
    };
 
@@ -2135,9 +2771,8 @@ define(['jquery',
            event.stopPropagation();
            apply(this);
         })
-        /* Glossary headers are already focusable (tabindex, for the tooltip).
-           Enter/Space sorts that same cell; a non-glossary header has no tab
-           stop, so this does not add one. */
+        /* Every sortable header is focusable, including those without a
+           glossary description. Enter and Space activate the sort. */
         .on("keydown.gpsort", "[data-gp-sort]", function (event) {
            if (event.which !== 13 && event.which !== 32) return;
            event.preventDefault();
@@ -2204,10 +2839,11 @@ define(['jquery',
       var dl = oTransientRenderingContext.get(DCP_DATA_LAYOUT);
       if (!dl) return;
       var self = this;
+      var revision = this._renderRevision;
       var service = this.getMarkingService();
       function callback() {
+         if (!self.isStarted() || self._renderRevision !== revision || self._lastDataLayout !== dl) return;
          self._markedRows = Object.create(null);
-         if (!self.isStarted()) return;
          try {
             service.traverseDataEdgeMarks(dl, function (nRow) { self._markedRows[nRow] = true; });
          } catch (e) {}
@@ -2297,10 +2933,18 @@ define(['jquery',
       addToggle(pGen, "showDescriptionsGadget", "Tooltip: Glossary Descriptions", this.Config.showDescriptions);
       addToggle(pGen, "showSourceBadgesGadget", "Tooltip: Source Badges (Live / Workbook)", this.Config.showSourceBadges);
       addToggle(pGen, "showHeaderUnderlineGadget", "Tooltip: Underline Headers", this.Config.showHeaderUnderline);
-      addToggle(pGen, "showPrintButtonGadget", "Print: Show Button", this.Config.showPrintButton);
-      addText(pGen, factory, "printTitleGadget", "Print: Report Title", this.Config.printTitle);
+      addToggle(pGen, "showPrintPdfGadget", "Print: Show PDF Button", this.Config.showPrintPdf);
+      addToggle(pGen, "showPrintCanvasGadget", "Print: Show Canvas Button", this.Config.showPrintCanvas);
       addSwitcher(pGen, "printOrientationGadget", "Print: Page Orientation", this.Config.printOrientation,
          [{ value: "landscape", label: "Landscape" }, { value: "portrait", label: "Portrait" }], nx("FMT"));
+      addSwitcher(pGen, "printMarginGadget", "Print: Margins", this.Config.printMargin,
+         [{ value: "narrow", label: "Narrow (0.25 in)" }, { value: "normal", label: "Normal (0.5 in)" },
+          { value: "wide", label: "Wide (1 in)" }], nx("FMT"));
+      addSwitcher(pGen, "printTableSizeGadget", "Print: Table Width", this.Config.printTableSize,
+         [{ value: "margins", label: "To margins" }, { value: "content", label: "To content" }], nx("FMT"));
+      addSwitcher(pGen, "printCanvasSpacingGadget", "Print: Canvas Page Breaks", this.Config.printCanvasSpacing,
+         [{ value: "compact", label: "Minimize blank space" }, { value: "perReport", label: "One page per report" }], nx("FMT"));
+      addToggle(pGen, "printFollowThemeGadget", "Print: Follow Theme", this.Config.printFollowTheme);
       addSwitcher(pGen, "tooltipAlignGadget", "Tooltip: Text Align", this.Config.tooltipAlign,
          [{ value: "left", label: "Left" }, { value: "center", label: "Center" },
           { value: "right", label: "Right" }], nx("FMT"));
@@ -2332,9 +2976,13 @@ define(['jquery',
          showSourceBadgesGadget: "showSourceBadges",
          showHeaderUnderlineGadget: "showHeaderUnderline",
          tooltipAlignGadget: "tooltipAlign",
-         printTitleGadget: "printTitle",
          printOrientationGadget: "printOrientation",
-         showPrintButtonGadget: "showPrintButton",
+         showPrintPdfGadget: "showPrintPdf",
+         showPrintCanvasGadget: "showPrintCanvas",
+         printMarginGadget: "printMargin",
+         printTableSizeGadget: "printTableSize",
+         printCanvasSpacingGadget: "printCanvasSpacing",
+         printFollowThemeGadget: "printFollowTheme",
          debugLogMetadataGadget: "debugLogMetadata"
       };
       var key = map[sGadgetID];
@@ -2342,7 +2990,9 @@ define(['jquery',
       var TOGGLE_GADGETS = {
          showGrandTotalRowGadget: 1, showRowSubtotalsGadget: 1, showGrandTotalColumnGadget: 1,
          rowGroupCollapseGadget: 1, cellColorGadget: 1, showDescriptionsGadget: 1,
-         showSourceBadgesGadget: 1, showHeaderUnderlineGadget: 1, showPrintButtonGadget: 1, debugLogMetadataGadget: 1
+         showSourceBadgesGadget: 1, showHeaderUnderlineGadget: 1,
+         showPrintPdfGadget: 1, showPrintCanvasGadget: 1,
+         printFollowThemeGadget: 1, debugLogMetadataGadget: 1
       };
       if (TOGGLE_GADGETS[sGadgetID]) {
          this.Config[key] = oPropChange.checked ? "on" : "off";
@@ -2368,16 +3018,59 @@ define(['jquery',
    };
 
    /**
+    * Registers this instance in window.__wsuPrintCanvas — a plain, same-page
+    * registry (not an OAC API; see the v0.14 file-header note) — so a Print
+    * Canvas click on any Glossary Pivot on the page can ask this instance
+    * for its own fragment. The closure only captures `self`; build() reads
+    * self._lastDataLayout/self.Config lazily, at print time, so the entry
+    * never goes stale between registration and a later click. Safe to call
+    * more than once: the key is generated once and reused
+    * (this._wsuPrintKey), so a repeat call overwrites the same registry
+    * entry instead of adding a duplicate.
+    *
+    * Called from both _doInitializeComponent and _doRender, not just the
+    * first. Confirmed on the tenant: switching to a canvas tab that had
+    * never been visited in the session left its Glossary Pivot registered
+    * nowhere and its own Print Canvas click pulling in a different,
+    * already-visited canvas's tables instead — _doInitializeComponent did
+    * not fire for it (no warning logged either, so not a thrown error, just
+    * never called), while _doRender demonstrably did, since its print bar
+    * was on screen. Registering again here costs nothing on the common path
+    * and is what makes a canvas whose init hook was skipped still
+    * print-capable.
+    */
+   GlossaryPivotViz.prototype._registerPrintCanvas = function () {
+      var self = this;
+      try {
+         window.__wsuPrintCanvas = window.__wsuPrintCanvas || {};
+         /* Keyed per instance, not by getID() alone. Two canvases can hand
+            two visualizations the same id, and the one that stops last would
+            delete the one still on screen. */
+         if (!this._wsuPrintKey) this._wsuPrintKey = printCanvasKey(this, "gp-");
+         window.__wsuPrintCanvas[this._wsuPrintKey] = {
+            getContainer: function () { return self.getContainerElem(); },
+            build: function () {
+               var fragment = null;
+               try { fragment = self._buildPrintFragment(); } catch (e) { fragment = null; }
+               if (!fragment || !fragment.html) return null;
+               var prepared = null;
+               try { prepared = preparePrintTable(fragment.html, fragment.title); } catch (e2) { prepared = null; }
+               return {
+                  title: fragment.title,
+                  html: prepared || fragment.html,
+                  printTableSize: self.Config.printTableSize,
+                  printOrientation: self.Config.printOrientation === "portrait" ? "portrait" : "landscape"
+               };
+            }
+         };
+      } catch (e) {
+         _logger.warning("Print Canvas registration failed: " + (e && e.message ? e.message : e));
+      }
+   };
+
+   /**
     * One-time init. NOTE: there is no data model here — no rendering context,
     * no columns. Anything that needs data belongs in the first render() pass.
-    *
-    * Also registers this instance in window.__wsuPrintCanvas — a plain,
-    * same-page registry (not an OAC API; see the v0.14 file-header note) —
-    * so a Print Canvas click anywhere on the page, including from a WSU
-    * Report Print instance on the same canvas, can ask this instance for
-    * its own fragment. The closure only captures `self`; build() reads
-    * self._lastDataLayout/self.Config lazily, at print time, so the entry
-    * never goes stale between registration and a later click.
     */
    GlossaryPivotViz.prototype._doInitializeComponent = function () {
       GlossaryPivotViz.superClass._doInitializeComponent.call(this);
@@ -2387,22 +3080,7 @@ define(['jquery',
       } catch (e) {
          _logger.warning("Could not subscribe to INTERACTION_HIGHLIGHT: " + (e && e.message ? e.message : e));
       }
-      var self = this;
-      try {
-         window.__wsuPrintCanvas = window.__wsuPrintCanvas || {};
-         window.__wsuPrintCanvas[this.getID()] = {
-            getContainer: function () { return self.getContainerElem(); },
-            build: function () {
-               var fragment = self._buildPrintFragment();
-               if (!fragment) return null;
-               var prepared = preparePrintTable(fragment.html, fragment.title);
-               if (!prepared) return null;
-               return { title: fragment.title, html: prepared };
-            }
-         };
-      } catch (e) {
-         _logger.warning("Print Canvas registration failed: " + (e && e.message ? e.message : e));
-      }
+      this._registerPrintCanvas();
    };
 
    /**
@@ -2416,12 +3094,13 @@ define(['jquery',
     * instance's window.__wsuPrintCanvas registry entry.
     */
    GlossaryPivotViz.prototype._doStopComponent = function () {
-      if (this._printFrame && this._printFrame.parentNode) {
-         this._printFrame.parentNode.removeChild(this._printFrame);
-      }
+      if (activePrintJob && activePrintJob.owner === this) cleanupPrintJob(activePrintJob);
+      else if (this._printFrame && this._printFrame.parentNode) this._printFrame.parentNode.removeChild(this._printFrame);
       this._printFrame = null;
+      this._lastDataLayout = null;
+      this._renderRevision++;
       try {
-         if (window.__wsuPrintCanvas) delete window.__wsuPrintCanvas[this.getID()];
+         if (window.__wsuPrintCanvas && this._wsuPrintKey) delete window.__wsuPrintCanvas[this._wsuPrintKey];
       } catch (e) {}
       GlossaryPivotViz.superClass._doStopComponent.apply(this, arguments);
    };
@@ -2436,6 +3115,20 @@ define(['jquery',
    return {
       createClientComponent: createClientComponent,
       _expandBodyRowspans: expandBodyRowspans,
-      _joinPrintSections: joinPrintSections
+      _joinPrintSections: joinPrintSections,
+      _plainTitle: plainTitle,
+      _printPageBox: printPageBox,
+      _fitScale: fitScale,
+      _printTableLayout: printTableLayout,
+      _fitPrintedReport: fitPrintedReport,
+      _parseMeasureFormatOverrides: parseMeasureFormatOverrides,
+      _formatValue: formatValue,
+      _headerPaint: headerPaint,
+      _interpolateColor: interpolateColor,
+      _buildGlossary: buildGlossary,
+      _collectPrintCanvasEntries: collectPrintCanvasEntries,
+      _openGlossaryPrint: openGlossaryPrint,
+      _computeMeasureIdByCol: computeMeasureIdByCol,
+      _resolveFormat: resolveFormat
    };
 });

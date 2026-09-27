@@ -13,7 +13,7 @@ WSU Glossary Pivot development without re-deriving design decisions.
 - **Short name**: WSU Glossary Pivot
 - **Category**: WSU
 - **Root id**: `com-wsu-glossary-pivot`
-- **Version constant**: `GlossaryPivotViz.VERSION = "0.14.0"` (see `CHANGELOG.md`)
+- **Version constant**: `GlossaryPivotViz.VERSION = "0.16.2"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-glossary-pivot.zip`
 
@@ -28,8 +28,11 @@ It is not a reimplementation of every native-pivot command.
 
 ### Capabilities at a glance
 - **Glossary tooltip on headers** — hover or keyboard-focus a header. The
-  description comes from OAC's column-info map when that map has one, and
-  from a small bundled field dictionary otherwise. The badge says which.
+  description comes from a workbook-level override (e.g. a Calculated
+  Field's Description) or from OAC's live column-info map; a column with
+  neither has no tooltip. (Through 0.15.x, a third, lowest-priority tier —
+  a hardcoded dictionary of 16 Student Data Warehouse columns — filled in
+  when both were missing; removed in 0.16.0 as unmaintainable. See §3.)
 - **Rows, Columns, Values** — up to 5 categorical fields on Rows, 5 on
   Columns, 20 measures on Values. Measure names render as their own column
   header layer.
@@ -50,13 +53,19 @@ It is not a reimplementation of every native-pivot command.
 - **Header colors and a per-measure heat map** — hex text fields. Empty
   header hex keeps the stylesheet gray. Heat map defaults off.
 - **Print PDF** — a button on the pivot opens the browser print dialog
-  on the table alone. The button is not on the pages. Set the title and
-  page orientation in properties. Totals follow the total switches already
-  on the pivot.
+  on the table alone. The button is not on the pages. Set the title, page
+  orientation, margin, and table width in properties. Totals follow the
+  total switches already on the pivot. A table too wide for the page is
+  reduced from 9pt only as far as 6pt. A still-over-wide table remains
+  over-wide for its designer to correct (never CSS zoom — see §3a). Print
+  always opens from a hidden `<iframe>`; no visible tab or
+  popup is ever created, only the native print dialog.
 - **Print Canvas** — a second button next to Print PDF. Prints every
-  print-capable visualization currently on the same canvas — this plugin
-  and WSU Report Print — as one document, one table per visualization, in
-  canvas position order, not just this pivot. See §3a.
+  WSU Glossary Pivot currently on the *active* canvas tab as one document
+  (not other WSU plugins or native OAC visuals),
+  one table per visualization, in canvas position order. Print: Canvas
+  Page Breaks chooses one page per report (default) or a compact document
+  that minimizes blank space. See §3a.
 - **Property panel** — every gadget is on the General tab. Labels are
   English literals. Viewer strings (empty state, tooltip badges, "Total")
   come from `nls/root/messages.js`.
@@ -73,9 +82,42 @@ On oac.wsu.edu, 2026-09-22:
   is reached by the horizontal scrollbar.
 - Header hide and display-label text fields were exercised.
 
-`node --check` on the renderer and `node tests/run.js` from `oac-sdk-dev/`
-pass (36 tests). The harness has no layout fixture for this plugin; its NLS
-test does cover `glossaryPivotViz.js`. Sections 2–7 of
+On the WSU **dev** tenant (`wsuaacdevoac-wsucloud.analytics.ocp.oraclecloud.com`,
+not production oac.wsu.edu), 2026-09-23, Print Canvas specifically:
+
+- Live-verified the `isOnActiveCanvas` occlusion fix (§3a) against the
+  actual DOM: on the canvas tab with three stacked reports, the old
+  clamped test point for the tallest report (`top=799, height=247` against
+  a measured `vh=855`) resolved to
+  `bi_reporttoolbar_environment_footer_container`; the corrected,
+  visible-slice-top test point resolved to a `<th>` inside that report's
+  own table. Confirmed the true fix target, not assumed.
+- Measured the live "Subject Area" table's natural width (1958px) and
+  computed its real `fitScale` result outside the browser
+  (`node -e ...` against `tests/harness.js`): 0.368 in portrait, 0.49 in
+  landscape — both below the 6pt font floor, so this specific table's
+  header text still shrinks to the floor rather than the ideal scale (see
+  §3a's font-size caveat).
+- Not yet re-verified after the rebuild that carries these two fixes
+  (0.14.15) — the tenant was still running 0.14.14 at last check; needs a
+  re-upload and a hard reload (Ctrl+Shift+R; a plain refresh does not bust
+  the cached AMD module) before Print Canvas is exercised again end to end.
+
+For 0.15.0 on the dev tenant, 2026-09-24, the active tab and panel
+relationship was inspected without modifying the workbook. The selected tab
+ID was `insightComponentManager_197-tabitem-snapshot!canvas!1` or
+`...canvas!3`; its panel ID was the manager ID plus `-canvas!1` or
+`-canvas!3`. The selected panel was visible and the inactive panel used
+`display:none` at inspection time. The panel-based selector follows this
+observed structure and checks visibility, without a viewport hit test.
+This verifies the selector's premise, not an uploaded 0.15.0 build or a
+printed PDF. Safari and Firefox output remain unverified.
+
+`node --check`, `node tests/run.js`, and `node tests/lint.js` pass locally
+for 0.15.0 (60 Node tests). The tests include registry filtering, font-fit
+floor and overflow, print-frame lifecycle stubs, format validation, stale
+render/metadata and marking, and basic accessibility markup. They do not
+replace browser print and PDF inspection. Sections 2–7 of
 `../guides/oac_dev_verification.md` have not been recorded for it.
 
 ---
@@ -120,18 +162,30 @@ Lookup key, in order:
 
 1. Workbook override: `[id]._info.additionalProperties.customColumnDescription.json.text` (badge **Workbook override**).
 2. Live catalog text: `[id]._info.desc` (badge **Live**). This is the same property for a Subject Area column and a Dataset column. The badge does not say "Dataset".
-3. `FALLBACK_DESCRIPTIONS` in `glossaryPivotViz.js` (badge **Bundled fallback**).
+
+A column with neither has no tooltip: no badge, no dotted underline, no
+`gp-has-desc` class — it renders exactly like a column that was never in
+any description source.
 
 Within each source, the full column id is tried, then its last path segment,
 then the display name. An exact key wins over the same name with ` Attr`
-stripped. Live and override text always outrank the bundled map.
+stripped. Override always outranks live.
 
-`FALLBACK_DESCRIPTIONS` is a column dictionary (field name and business
-description), not student rows. It exists because the column-info map is
-sometimes empty and the plugin cannot query another dataset. New entries go
-in that map, with a comment citing the knowledge-base row. Skip a name that
-is used for unrelated columns (the file's note on `AMOUNT` is the example).
-See `SECURITY.md`.
+**Removed in 0.16.0, at the data team's request: a third, lowest-priority
+tier.** `FALLBACK_DESCRIPTIONS` was a hardcoded dictionary (field name and
+business description for 16 Student Data Warehouse columns — `STRM`,
+`CUM_GPA`, `ACAD_PROG`, and 13 others — sourced from the WSU Reporting
+knowledge base, captured 2026-09-22) used only when a column had neither
+override nor live text, badged **Bundled fallback**. Removed because a
+copy of glossary text hand-maintained inside the renderer's own source,
+disconnected from the real data dictionary it was captured from, is not
+maintainable: nothing forces it to be re-checked as the source dictionary
+changes, and the badge was the only signal to a viewer that the text might
+be stale. If a column that used to show bundled text now needs a tooltip,
+add the description as a workbook override (Calculated Field, or ask OAC's
+catalog owner to add/fix `_info.desc` at the source) rather than
+reintroducing a bundled copy — see `SECURITY.md`, which carried a reviewed
+exception for this dictionary specifically and no longer needs to.
 
 A display-label override changes the text in the cell. The tooltip still
 looks up the real column id and the original display name.
@@ -139,9 +193,10 @@ looks up the real column id and the original display name.
 **Tooltip: Glossary Descriptions** turns the tooltips off. The badge and the
 text are still resolved when it is on; an empty result shows no tooltip.
 
-**Debug: Log Column Metadata** prints the live map and the rendering context
-to the browser console on every full render. Leave it off. It is how the
-three description sources were confirmed.
+**Debug: Log Column Metadata** prints the live map's column ids and each
+resolved description's origin label to the browser console on every full
+render — never cell/row values. Leave it off. It is how the two
+description sources were confirmed.
 
 ---
 
@@ -152,33 +207,123 @@ buckets. There is no OAC API for one visualization instance to read
 another's DataLayout, so one plugin cannot build a combined document by
 querying its neighbors. Print Canvas works around that without needing one:
 `window.__wsuPrintCanvas` is a plain, same-page JS object (not an OAC
-mechanism), keyed by `this.getID()`. Every print-capable plugin instance —
-this one and WSU Report Print — adds a `{getContainer, build}` entry on
-`_doInitializeComponent` and removes it on `_doStopComponent`. `build()`
-returns `{title, html}` (or `null`). `html` is the table that instance's
-own Print PDF would place in the document: Glossary Pivot expands rowspans
-and stamps its title inside `build()`, and Report Print's fragment is
-already that table. A caller only joins `html`. It does not run the other
-plugin's preparation on it. The closure only captures the instance, so
-`build()` always reflects current data and Config, not whatever was true
-at registration time.
+mechanism), keyed by `printCanvasKey(self, "gp-")` — `"gp-" + getID() +
+"-" + a random suffix`, stored on the instance as `this._wsuPrintKey` so a
+repeat registration overwrites the same entry instead of accumulating
+duplicates. Every entry is `{getContainer, build}`. `build()` returns
+`{title, html, printTableSize, printOrientation}` (or `null`); `html` is the
+table that instance's own Print PDF would place in the document — the pivot
+expands rowspans and stamps its title inside `build()`. The closure captures
+the instance, so `build()` reflects current data and Config. This is a
+Glossary Pivot registry, not a general OAC canvas-export API: other WSU
+plugins and native OAC visuals are not included.
 
-Clicking Print Canvas on either plugin walks every currently registered
-entry, sorts them by DOM position (`compareDocumentPosition`, not
-registration order, so the printed order matches canvas layout), and joins
-each returned fragment into one document with a page break before every
-section after the first (`joinPrintSections`). A section whose `build()`
-throws, or returns nothing (missing layout, zero columns), is skipped —
-one bad visualization does not block the rest of the canvas from printing.
-Orientation and the overall document title come from whichever instance's
-own Config the click came from; `@page` is document-wide, so there is no
-per-section override when two instances disagree.
+**Registration fires from two places**, both calling
+`_registerPrintCanvas()`: `_doInitializeComponent`, and unconditionally at
+the top of `_doRender`, before any of its own early-return checks.
+Confirmed on the tenant: `_doInitializeComponent` does not reliably fire
+for every canvas-tab instance (no error logged either), while `_doRender`
+does. Registration is idempotent (same key, entry replaced), so calling it
+from both costs nothing when `_doInitializeComponent` did fire.
+Deregistered in `_doStopComponent`
+(`delete window.__wsuPrintCanvas[this._wsuPrintKey]`).
+
+**Only the active canvas tab prints.** A canvas the viewer switched away
+from can stay registered without having stopped. Earlier tenant states
+stacked inactive panels at the same coordinates, so geometry and viewport
+intersection alone were insufficient. The selector matches the clicked
+pivot's panel to its selected tab, then accepts only connected entries
+within that panel whose ancestor tree is not hidden, `display:none`,
+`visibility:hidden/collapse`, `aria-hidden`, or `inert`. Off-screen active
+tables remain eligible. An unreadable/detached container is skipped. If
+the clicked pivot has no recognized panel, only that pivot prints; there
+is no fail-open to all registered entries.
+
+**"Is this tab selected" is read from `data-bi-item-id`, not the tab's own
+DOM id.** OAC hosts the canvas tabs in two different widgets depending on
+context, confirmed live on the dev tenant 2026-09-24: the read/view host
+(`insightComponentManager_N`) ids its selected tab
+`<mgr>-tabitem-snapshot!<suffix>`; the in-editor host
+(`canvasComponentManager_N` — live for the entire time a property panel is
+open, and for Preview/Run entered from the editor, not just a transient
+state) ids the same tab `<mgr>-tabitem-<suffix>`, with no `snapshot!`
+infix. A selector that only matched the first template made every Print
+Canvas click taken while editing properties, or after Preview/Run, see
+zero selected tabs and fail closed — "No tables on this canvas could be
+printed" — even though the clicked panel was genuinely the one on screen.
+Confirmed live: a plain page reload does not clear this, because it
+revisits the same URL (editor mode, if that was the URL's state); only
+fully leaving the report and reopening it resets to the read-mode host.
+Fixed in 0.15.1 by reading `data-bi-item-id` off the selected tab, which
+is `<suffix>` on the editor host and `snapshot!<suffix>` on the read
+host — a stable value across both — instead of reconstructing the tab's
+own id string. If a host ever omits `data-bi-item-id`, the original id
+template is the fallback, not a fail-open. If OAC changes either
+convention, Print Canvas may print nothing rather than risk mixing
+inactive tabs; re-inspect both hosts' live DOM before altering the
+selector again.
+
+Clicking Print Canvas walks the filtered entries, sorts by panel-relative
+top then left position (DOM order breaks ties), and joins each fragment
+into one document (`joinPrintSections(tableHtmls, forceBreaks)`). A
+section whose `build()` throws, or returns nothing (missing layout, zero
+columns), is skipped — one bad visualization does not block the rest of
+the canvas from printing. `forceBreaks` is
+`Config.printCanvasSpacing === "perReport"`: when true, a page break is
+set directly on each `<table>` element's own `style` attribute (not a
+wrapping `<div>` — a wrapper div was producing blank pages and splitting a
+header from its own table in Chrome's print layout); when false
+("compact"), sections are concatenated with no break at all. Orientation
+and the overall document title come from the clicked instance; `@page` is
+document-wide, so there is no per-section override when two instances
+disagree. A mixed-orientation canvas prints with the clicked instance's
+orientation and receives a nonblocking warning. Each table's own Table
+Width setting is carried separately.
+
+**A too-wide table is fit only to a readability limit.** `fitScale` and
+`printTableLayout` provide a capped initial estimate. `fitPrintedReport`
+measures the natural width in an automatic-layout table, reduces its font
+from 9pt in 0.1pt steps, and remeasures, stopping at 6pt. It never forces
+an over-wide table into `table-layout: fixed`. If the table still exceeds
+the page content width at 6pt, it retains natural width and printing
+proceeds — confirmed live against the actual "Subject Area" Headcount
+table (genuinely ~47% over the landscape/narrow-margin content width at
+6pt, not a measurement bug). The viewer sees a **readability advisory**,
+not an error: `PRINT_OVERFLOW`'s text says the table printed and remains
+wide at the readability floor, and the `.gp-printerr` element gets a
+`gp-printnote` class that overrides its default red with a neutral gray
+(`glossaryPivotVizstyles.css`), so a genuine failure (no tables, print
+blocked) still reads as an error and this does not. This plugin never
+clips the table itself to avoid the message — whether Chrome's print
+dialog additionally auto-scales the page to avoid visible clipping is a
+host/browser behavior outside this code's control and was not confirmed
+either way as of 0.15.1; the wording was chosen to be accurate regardless
+of that answer (it does not claim the print will fail). A table that fits
+uses its own content width or fills the margins according to that
+section's `printTableSize`.
+CSS `zoom`/`transform: scale`/`filter`/`opacity` are never applied to
+printed content: Chrome's PDF printer rasterizes a zoomed/transformed page
+into one image, and Adobe Acrobat then reports that PDF as a scanned
+document. `font-size` is the one sizing lever that keeps a real text
+layer.
+
+**Print surface**: `openGlossaryPrint` always uses a hidden, off-screen
+`<iframe>` (`left:-12000px`), never `window.open()`. A visible tab or a
+chromeless popup were both tried and rejected — the only surface the
+viewer should ever see is the native print dialog itself. The iframe is
+sized to the page's content width, then its height is set to the greater
+of one page's height or the document's actual measured
+`scrollHeight`, so a multi-page Print Canvas document is not clipped to a
+single page. Cleanup attaches before `print()`, is idempotent on
+`afterprint`, removes the frame on component stop or an exception, and
+holds rapid repeat clicks. If an engine omits `afterprint`, another click
+can recover only after 30 seconds; this is not a blind removal timer.
 
 Not verified on the tenant: whether `iframe.contentWindow.print()` opens a
 dialog scoped to the iframe's document across the browsers WSU staff use,
 including Safari specifically — same open question as the single-table
 Print PDF, now more consequential since a canvas document is larger and
-more likely to span pages. See `docs/plugins/project_spec_wsu_report_print.md`.
+more likely to span pages.
 
 ---
 
@@ -202,10 +347,23 @@ appends `%`. **Compact** uses K / M / B. A non-numeric cell is left as OAC
 rendered it.
 
 The per-measure box wins over the two switches for the named measure. The
-token is the measure id, compared in upper case. `CUM_GPA:currency:2` matches
-a measure whose id is `CUM_GPA`. The title on the header, such as
-`Cumulative GPA`, does not match unless that title is the id. An id that is
-not on the pivot is ignored. Format words are lowercase.
+token is matched against the measure's real id first — `CUM_GPA:currency:2`
+matches a native measure whose id is `CUM_GPA`; the header title does not
+match unless that title happens to be the id. **If the id doesn't match,
+the token is tried again against the measure's display title** — confirmed
+live to be necessary for a calculated measure: OAC gives a calculated
+measure (Full-Time, a workbook ratio calc, ...) a real, non-null raw id,
+but an opaque, auto-generated one ("c34") that is never shown anywhere in
+the UI, so an author can only ever type what they can see — the printed
+header text — not that id. `resolveFormat` tries the id, then the title,
+so `Full-Time:number:0` matches a calculated measure titled "Full-Time"
+even though its real id is something else entirely. An id/title that
+matches neither is ignored. Format words are lowercase and must be one of
+the documented values; decimals must be `auto` or `0`–`4`. Malformed
+per-measure entries are ignored rather than breaking the whole pivot. This
+took two attempts to diagnose correctly — see CHANGELOG.md's 0.16.2 entry,
+which corrects 0.16.1's initial (wrong) diagnosis that the id came back
+null; it does not, it is simply opaque.
 
 ### Header
 | Key | Default | Values |
@@ -227,21 +385,29 @@ What hide does:
   still use its values, so two groups that share a visible label stay
   separate. If the outer field is hidden, the collapse toggle moves to the
   first visible row field and the collapsed label uses that field. The
-  collapse key stays the original outer group's start row.
+  collapse key stays the original outer group's start row. If every Row
+  field is hidden, the display shows detail rather than an aggregate with
+  no visible control to expand it.
 - A **Columns** field drops that header row. The data columns stay split by
   that field. Hiding the only column layer leaves a blank header row so the
   corner names still line up with the body.
 - A **measure** drops its data columns, including from totals and from the
   heat-map scale. A parent header's colspan counts only the columns still
   drawn. The measure-labels layer itself is not hidden as a layer; that
-  would remove every measure name.
+  would remove every measure name. `columnListed` (the function `colHidden`
+  calls) already matches by id or by display name (`nameKeys`), so hiding a
+  calculated measure by its printed title works the same way renaming one
+  does — this was checked directly against the live tenant and confirmed
+  correct, not assumed; see CHANGELOG.md's 0.16.2 entry, which corrects an
+  0.16.1 claim that this was broken.
 
 A rename changes the field title in the corner, on measure headers, and on
 a grand-total column label. It does not rename member values.
 
 Header color is painted with CSS variables (`--gp-hdr-bg`, `--gp-hdr-fg`),
 same reason as the heat map: the glossary hover rule stays able to cover
-the cell. A dark hex uses light text. Hovering a glossary header switches
+the cell. Text is chosen as black or white by contrast with the hex.
+Hovering a glossary header switches
 the label back to dark text on the teal hover fill. An invalid hex paints
 nothing.
 
@@ -256,7 +422,14 @@ nothing.
 The three total switches are independent. All three can be on. The
 right-hand column is labeled **Grand Total Column** because it is a column;
 it is the total of each row. On a wide pivot it is past the horizontal
-scrollbar.
+scrollbar. One total per measure means one per bucket from
+`bucketColsByMeasure` (§4 Format), keyed by each measure's own raw id —
+including a calculated measure's, which is real (just opaque, not the
+kind of id an author would type) and therefore already distinct per
+measure. Confirmed live: a workbook mixing native and calculated measures
+correctly produced separate ids per measure, so this was not found to be
+broken; see CHANGELOG.md's 0.16.2 entry, which corrects an 0.16.1 claim
+that calculated measures shared one bucket here.
 
 Each total is a sum of the raw numbers in the cells it covers. Blank cells
 are skipped, not treated as zero. The plugin does not know the measure's
@@ -273,17 +446,27 @@ draw a subtotal.
 | `cellColorLow` | `"#eff6ff"` | hex at the measure's minimum |
 | `cellColorHigh` | `"#1e3a8a"` | hex at the measure's maximum |
 | `showDescriptions` | `"on"` | on / off |
-| `showSourceBadges` | `"off"` | on / off — Live and Workbook override chips. Bundled fallback still shows |
+| `showSourceBadges` | `"off"` | on / off — Live and Workbook override chips |
 | `showHeaderUnderline` | `"off"` | on / off — dotted underline on headers that have a description. Tooltip, hover, and focus stay either way |
 | `tooltipAlign` | `"left"` | left / center / right — text inside the tooltip. The bubble stays centered under the header |
-| `showPrintButton` | `"on"` | on / off — the Print PDF bar on the canvas |
-| `printTitle` | `"Report"` | title repeated at the top of each printed page |
+| `showPrintPdf` | `"off"` | on / off — Print PDF on this visualization. Off until switched on |
+| `showPrintCanvas` | `"off"` | on / off — Print Canvas. Turn on for one visualization on the canvas |
 | `printOrientation` | `"landscape"` | landscape / portrait |
+| `printMargin` | `"normal"` | narrow (0.25 in) / normal (0.5 in) / wide (1 in) — `@page` margin, repeated on every page |
+| `printTableSize` | `"margins"` | margins / content — margins fills the page width when it fits; content keeps the table at its own header-driven width. Both use automatic layout and the 6pt floor for wide tables (§3a) |
+| `printCanvasSpacing` | `"perReport"` | perReport / compact — Print Canvas only. perReport forces a page break before every table after the first; compact concatenates every table with no break, minimizing blank space |
+| `printFollowTheme` | `"on"` | on / off — print buttons use the host accent color. Off keeps the fixed green |
 | `debugLogMetadata` | `"off"` | on / off |
 
 Heat-map min and max are per measure, over layout rows, excluding hidden
 measure columns and excluding total cells. Colored cells set `--gp-cell-bg`
-and `--gp-cell-fg`. Marked rows and row hover still win.
+and `--gp-cell-fg`. Marked rows and row hover still win. "Per measure"
+means per bucket from the same `computeMeasureIdByCol` used for per-measure
+format overrides and the Grand Total Column (§4 Format) — a calculated
+measure's real (if opaque) id keeps its heat-map range separate from every
+other measure's, the same as a native measure's; see CHANGELOG.md's 0.16.2
+entry, which corrects an 0.16.1 claim that calculated measures shared one
+range here.
 
 ---
 
@@ -294,7 +477,9 @@ Click a corner header (`data-gp-sort="row:<layer>"`) or a column header that
 covers exactly one data column (`data-gp-sort="col:<layer>:<dataColumn>"`).
 The same target cycles ascending, descending, off. A different target starts
 at ascending. Spanning headers and grand-total headers are not targets.
-Enter and Space activate the focused header.
+Enter and Space activate the focused header. Sort targets are in the tab
+order and expose `aria-sort`; decorative arrows are hidden from assistive
+technology. Glossary tooltip text is associated with its focused header.
 
 With one Row field, the sort is flat. With two or more, a sort on an inner
 field or on a measure reorders rows inside each outer group and leaves the
@@ -314,14 +499,19 @@ by the label. Two groups with the same text collapse separately. State is
 not reset in `_doInitializeComponent`; a new instance starts empty, and a
 saved workbook opens uncollapsed.
 
-The toggle is the arrow, not the rest of the cell. A click on the arrow
-does not mark the row.
+The toggle is a named native button with `aria-expanded`, not the rest of
+the cell. Activating it does not mark the row. Focus is restored to the
+replacement toggle after the table is rebuilt.
 
 ### Marking
 Outgoing marks use `setMark(layout, DATA, row, column)` with the original
-layout row. `data-gp-mark-rows` is `start:end` when the indexes are a
-contiguous set, and a comma list when a sort has separated them. Incoming
-marks are applied per row. `_applyMarkedRows` highlights `tr[data-gp-row]`.
+layout row. Ctrl-click or Command-click extends a mark. One table body row
+at a time is keyboard-focusable; Up/Down moves that stop, and Enter/Space
+marks its source row (Ctrl/Command extends). `data-gp-mark-rows` is
+`start:end` when the indexes are contiguous, and a comma list when a sort
+has separated them. Incoming marks are applied per row only for the
+current layout/render revision; stale callbacks are discarded.
+`_applyMarkedRows` highlights `tr[data-gp-row]`.
 
 ---
 
@@ -349,10 +539,14 @@ fields and toggles appear in the order they are added.
 | `showDescriptionsGadget` | Tooltip: Glossary Descriptions | toggle |
 | `showSourceBadgesGadget` | Tooltip: Source Badges (Live / Workbook) | toggle |
 | `showHeaderUnderlineGadget` | Tooltip: Underline Headers | toggle |
-| `tooltipAlignGadget` | Tooltip: Text Align | switcher |
-| `showPrintButtonGadget` | Print: Show Button | toggle |
-| `printTitleGadget` | Print: Report Title | text |
+| `showPrintPdfGadget` | Print: Show PDF Button | toggle |
+| `showPrintCanvasGadget` | Print: Show Canvas Button | toggle |
 | `printOrientationGadget` | Print: Page Orientation | switcher |
+| `printMarginGadget` | Print: Margins | switcher |
+| `printTableSizeGadget` | Print: Table Width | switcher |
+| `printCanvasSpacingGadget` | Print: Canvas Page Breaks | switcher |
+| `printFollowThemeGadget` | Print: Follow Theme | toggle |
+| `tooltipAlignGadget` | Tooltip: Text Align | switcher |
 | `debugLogMetadataGadget` | Debug: Log Column Metadata (Console) | toggle |
 
 The panel cannot list the fields on the viz. Hide, rename, and the

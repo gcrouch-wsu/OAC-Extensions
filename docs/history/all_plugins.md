@@ -1,9 +1,12 @@
 # All Plugins - Cross-Plugin Review Notes
 
 > **STATUS: HISTORICAL REVIEW NOTES.** Snapshot of a cross-plugin review from
-> May 2026. Items 3.1 and 3.2 have since been implemented. The durable lessons
-> now live in `docs/oac_design.md`; still-open items are tracked in
-> `CHANGELOG.md` under "Known gaps".
+> May 2026, covering the five plugins that existed then (Network, Sankey,
+> Line, Dumbbell, Lattice Scatter). It does not cover WSU Glossary Pivot.
+> Items 3.1 and 3.2 have since been implemented. The durable lessons now live
+> in `docs/oac_design.md`; still-open items are tracked in `CHANGELOG.md`
+> under "Known gaps". Current versions are the `<Viz>.VERSION` constants,
+> listed in `README.md`.
 
 This document captures plugin-level lessons that now apply across the WSU OAC
 custom visualization set, plus focused review questions for plugins that may

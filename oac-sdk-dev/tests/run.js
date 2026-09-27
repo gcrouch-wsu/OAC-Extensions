@@ -429,100 +429,6 @@ suite("WSU Network", function() {
 });
 
 // ============================================================================
-suite("WSU Report Print", function() {
-  var mod = H.loadPlugin("com-wsu-report-print", "reportPrintViz.js");
-  var config = { reportTitle: "Enrollment", orientation: "landscape", showGrandTotal: "on" };
-
-  function pivot(opts) {
-    var rowLayers = opts.rowLayers || [];
-    var headers = opts.headers || [["A"]];
-    var values = opts.values || [[1]];
-    var nRows = values.length;
-    var nCols = nRows && values[0] ? values[0].length : 0;
-    return {
-      getEdgeExtent: function(edge) {
-        if (edge === "row") return nRows;
-        if (edge === "column") return nCols;
-        return 0;
-      },
-      getLayerCount: function(edge) {
-        if (edge === "row") return rowLayers.length;
-        if (edge === "column") return headers.length;
-        return 0;
-      },
-      getLayerMetadata: function(edge, i) {
-        return edge === "row" && rowLayers[i] ? rowLayers[i].name : "";
-      },
-      getItemEndSlice: function(edge, layer, index) { return index; },
-      getValue: function(edge, a, b) {
-        if (edge === "row") return rowLayers[a] ? rowLayers[a].values[b] : "";
-        if (edge === "column") return headers[a] ? headers[a][b] : "";
-        if (edge === "data") return values[a] ? values[a][b] : null;
-        return "";
-      }
-    };
-  }
-
-  test("Print with no layout reports empty instead of doing nothing", function() {
-    var fragment = mod._buildFragment(null, config);
-    assert.strictEqual(fragment, null);
-  });
-
-  test("zero columns reports empty", function() {
-    var fragment = mod._buildFragment(pivot({ headers: [[]], values: [[]] }), config);
-    assert.strictEqual(fragment, null);
-  });
-
-  test("row labels repeat on every body row and the total row is labeled", function() {
-    var html = mod._buildReportTable(pivot({
-      rowLayers: [{ name: "College", values: ["A", "A"] }],
-      headers: [["Fall", "Spring"]],
-      values: [[1000, 20], [500, null]]
-    }), config);
-    assert.ok(html.indexOf("<thead>") >= 0);
-    assert.ok(html.indexOf("rowspan") < 0);
-    var body = html.split("<tbody>")[1];
-    assert.strictEqual((body.match(/>A</g) || []).length, 2);
-    assert.ok(body.indexOf(">Total<") >= 0);
-    assert.ok(body.indexOf("1,500") >= 0);
-    assert.ok(body.indexOf(">20<") >= 0);
-  });
-
-  test("a report with no row fields still prints the word Total", function() {
-    var html = mod._buildReportTable(pivot({
-      headers: [["Headcount"]],
-      values: [[1200], [300]]
-    }), config);
-    assert.ok(html.indexOf("class='lbl'>Total<") >= 0);
-    assert.ok(html.indexOf("1,500") >= 0);
-  });
-
-  test("cell text is escaped", function() {
-    var html = mod._buildReportTable(pivot({
-      rowLayers: [{ name: "College", values: ["<b>"] }],
-      headers: [["Fall"]],
-      values: [[1]]
-    }), config);
-    assert.ok(html.indexOf("&lt;b&gt;") >= 0);
-    assert.ok(html.indexOf("<b>") < 0);
-  });
-
-  test("Print Canvas: a page break separates two sections but not before the first", function() {
-    var joined = mod._joinPrintSections(["<table>A</table>", "<table>B</table>"]);
-    var firstWrapper = joined.split("<table>A</table>")[0];
-    var secondWrapper = joined.split("<table>A</table>")[1].split("<table>B</table>")[0];
-    assert.ok(firstWrapper.indexOf("page-break-before") < 0);
-    assert.ok(secondWrapper.indexOf("page-break-before:always") >= 0);
-  });
-
-  test("Print Canvas: a single section gets no page break", function() {
-    var joined = mod._joinPrintSections(["<table>Only</table>"]);
-    assert.ok(joined.indexOf("page-break-before") < 0);
-    assert.ok(joined.indexOf("<table>Only</table>") >= 0);
-  });
-});
-
-// ============================================================================
 suite("WSU Glossary Pivot", function() {
   var mod = H.loadPlugin("com-wsu-glossary-pivot", "glossaryPivotViz.js");
 
@@ -555,18 +461,454 @@ suite("WSU Glossary Pivot", function() {
     assert.strictEqual(flat[0][0].colspan, 2);
   });
 
-  test("Print Canvas: a page break separates two sections but not before the first", function() {
-    var joined = mod._joinPrintSections(["<table>A</table>", "<table>B</table>"]);
-    var firstWrapper = joined.split("<table>A</table>")[0];
-    var secondWrapper = joined.split("<table>A</table>")[1].split("<table>B</table>")[0];
-    assert.ok(firstWrapper.indexOf("page-break-before") < 0);
-    assert.ok(secondWrapper.indexOf("page-break-before:always") >= 0);
+  test("Print Canvas, One page per report (forceBreaks): the break goes on the table itself, not a wrapping div, and not before the first section", function() {
+    var joined = mod._joinPrintSections(["<table class='a'>A</table>", "<table class='b'>B</table>"], true);
+    assert.strictEqual(joined.indexOf("<div"), -1, "no wrapping div — a forced break on an ancestor that plays no part in the table's own pagination is a known source of an extra blank page");
+    assert.strictEqual(joined.indexOf("<table class='a'>A</table>"), 0, "first section is unchanged and starts the document");
+    assert.ok(joined.indexOf("<table style='page-break-before:always;break-before:page' class='b'>B</table>") >= 0, "break style lands on the second table's own tag");
   });
 
-  test("Print Canvas: a single section gets no page break", function() {
-    var joined = mod._joinPrintSections(["<table>Only</table>"]);
-    assert.ok(joined.indexOf("page-break-before") < 0);
-    assert.ok(joined.indexOf("<table>Only</table>") >= 0);
+  test("Print Canvas, One page per report: a single section gets no page break", function() {
+    var joined = mod._joinPrintSections(["<table>Only</table>"], true);
+    assert.strictEqual(joined, "<table>Only</table>");
+  });
+
+  test("Print Canvas, Minimize blank space (optional, forceBreaks false): sections just concatenate, no break anywhere", function() {
+    var joined = mod._joinPrintSections(["<table class='a'>A</table>", "<table class='b'>B</table>"], false);
+    assert.strictEqual(joined, "<table class='a'>A</table><table class='b'>B</table>");
+    assert.strictEqual(joined.indexOf("page-break-before"), -1);
+  });
+
+  test("a rich-text editor title prints as plain text", function() {
+    assert.strictEqual(mod._plainTitle("<p><strong>Dataset</strong></p>"), "Dataset");
+    assert.strictEqual(mod._plainTitle("&lt;p&gt;&lt;strong&gt;Dataset&lt;/strong&gt;&lt;/p&gt;"), "Dataset");
+  });
+
+  test("page margin is the property value on every page", function() {
+    assert.strictEqual(mod._printPageBox("narrow", "landscape").margin, "0.25in");
+    assert.strictEqual(mod._printPageBox("normal", "portrait").margin, "0.5in");
+    assert.strictEqual(mod._printPageBox("wide", "portrait").margin, "1in");
+    assert.strictEqual(mod._printPageBox("normal", "landscape").padding, "0");
+    assert.strictEqual(mod._printPageBox("normal", "portrait").size, "8.5in 11in");
+    assert.strictEqual(mod._printPageBox("normal", "landscape").size, "11in 8.5in");
+  });
+
+  test("a wide report scales down further in portrait than in landscape", function() {
+    var portrait = mod._fitScale(1500, "normal", "portrait");
+    var landscape = mod._fitScale(1500, "normal", "landscape");
+    assert.ok(portrait < landscape);
+    assert.ok(landscape < 1);
+    assert.strictEqual(mod._fitScale(100, "wide", "portrait"), 1);
+  });
+
+  test("a table narrower than the page sizes to the margins", function() {
+    var layout = mod._printTableLayout(400, "normal", "landscape", "margins");
+    assert.strictEqual(layout.width, "100%");
+    assert.strictEqual(layout.layout, "auto");
+    assert.strictEqual(layout.scale, 1);
+  });
+
+  test("content sizing leaves a narrow table at its own width", function() {
+    var layout = mod._printTableLayout(400, "normal", "landscape", "content");
+    assert.strictEqual(layout.width, "max-content");
+    assert.strictEqual(layout.layout, "auto");
+    assert.strictEqual(layout.scale, 1);
+  });
+
+  test("a table wider than the page reflows to the page width, with a matching font shrink", function() {
+    var expectedScale = mod._fitScale(2000, "normal", "portrait");
+    var margins = mod._printTableLayout(2000, "normal", "portrait", "margins");
+    var content = mod._printTableLayout(2000, "normal", "portrait", "content");
+    assert.ok(expectedScale < 1, "a 2000px table should not fit an untouched portrait page");
+    assert.strictEqual(margins.scale, 6 / 9, "font shrink stops at 6pt");
+    assert.strictEqual(margins.width, "max-content", "an over-wide table keeps its natural width");
+    assert.strictEqual(margins.layout, "auto");
+    assert.strictEqual(content.scale, margins.scale);
+    assert.strictEqual(content.width, "max-content");
+    assert.strictEqual(content.layout, "auto");
+  });
+
+  test("Print Canvas defaults to one page per report", function() {
+    assert.strictEqual(H.instance(mod).Config.printCanvasSpacing, "perReport");
+  });
+
+  test("print fitting remeasures at smaller text and preserves the 6pt floor", function() {
+    function table(natural, padding) {
+      return {
+        style: {}, scrollWidth: 0,
+        getBoundingClientRect: function() {
+          return { width: padding + (natural - padding) * parseFloat(this.style.fontSize || "9") / 9 };
+        }
+      };
+    }
+    var fits = table(1100, 100), over = table(1800, 100);
+    var doc = { getElementsByTagName: function() { return [fits, over]; } };
+    assert.strictEqual(mod._fitPrintedReport(doc, "landscape", "normal", ["margins", "content"]), 1);
+    assert.strictEqual(fits.style.tableLayout, "auto");
+    assert.strictEqual(fits.style.width, "100%");
+    assert.ok(parseFloat(fits.style.fontSize) >= 6 && parseFloat(fits.style.fontSize) < 9);
+    assert.strictEqual(over.style.fontSize, "6pt");
+    assert.strictEqual(over.style.width, "max-content");
+  });
+
+  test("zero-width print tables remain at 9pt", function() {
+    var table = { style: {}, scrollWidth: 0, getBoundingClientRect: function() { return { width: 0 }; } };
+    var doc = { getElementsByTagName: function() { return [table]; } };
+    assert.strictEqual(mod._fitPrintedReport(doc, "portrait", "normal", ["content"]), 0);
+    assert.strictEqual(table.style.fontSize, "9pt");
+    assert.strictEqual(table.style.width, "max-content");
+  });
+
+  test("invalid per-measure precision cannot blank the pivot", function() {
+    var parsed = mod._parseMeasureFormatOverrides("A:number:-1; B:currency:101; C:percent:2; D:bogus:2");
+    assert.deepStrictEqual(Object.keys(parsed), ["C"]);
+    assert.strictEqual(mod._formatValue(1234.5, { numberFormat: "currency", decimalPlaces: "101" }), "$1,234.50");
+  });
+
+  /* Reported live: on a pivot mixing a native measure (Headcount) with
+     calculated ones (Full-Time, Part-Time, % Full-Time), only Headcount's
+     per-measure format override took effect. Root cause, confirmed by
+     instrumenting the real getValue(..., true) call live: a calculated
+     measure's raw id comes back null, and the old code folded that into
+     the SAME "__single__" sentinel used for "no measure-labels layer at
+     all" — silently merging every calculated measure into one shared
+     bucket. That corrupted three independent features that all key off
+     this same array: per-measure format overrides could never reach a
+     calculated measure, a Grand Total Column would sum unrelated
+     calculated measures together, the heat map would pool their ranges
+     together, and Header: Hidden Columns could never hide one of them
+     (colHidden explicitly refuses to check a "__single__" id against the
+     hidden list). Fixed by falling back to the measure's own display name
+     instead of the sentinel when its raw id is null. */
+  var LM_TEST = { LAYER_DISPLAY_NAME: "displayName", LAYER_ID: "id", LAYER_ISMEASURE_LABELS: "isMeasureLabels" };
+
+  test("a calculated measure whose raw id is null keeps its own bucket, not the __single__ sentinel", function() {
+    var names = ["Headcount", "Full-Time", "Part-Time", "% Full-Time"];
+    var ids = ["HEADCOUNT", null, null, null];
+    var dl = {
+      getLayerMetadata: function(edge, layer, key) { return key === LM_TEST.LAYER_ISMEASURE_LABELS ? true : null; },
+      getValue: function(edge, layer, c, raw) { return raw ? ids[c] : names[c]; }
+    };
+    var result = mod._computeMeasureIdByCol(dl, LM_TEST, 1, names.length);
+    assert.strictEqual(result.idByCol[0], "HEADCOUNT");
+    assert.strictEqual(result.idByCol[1], "Full-Time");
+    assert.strictEqual(result.idByCol[2], "Part-Time");
+    assert.strictEqual(result.idByCol[3], "% Full-Time");
+    var distinct = {};
+    result.idByCol.forEach(function(id) { distinct[id] = true; });
+    assert.strictEqual(Object.keys(distinct).length, 4, "each measure keeps its own bucket");
+    assert.notStrictEqual(result.idByCol[1], "__single__");
+    assert.strictEqual(result.nameById["Full-Time"], "Full-Time");
+  });
+
+  test("computeMeasureIdByCol still uses the __single__ sentinel when there is truly no measure-labels layer", function() {
+    var dl = { getLayerMetadata: function() { return null; }, getValue: function() { return null; } };
+    var result = mod._computeMeasureIdByCol(dl, LM_TEST, 0, 1);
+    assert.strictEqual(result.idByCol[0], "__single__");
+  });
+
+  /* The actual live cause, found only after 0.16.1 shipped and was tested
+     against the real tenant: a calculated measure's raw id is NOT null —
+     confirmed with stack-trace-precise instrumentation on the reported
+     workbook. OAC assigns it a real but opaque, auto-generated code
+     ("c34"), never shown anywhere in the UI, so an author can only ever
+     type the printed header text into the override field — which never
+     matched that opaque id. resolveFormat now falls back to matching by
+     measure name when the id lookup misses. Verified against the exact
+     override string and opaque id from the live workbook. */
+  test("resolveFormat falls back to the measure's display name when its id is a real but opaque code", function() {
+    var overrides = mod._parseMeasureFormatOverrides("Full-Time:number:0");
+    var Config = { numberFormat: "auto", decimalPlaces: "auto" };
+    var fmt = mod._resolveFormat(Config, overrides, "c34", "Full-Time");
+    assert.strictEqual(fmt.numberFormat, "number");
+    assert.strictEqual(fmt.decimalPlaces, "0");
+  });
+
+  test("resolveFormat still prefers a real id match over the name fallback", function() {
+    var overrides = mod._parseMeasureFormatOverrides("CUM_GPA:currency:2;Cumulative GPA:number:0");
+    var Config = { numberFormat: "auto", decimalPlaces: "auto" };
+    var fmt = mod._resolveFormat(Config, overrides, "CUM_GPA", "Cumulative GPA");
+    assert.strictEqual(fmt.numberFormat, "currency", "the id match (more specific) wins over the name match");
+  });
+
+  test("resolveFormat falls back to the global Config when neither id nor name match", function() {
+    var overrides = mod._parseMeasureFormatOverrides("Full-Time:number:0");
+    var Config = { numberFormat: "percent", decimalPlaces: "1" };
+    var fmt = mod._resolveFormat(Config, overrides, "c29", "% Female");
+    assert.strictEqual(fmt.numberFormat, "percent");
+    assert.strictEqual(fmt.decimalPlaces, "1");
+  });
+
+  test("contrast choice handles bright, dark, and middle colors", function() {
+    assert.ok(mod._headerPaint("#ffffff").style.indexOf("#000000") >= 0);
+    assert.ok(mod._headerPaint("#000000").style.indexOf("#ffffff") >= 0);
+    assert.strictEqual(mod._interpolateColor("#999999", "#999999", 0.5).fg, "#000000");
+  });
+
+  test("Print Canvas includes off-screen active tables in visual order and excludes inactive panels", function() {
+    var selected = { id: "mgr-tabitem-snapshot!canvas!1" };
+    var manager = { id: "mgr", querySelector: function() { return selected; }, parentNode: null };
+    var content = { parentNode: manager };
+    function panel(id) {
+      return { id: "mgr-" + id, className: "bitech-rui-tab-panel-wrapper", parentNode: content,
+        getBoundingClientRect: function() { return { top: 100, left: 0, width: 1000, height: 1000 }; },
+        getAttribute: function() { return null; } };
+    }
+    var active = panel("canvas!1"), inactive = panel("canvas!3");
+    function container(parent, top, left) {
+      return { parentNode: parent, getAttribute: function() { return null; },
+        getBoundingClientRect: function() { return { top: top, left: left, width: 200, height: 100 }; },
+        compareDocumentPosition: function() { return 0; } };
+    }
+    var self = container(active, 200, 20);
+    var above = container(active, -500, 20);
+    var below = container(active, 1300, 20);
+    var stale = container(inactive, 200, 20);
+    var hidden = container(active, 250, 20); hidden._css = { display: "none", visibility: "visible" };
+    var detached = container(active, 300, 20); detached._connected = false;
+    function entry(el) { return { getContainer: function() { return el; }, build: function() {} }; }
+    var eSelf = entry(self), eAbove = entry(above), eBelow = entry(below);
+    var found = mod._collectPrintCanvasEntries(self, {
+      self: eSelf, above: eAbove, below: eBelow, stale: entry(stale), hidden: entry(hidden),
+      detached: entry(detached), broken: { getContainer: function() { throw Error("gone"); }, build: function() {} }
+    });
+    assert.deepStrictEqual(Array.prototype.slice.call(found), [eAbove, eSelf, eBelow]);
+  });
+
+  test("Print Canvas fails closed if the clicked panel is not selected", function() {
+    var manager = { id: "mgr", querySelector: function() { return { id: "mgr-tabitem-snapshot!canvas!3" }; } };
+    var panel = { id: "mgr-canvas!1", className: "bitech-rui-tab-panel-wrapper",
+      parentNode: { parentNode: manager } };
+    var el = { parentNode: panel };
+    assert.strictEqual(mod._collectPrintCanvasEntries(el, { x: { getContainer: function() { return el; }, build: function() {} } }).length, 0);
+  });
+
+  test("Print Canvas fails closed if the canvas panel cannot be measured", function() {
+    var manager = { id: "mgr", querySelector: function() { return { id: "mgr-tabitem-snapshot!canvas!1" }; } };
+    var panel = { id: "mgr-canvas!1", className: "bitech-rui-tab-panel-wrapper",
+      parentNode: { parentNode: manager }, getBoundingClientRect: function() { throw Error("removed"); } };
+    var el = { parentNode: panel };
+    assert.strictEqual(mod._collectPrintCanvasEntries(el, { x: { getContainer: function() { return el; }, build: function() {} } }).length, 0);
+  });
+
+  /* The in-editor tab-panel host (canvasComponentManager, live for the
+     entire time a property panel is open, and for Preview/Run entered
+     from the editor) ids its selected tab "<mgr>-tabitem-<suffix>", with
+     no "snapshot!" infix, unlike the read-mode host
+     (insightComponentManager: "<mgr>-tabitem-snapshot!<suffix>"). Before
+     this was recognized, every Print Canvas click taken while editing
+     properties saw zero selected tabs and failed closed, even though the
+     clicked panel was genuinely the one on screen — confirmed live on the
+     dev tenant, reported as "No tables on this canvas could be printed"
+     immediately after changing Print Orientation, persisting until the
+     report was fully closed and reopened (a fresh load restores the
+     read-mode host). */
+  function selectableFixture(panelSuffix, selectedDataBiItemId) {
+    var selected = { id: "mgr-tabitem-x", getAttribute: function(name) {
+      return name === "data-bi-item-id" ? selectedDataBiItemId : null;
+    } };
+    var manager = { id: "mgr", querySelector: function() { return selected; } };
+    var panel = { id: "mgr-" + panelSuffix, className: "bitech-rui-tab-panel-wrapper",
+      parentNode: { parentNode: manager },
+      getBoundingClientRect: function() { return { top: 0, left: 0, width: 500, height: 300 }; },
+      getAttribute: function() { return null; } };
+    var el = { parentNode: panel, getAttribute: function() { return null; },
+      getBoundingClientRect: function() { return { top: 10, left: 10, width: 200, height: 100 }; },
+      compareDocumentPosition: function() { return 0; } };
+    return mod._collectPrintCanvasEntries(el, { x: { getContainer: function() { return el; }, build: function() {} } });
+  }
+
+  test("Print Canvas recognizes the in-editor tab id shape (data-bi-item-id, no snapshot! prefix)", function() {
+    assert.strictEqual(selectableFixture("canvas!3", "canvas!3").length, 1);
+  });
+
+  test("Print Canvas recognizes the read-mode tab id shape via data-bi-item-id (snapshot! prefix)", function() {
+    assert.strictEqual(selectableFixture("canvas!1", "snapshot!canvas!1").length, 1);
+  });
+
+  test("Print Canvas fails closed when data-bi-item-id belongs to a different panel", function() {
+    assert.strictEqual(selectableFixture("canvas!3", "canvas!1").length, 0);
+    assert.strictEqual(selectableFixture("canvas!3", "snapshot!canvas!1").length, 0);
+  });
+
+  test("an empty render invalidates the previous printable layout", function() {
+    var viz = H.instance(mod);
+    viz.getContainerElem = function() { return {}; };
+    viz._lastDataLayout = { old: true };
+    viz._markedRows[4] = true;
+    viz._doRender({ get: function() { return null; } });
+    assert.strictEqual(viz._lastDataLayout, null);
+    assert.strictEqual(Object.keys(viz._markedRows).length, 0);
+  });
+
+  test("a removed live description leaves no tooltip (no bundled fallback, removed v0.16.0)", function() {
+    var viz = H.instance(mod);
+    var layout = {};
+    viz.getContainerElem = function() { return {}; };
+    viz._buildTable = function() { return "<table></table>"; };
+    viz._replaceTableHtml = function() {};
+    viz._wireTooltips = viz._wireMarking = viz._wireKeyboardRows = viz._wireGroupToggle = viz._wireSort = viz._applyMarkedRows = function() {};
+    function context(map) {
+      return { get: function(key) {
+        if (key === "dl") return layout;
+        if (key === "vizContext") return { _properties: { "obitech-report/datavisualization#columnInfoMap": map } };
+        return null;
+      } };
+    }
+    viz._doRender(context({ CUM_GPA: { _info: { desc: "Temporary text" } } }));
+    assert.strictEqual(viz._glossary.getDescription("CUM_GPA", "CUM_GPA").text, "Temporary text");
+    viz._doRender(context({}));
+    assert.strictEqual(viz._glossary.getDescription("CUM_GPA", "CUM_GPA"), null);
+  });
+
+  test("a workbook override still outranks live catalog text (2-tier ranking after v0.16.0)", function() {
+    var glossary = mod._buildGlossary();
+    glossary.mergeLive({ CUM_GPA: { text: "Catalog text", origin: "live" } });
+    assert.strictEqual(glossary.getDescription("CUM_GPA", "CUM_GPA").text, "Catalog text");
+    assert.strictEqual(glossary.getDescription("CUM_GPA", "CUM_GPA").origin, "live");
+    glossary.mergeLive({ CUM_GPA: { text: "Author's own wording", origin: "override" } });
+    assert.strictEqual(glossary.getDescription("CUM_GPA", "CUM_GPA").text, "Author's own wording");
+    assert.strictEqual(glossary.getDescription("CUM_GPA", "CUM_GPA").origin, "override");
+  });
+
+  test("a column with neither live nor override text has no tooltip", function() {
+    var glossary = mod._buildGlossary();
+    assert.strictEqual(glossary.getDescription("NOT_A_REAL_COLUMN", "NOT_A_REAL_COLUMN"), null);
+  });
+
+  /* Closes a gap an independent review found: the tests above exercise only
+     the pure glossary functions, not the actual rendered header markup. A
+     future change could leave gp-has-desc (and the tooltip hover/focus
+     hooks that class wires) on a no-match header while those tests still
+     passed. This renders a real table through _buildTable and inspects the
+     header <th> HTML for the class itself, for both a matched and an
+     unmatched row layer. */
+  test("a no-match header carries no gp-has-desc class; a matched one does", function() {
+    var viz = H.instance(mod, null, { showDescriptions: "on" });
+    viz._glossary = mod._buildGlossary();
+    viz._glossary.mergeLive({ OUTER: { text: "Outer group description", origin: "live" } });
+    var layout = {
+      getLayerCount: function(edge) { return edge === "row" ? 2 : (edge === "column" ? 1 : 0); },
+      getEdgeExtent: function(edge) { return edge === "row" ? 1 : (edge === "column" ? 1 : 0); },
+      getLayerMetadata: function(edge, layer, key) {
+        if (key === "isMeasureLabels") return false;
+        if (key === "id") return edge === "row" ? (layer ? "INNER" : "OUTER") : "CATEGORY";
+        return edge === "row" ? (layer ? "Inner" : "Outer") : "Category";
+      },
+      getValue: function(edge, a, b) {
+        if (edge === "row") return a === 0 ? "Group" : "A";
+        if (edge === "column") return "Member";
+        if (edge === "data") return 1;
+        return null;
+      },
+      getItemEndSlice: function(edge, layer, index) { return index; }
+    };
+    var html = viz._buildTable(layout);
+    function cellAttrs(sortMarker) {
+      var markerIdx = html.indexOf(sortMarker);
+      assert.ok(markerIdx >= 0, sortMarker + " should be in the rendered table");
+      var openIdx = html.lastIndexOf("<th", markerIdx);
+      return html.slice(openIdx, markerIdx);
+    }
+    assert.ok(cellAttrs("data-gp-sort='row:0'").indexOf("gp-has-desc") >= 0,
+      "OUTER has a live description and should carry gp-has-desc");
+    assert.ok(cellAttrs("data-gp-sort='row:1'").indexOf("gp-has-desc") < 0,
+      "INNER has no description and must not carry gp-has-desc");
+  });
+
+  test("a late marking callback cannot overwrite a newer layout", function() {
+    var viz = H.instance(mod);
+    var pending = [];
+    var layoutA = {}, layoutB = {};
+    viz._applyMarkedRows = function() {};
+    viz.getMarkingService = function() { return {
+      getUpdatedMarkingSet: function(dl, op, callback) { pending.push(callback); },
+      traverseDataEdgeMarks: function(dl, callback) { callback(7); }
+    }; };
+    viz._lastDataLayout = layoutA;
+    viz._renderRevision = 1;
+    viz._syncIncomingMarks({ get: function() { return layoutA; } });
+    viz._lastDataLayout = layoutB;
+    viz._renderRevision = 2;
+    viz._markedRows[3] = true;
+    pending[0]();
+    assert.strictEqual(viz._markedRows[3], true);
+    viz._syncIncomingMarks({ get: function() { return layoutB; } });
+    pending[1]();
+    assert.strictEqual(viz._markedRows[7], true);
+    assert.strictEqual(viz._markedRows[3], undefined);
+  });
+
+  test("print handlers exist before print; repeat, afterprint, and exceptions clean the iframe", function() {
+    var frames = [], wins = [];
+    var body = {
+      appendChild: function(frame) { frame.parentNode = this; frames.push(frame); },
+      removeChild: function(frame) { frames.splice(frames.indexOf(frame), 1); frame.parentNode = null; }
+    };
+    var printDoc = {
+      body: { getBoundingClientRect: function() {}, scrollHeight: 900 },
+      documentElement: { scrollHeight: 900 },
+      open: function() {}, write: function() {}, close: function() {},
+      getElementsByTagName: function() { return []; }
+    };
+    var outerDoc = { body: body, createElement: function() {
+      var win = { document: printDoc, focus: function() {}, print: function() {
+        assert.strictEqual(typeof this.onafterprint, "function", "handler registered before print");
+      } };
+      wins.push(win);
+      return { style: {}, setAttribute: function() {}, contentWindow: win, parentNode: null };
+    } };
+    var printMod = H.loadPlugin("com-wsu-glossary-pivot", "glossaryPivotViz.js", { document: outerDoc });
+    var viz = H.instance(printMod);
+    assert.strictEqual(printMod._openGlossaryPrint(viz, "<html></html>", "landscape", "normal", ["margins"]).ok, true);
+    assert.strictEqual(frames.length, 1);
+    assert.strictEqual(printMod._openGlossaryPrint(viz, "<html></html>", "landscape", "normal", ["margins"]).busy, true);
+    assert.strictEqual(frames.length, 1, "rapid repeat preserves the active print frame");
+    wins[0].onafterprint();
+    assert.strictEqual(frames.length, 0);
+    assert.strictEqual(viz._printFrame, null);
+    assert.strictEqual(printMod._openGlossaryPrint(viz, "<html></html>", "landscape", "normal", ["margins"]).ok, true);
+    viz._doStopComponent();
+    assert.strictEqual(frames.length, 0, "component stop removes its print frame");
+    outerDoc.createElement = function() {
+      var win = { document: printDoc, focus: function() {}, print: function() { throw Error("printer failed"); } };
+      return { style: {}, setAttribute: function() {}, contentWindow: win, parentNode: null };
+    };
+    assert.strictEqual(printMod._openGlossaryPrint(viz, "<html></html>", "landscape", "normal", ["margins"]).ok, false);
+    assert.strictEqual(frames.length, 0, "exception removes its frame");
+    assert.strictEqual(viz._printFrame, null);
+  });
+
+  test("sort and collapse stay keyboard reachable; hiding all row fields restores detail", function() {
+    var viz = H.instance(mod, null, { rowGroupCollapse: "on", showDescriptions: "off" });
+    viz._glossary = mod._buildGlossary();
+    var layout = {
+      getLayerCount: function(edge) { return edge === "row" ? 2 : (edge === "column" ? 1 : 0); },
+      getEdgeExtent: function(edge) { return edge === "row" ? 2 : (edge === "column" ? 1 : 0); },
+      getLayerMetadata: function(edge, layer, key) {
+        if (key === "isMeasureLabels") return false;
+        if (key === "id") return edge === "row" ? (layer ? "INNER" : "OUTER") : "CATEGORY";
+        return edge === "row" ? (layer ? "Inner" : "Outer") : "Category";
+      },
+      getValue: function(edge, a, b, raw) {
+        if (edge === "row") return a === 0 ? "Group" : (b ? "B" : "A");
+        if (edge === "column") return "Member";
+        if (edge === "data") return b ? 2 : 1;
+        return null;
+      },
+      getItemEndSlice: function(edge, layer, index) { return edge === "row" && layer === 0 ? 1 : index; }
+    };
+    var expanded = viz._buildTable(layout);
+    assert.ok(expanded.indexOf("aria-expanded='true'") >= 0);
+    assert.ok(expanded.indexOf("<button type='button' class='gp-group-toggle'") >= 0);
+    assert.ok(expanded.indexOf("data-gp-sort='row:0' aria-sort='none'") >= 0);
+    assert.ok(expanded.indexOf("scope='row'") >= 0);
+    viz._collapsedGroups[0] = true;
+    assert.ok(viz._buildTable(layout).indexOf("aria-expanded='false'") >= 0);
+    viz.Config.hiddenColumns = "OUTER; INNER";
+    var hidden = viz._buildTable(layout);
+    assert.strictEqual(hidden.indexOf("gp-collapsed"), -1, "a hidden control cannot leave an unexpandable aggregate");
+    assert.ok(hidden.indexOf("data-gp-row='0'") >= 0 && hidden.indexOf("data-gp-row='1'") >= 0);
   });
 });
 

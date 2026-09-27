@@ -31,12 +31,13 @@ the date.
 
 ## 1. Dependency and lifecycle baseline
 
-Load all five plugins in one workbook. For each: resize the viz, switch
+Load all seven plugins in one workbook. For each: resize the viz, switch
 canvases, delete and re-add, save, reopen the workbook, present mode.
 
 **Pass:** no module-resolution errors, no exceptions in the console, no stale
 vis-network instance after delete (Network), no orphaned tooltip `<div>` on
-`<body>` after delete (all five).
+`<body>` after delete (the five SVG plugins). Glossary Pivot's tooltip is
+inside its own container (`.gp-tip`), so delete should take it with the viz.
 
 ## 2. Replacement and cache behavior
 
@@ -62,7 +63,8 @@ versions*, not a contract.
 ## 3. Data-model governor boundaries
 
 Each manifest sets `dataModelGovernor.dm1.rows` (Network 70 000; Sankey and
-Lattice 50 000; Line and Dumbbell 10 000). Build synthetic datasets that yield
+Lattice 50 000; Line, Dumbbell, and Glossary Pivot 10 000). Glossary Pivot
+also caps columns at 500. Build synthetic datasets that yield
 N−1, N, N+1 and ≈2N rows for one plugin of each limit.
 
 **Pass:** you can say whether the host rejects the query, truncates silently,
@@ -83,7 +85,8 @@ vizzes and vice versa; clearing works both ways; *Use as Filter* filters
 without the plugin misreading it as a highlight. Record inbound-mark gaps
 against issue #9 (Network, Sankey, Lattice do not respond to inbound marks;
 this is separate from data actions, which consume marked context and are not
-a substitute).
+a substitute). Glossary Pivot does respond to inbound marks, at row
+granularity only.
 
 ## 5. Grammar and property panels
 

@@ -5,6 +5,8 @@
   flex-direction: column;
   width: 100%;
   height: 100%;
+  --wsu-btn-bg: var(--oj-button-call-to-action-chrome-bg-color, var(--oj-core-brand-1, var(--oj-core-brand-color-1, #1f6f6b)));
+  --wsu-btn-fg: var(--oj-button-call-to-action-chrome-text-color, #ffffff);
 }
 
 .gp-printbar {
@@ -23,17 +25,17 @@
 .gp-printbtn {
   border: 0;
   border-radius: 4px;
-  background: #1f6f6b;
-  color: #ffffff;
+  background: var(--wsu-btn-bg);
+  color: var(--wsu-btn-fg);
   font: inherit;
   font-weight: 700;
   padding: 4px 10px;
   cursor: pointer;
 }
 
-.gp-printbtn:hover { background: #185854; }
+.gp-printbtn:hover { background: color-mix(in srgb, var(--wsu-btn-bg) 85%, #000000); }
 .gp-printbtn:focus {
-  outline: 2px solid #1f6f6b;
+  outline: 2px solid var(--wsu-btn-bg);
   outline-offset: 2px;
 }
 
@@ -42,25 +44,32 @@
    less common action (this table alone vs. every print-capable viz on the
    canvas). */
 .gp-printcanvasbtn {
-  border: 1px solid #1f6f6b;
+  border: 1px solid var(--wsu-btn-bg);
   border-radius: 4px;
   background: #ffffff;
-  color: #1f6f6b;
+  color: var(--wsu-btn-bg);
   font: inherit;
   font-weight: 700;
   padding: 3px 10px;
   cursor: pointer;
 }
 
-.gp-printcanvasbtn:hover { background: #eef6f5; }
+.gp-printcanvasbtn:hover { background: color-mix(in srgb, var(--wsu-btn-bg) 12%, #ffffff); }
 .gp-printcanvasbtn:focus {
-  outline: 2px solid #1f6f6b;
+  outline: 2px solid var(--wsu-btn-bg);
   outline-offset: 2px;
 }
 
 .gp-printerr {
   color: #8a2b2b;
   font-size: 12px;
+}
+
+/* A too-wide-at-6pt table or a mixed-orientation canvas already printed —
+   this is a readability advisory, not a failure. Neutral gray instead of
+   gp-printerr's red keeps that distinction visible, not just in the text. */
+.gp-printerr.gp-printnote {
+  color: #545c66;
 }
 
 .gp-shell > .gp-wrap {
@@ -199,6 +208,7 @@
   font-size: 12px;
   line-height: 1.45;
   white-space: normal;
+  text-align: left;
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
@@ -213,6 +223,7 @@
 .gp-tip-name {
   font-weight: 650;
   margin-bottom: 4px;
+  text-align: inherit;
 }
 
 .gp-tip-src {
@@ -231,10 +242,20 @@
 
 .gp-tip-desc {
   color: #545c66;
+  text-align: inherit;
 }
 
-.gp-tip.gp-align-center { text-align: center; }
-.gp-tip.gp-align-right { text-align: right; }
+/* The viz tile centers its own text. These classes have to win on the tip
+   and on the name/description, which are the elements that paint the words. */
+.gp-tip.gp-align-left,
+.gp-tip.gp-align-left .gp-tip-name,
+.gp-tip.gp-align-left .gp-tip-desc { text-align: left; }
+.gp-tip.gp-align-center,
+.gp-tip.gp-align-center .gp-tip-name,
+.gp-tip.gp-align-center .gp-tip-desc { text-align: center; }
+.gp-tip.gp-align-right,
+.gp-tip.gp-align-right .gp-tip-name,
+.gp-tip.gp-align-right .gp-tip-desc { text-align: right; }
 
 /* ---- marking (row-level click-to-select) ---- */
 .gp-table th.gp-rowhdr[data-gp-mark-rows],
@@ -269,10 +290,19 @@
 /* ---- row group collapse ---- */
 .gp-table .gp-group-toggle {
   display: inline-block;
-  width: 12px;
+  min-width: 16px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
   cursor: pointer;
   user-select: none;
   color: #6b7280;
+}
+
+.gp-table .gp-group-toggle:focus {
+  outline: 2px solid #1f6f6b;
+  outline-offset: 1px;
 }
 
 .gp-table tr.gp-group-row th.gp-group-label,

@@ -55,6 +55,7 @@ DataVisualization.prototype.getCachedColorInterpolator = function() { throw new 
 DataVisualization.prototype.getDataItemColorInfo = function() { throw new Error("no color service in tests"); };
 DataVisualization.prototype.subscribeToEvent = function() {};
 DataVisualization.prototype._setIsRendered = function() {};
+DataVisualization.prototype._doStopComponent = function() {};
 DataVisualization.prototype.isStarted = function() { return true; };
 DataVisualization.prototype.getContainerElem = function() { return null; };
 
@@ -103,6 +104,7 @@ function documentStub() {
   return {
     createElement: function(tag) { return el(tag); },
     createTextNode: function(t) { var n = el("#text"); n.textContent = String(t); return n; },
+    documentElement: { contains: function(node) { return node && node._connected !== false; } },
     addEventListener: function() {}, removeEventListener: function() {}
   };
 }
@@ -118,7 +120,9 @@ function stubFor(dep) {
   if (dep === "obitech-application/gadgets") return {};
   if (dep === "obitech-report/gadgetdialog") return {};
   if (dep === "obitech-application/extendable-ui-definitions") return { GD_PANEL_ID_GENERAL: "general", GadgetTypeIDs: {} };
-  if (dep === "obitech-reportservices/data") return { LayerMetadata: { LAYER_DISPLAY_NAME: "displayName" } };
+  if (dep === "obitech-reportservices/data") return { LayerMetadata: {
+    LAYER_DISPLAY_NAME: "displayName", LAYER_ID: "id", LAYER_ISMEASURE_LABELS: "isMeasureLabels"
+  } };
   if (dep === "obitech-appservices/logger") return { Logger: Logger };
   if (dep === "d3v6js") return d3Stub();
   if (/vis-network/.test(dep)) return { DataSet: function() {}, Network: function() {} };
@@ -142,17 +146,20 @@ function loadNlsBundle(modulePath) {
 
 // ---- module loader ---------------------------------------------------------
 
-function loadPlugin(folder, file) {
+function loadPlugin(folder, file, environment) {
   var code = fs.readFileSync(path.join(SRC, folder, file), "utf8");
   var exported = null;
   var sandbox = {
     define: function(deps, factory) { exported = factory.apply(null, deps.map(stubFor)); },
     document: documentStub(),
-    window: { pageXOffset: 0, pageYOffset: 0, innerWidth: 1200, innerHeight: 800 },
+    window: { pageXOffset: 0, pageYOffset: 0, innerWidth: 1200, innerHeight: 800,
+      getComputedStyle: function(node) { return node._css || { display: "block", visibility: "visible" }; } },
     console: console, Map: Map, Set: Set, Object: Object, Array: Array, Number: Number, String: String,
     Math: Math, JSON: JSON, parseFloat: parseFloat, parseInt: parseInt, isNaN: isNaN, isFinite: isFinite,
     Error: Error, RegExp: RegExp, Date: Date, Infinity: Infinity
   };
+  if (environment && environment.document) sandbox.document = environment.document;
+  if (environment && environment.window) sandbox.window = environment.window;
   vm.runInNewContext(code, sandbox, { filename: file });
   if (!exported || !exported.createClientComponent) throw new Error(file + " did not export createClientComponent");
   return exported;

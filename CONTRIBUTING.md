@@ -31,6 +31,9 @@ the bar is: keep changes scoped, say what you tested, and keep real data out.
 Only synthetic data may be committed (`examples/`). Never commit student-level
 data, production OAC/SDW exports, data dictionaries not cleared for
 publication, credentials, or internal server names. See `SECURITY.md`.
+The column descriptions in Glossary Pivot's `FALLBACK_DESCRIPTIONS` are the
+exception recorded there; do not grow that map with rows, exports, or names
+that were not cleared the same way.
 
 ## Adding a new plugin
 
@@ -48,6 +51,7 @@ sankey-<topic>
 line-<topic>
 dumbbell-<topic>
 lattice-<topic>
+glossary-<topic>
 docs-<topic>
 ```
 
