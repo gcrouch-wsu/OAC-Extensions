@@ -6,7 +6,8 @@ source of truth — check them directly (`grep VERSION` in the plugin's own
 `.js` file) rather than trusting a number restated in prose here, including
 this one. As of commit `0e043f3` (2026-09-27), `main` and `origin/main` agree:
 Network 1.2.2, Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, Lattice Scatter
-1.1.2, Glossary Pivot 0.16.2. WSU Report Print has been removed; Glossary
+1.1.2, Glossary Pivot 0.16.2 (0.17.0 pushed 2026-09-29, commit `b7247e5`;
+0.18.0 below). WSU Report Print has been removed; Glossary
 Pivot prints its own table and the canvas.
 
 This file's own history below predates that sync — entries before 2026-09-27
@@ -20,6 +21,51 @@ or Glossary Pivot. Headings below that say "Unreleased" mean "no git tag".
 The 1.x commits they describe are on `main`.
 
 Glossary Pivot versions on its own line, not on the 1.x tags.
+
+## 2026-09-29 — WSU Glossary Pivot 0.18.0 — data bars
+
+Data-team request after 0.17.0: in-cell bars like the native pivot's
+per-column Chart: Standard Bar / Show value: After Bar / Color setting,
+chosen per column in one text field.
+
+- **Style: Data Bars** (`dataBars`, text): `NAME: #hex; NAME: #hex: 100%`.
+  Only listed measures get a bar, each in its own color (a bare name uses a
+  default slate). Names match like hide and rename, so calculated measures
+  (% Female) work. A non-hex color word is rejected and logged, not guessed.
+- **Standard bar** runs from zero to the measure's largest value on the
+  pivot (2,529 is 58% of a 4,360 bar), matching the native pivot's
+  screenshot. **100% bar** (`: 100%`) is measured against 100%: against 1
+  when the measure holds fractions (0.398 shown as 39.8%), otherwise
+  against 100 (a column storing 89.14); clamped to a full bar. The native
+  option's exact semantics were not confirmed; this is the documented
+  interpretation. Zero and negative values draw no bar.
+- **Number after the bar**, right-aligned at the end of the cell, so it
+  lines up with a total line (e.g. a 10-year `avg` from Totals: Measure
+  Rules). Every number in a barred column is given the width of the
+  column's widest number, so the bar area is identical in every row and
+  bar lengths compare fairly. Checked in headless Chrome: equal track
+  widths in every row and identical number right edges, total row
+  included.
+- Bars are not drawn on total, subtotal, or collapsed rows. A barred
+  measure does not also get the heat map. The bar is `aria-hidden`; the
+  number stays the cell's text. Print keeps bar colors
+  (`print-color-adjust: exact`).
+- Known limit: a pivot with a single measure has no measure-labels layer
+  to match a name against, so bars need two or more measures on Values.
+
+New Config key `dataBars` (default empty — saved workbooks unchanged).
+`node tests/run.js` 85 passed (2 new), lint clean.
+
+Installed on the WSU dev tenant 2026-09-29 and checked live on "Test
+census student profile": loaded module has the data-bar code; set
+`Headcount: #981e32; % Female: #9ad3d9; % Minority: #de7f11` (colors read
+from the native pivot's own bars on that workbook); bar-track widths were
+equal in every row (48px) and each barred column's numbers shared one
+right edge with the Total line; bar proportions match the native pivot's
+(% Female 53.0 vs 75.4). Saved to the workbook and confirmed after
+reopening. The 48px bar-track floor adds width, so that table again needs
+the horizontal scrollbar at the canvas's current size. The 100% option and
+Print PDF with bars were not exercised on the tenant.
 
 ## 2026-09-29 — WSU Glossary Pivot 0.17.0 — data-team fix list: rate totals, alignment, wrapping and widths
 

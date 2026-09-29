@@ -358,3 +358,36 @@
   color: #1f6f6b;
   vertical-align: 1px;
 }
+
+/* ---- data bars (0.18.0) ---- */
+/* Bar first, number last and right-aligned, so the number column lines up
+   with a total line's right-aligned value. The track has a floor width so
+   a Fit content table does not squeeze the bar to nothing. */
+.gp-table td.gp-bar-cell {
+  text-align: right;
+}
+
+.gp-table .gp-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gp-table .gp-bar-track {
+  flex: 1 1 auto;
+  min-width: 48px;
+  height: 14px;
+}
+
+.gp-table .gp-bar {
+  display: block;
+  height: 100%;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.gp-table .gp-bar-num {
+  flex: 0 0 auto;
+  margin-left: auto;
+  text-align: right;
+}

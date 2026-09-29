@@ -13,7 +13,7 @@ WSU Glossary Pivot development without re-deriving design decisions.
 - **Short name**: WSU Glossary Pivot
 - **Category**: WSU
 - **Root id**: `com-wsu-glossary-pivot`
-- **Version constant**: `GlossaryPivotViz.VERSION = "0.17.0"` (see `CHANGELOG.md`)
+- **Version constant**: `GlossaryPivotViz.VERSION = "0.18.0"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-glossary-pivot.zip`
 
@@ -56,6 +56,9 @@ It is not a reimplementation of every native-pivot command.
 - **Hide and rename** — a field can stay in the query (so order and groups
   still follow it) and be omitted from the drawing. A display label changes
   the field title, not the member values and not the glossary lookup.
+- **Data bars** — an in-cell bar before the number on the measures listed
+  in Style: Data Bars, each in its own color; standard (zero to the
+  column's largest value) or 100%.
 - **Header colors and a per-measure heat map** — hex text fields. Empty
   header hex keeps the stylesheet gray. Heat map defaults off.
 - **Print PDF** — a button on the pivot opens the browser print dialog
@@ -484,6 +487,7 @@ draw a subtotal.
 | `cellColor` | `"off"` | on / off — per-measure heat map on value cells |
 | `cellColorLow` | `"#eff6ff"` | hex at the measure's minimum |
 | `cellColorHigh` | `"#1e3a8a"` | hex at the measure's maximum |
+| `dataBars` | `""` | `NAME: #hex; NAME: #hex: 100%` — in-cell bar before the number on listed measures |
 | `showDescriptions` | `"on"` | on / off |
 | `showSourceBadges` | `"off"` | on / off — Live and Workbook override chips |
 | `showHeaderUnderline` | `"off"` | on / off — dotted underline on headers that have a description. Tooltip, hover, and focus stay either way |
@@ -537,6 +541,32 @@ space (`labelHtml`). Checked in headless Chrome with the screenshot's
 headers at 40px and 90px: no word split. The print stylesheet dropped
 `overflow-wrap: break-word` for the same reason; a table still too wide
 at 6pt runs past the margin with the overflow advisory.
+
+### Data bars
+`dataBars` lists measures, each with an optional hex color and an optional
+`100%` flag, separated by semicolons: `Headcount: #981e32; % Female:
+#9fd3dc; % Minority: #e08a1e: 100%`. A bare name uses `#5b7c99`. Names match
+like hide and rename (id, id tail, display name). A color that is not hex
+rejects the entry (logged).
+
+- **Standard**: bar length = value ÷ the measure's largest value over the
+  pivot's rows (hidden measures excluded, total rows excluded), from zero.
+- **100%**: bar length = value ÷ 100%, where 100% is 1 when the measure's
+  values all lie within −1…1 (fractions shown as percent) and 100
+  otherwise; clamped at a full bar. This is the plugin's interpretation of
+  the native pivot's 100% bar, not a confirmed match.
+- Zero, negative, and blank values draw no bar.
+
+Markup: `td.gp-bar-cell > .gp-bar-wrap > (.gp-bar-track > .gp-bar) +
+.gp-bar-num`. The number is right-aligned at the cell's end and every
+number in the column has the column's widest number's width (`min-width`
+in `ch`, tabular figures), so the track is identical in every row and the
+number column lines up with total rows. The track has a 48px floor on
+screen (36px in print). Bars replace the heat map on their measure and are
+not drawn on total, subtotal, or collapsed rows. `.gp-bar` is
+`aria-hidden` through its track and prints with `print-color-adjust:
+exact`. A single-measure pivot has no measure-labels layer, so bars need
+at least two measures on Values.
 
 ---
 
@@ -616,6 +646,7 @@ fields and toggles appear in the order they are added.
 | `cellColorHighGadget` | Style: Cell Color High (hex) | text |
 | `headerColorGadget` | Style: Header Color (hex) | text |
 | `headerDataColorGadget` | Style: Header Data Color (hex) | text |
+| `dataBarsGadget` | Style: Data Bars (name: #hex[: 100%]; ...) | text |
 | `showDescriptionsGadget` | Tooltip: Glossary Descriptions | toggle |
 | `showSourceBadgesGadget` | Tooltip: Source Badges (Live / Workbook) | toggle |
 | `showHeaderUnderlineGadget` | Tooltip: Underline Headers | toggle |

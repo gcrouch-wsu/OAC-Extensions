@@ -243,6 +243,14 @@
  *     may contain a colon, match a qualified id by its last segment the
  *     same way hide and rename do, and log rejected entries.
  *   - The tooltip heading shows the display label a header was renamed to.
+ *
+ * v0.18.0 — Style: Data Bars (data-team request, 2026-09-29): an in-cell bar
+ *   before the number on the measures listed as "NAME: #hex[: 100%]; ...".
+ *   Standard bars run from zero to the measure's largest value; a 100% bar
+ *   is measured against 100% (1 for fraction-valued measures, else 100).
+ *   The number stays at the right end of the cell so it lines up with a
+ *   total line. Bars replace the heat map on that measure and are not
+ *   drawn on total rows.
  ******************************************************************************/
 
 define(['jquery',
@@ -323,7 +331,7 @@ define(['jquery',
       PRINT_MIXED_ORIENTATION: L("GLOSSARYPIVOT_LBL_PRINT_MIXED_ORIENTATION", "Tables use different page orientations; Print Canvas uses the orientation of the table whose button you clicked.")
    };
 
-   GlossaryPivotViz.VERSION = "0.17.0";
+   GlossaryPivotViz.VERSION = "0.18.0";
 
    /**
     * @constructor
@@ -390,6 +398,7 @@ define(['jquery',
          cellColor: "off",                  // off | on — per-measure heat-map background on Values cells
          cellColorLow: "#eff6ff",           // background at the measure's minimum value
          cellColorHigh: "#1e3a8a",          // background at the measure's maximum value
+         dataBars: "",                      // "NAME: #hex; NAME: #hex: 100%" — in-cell bar before the number
          // Tooltip
          showDescriptions: "on",            // on | off — glossary hover tooltips on headers
          showSourceBadges: "off",           // on | off — Live and Workbook override chips
@@ -1134,6 +1143,66 @@ define(['jquery',
       return ranges;
    }
 
+   /* =========================================================================
+      3d. DATA BARS — an in-cell bar before the number, per listed measure.
+      "NAME: #hex; NAME: #hex: 100%" — the same one-text-field pattern as
+      Hidden Columns. Standard bars run from zero to the measure's largest
+      value on the pivot. A 100% bar is measured against 100%: 1 when the
+      measure's values are fractions (0.398 shown as 39.8%), else 100 (a
+      column that stores 89.14), clamped to a full bar. The number stays
+      at the right end of the cell so it lines up with a total line.
+      ========================================================================= */
+   var DEFAULT_BAR_COLOR = "#5b7c99";
+
+   function parseDataBars(str, rejected) {
+      var out = Object.create(null);
+      if (!str) return out;
+      String(str).split(";").forEach(function (seg) {
+         seg = seg.trim();
+         if (!seg) return;
+         var parts = seg.split(":").map(function (p) { return p.trim(); });
+         var full = false, color = DEFAULT_BAR_COLOR, bad = false;
+         if (parts.length > 1 && /^(100%?|full)$/i.test(parts[parts.length - 1])) {
+            full = true;
+            parts.pop();
+         }
+         if (parts.length > 1) {
+            var last = parts[parts.length - 1];
+            var rgb = hexToRgb(last);
+            if (rgb) {
+               color = "rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ")";
+               parts.pop();
+            } else if (last !== "") {
+               bad = true;   // "Headcount: crimson" — not a hex; say so rather than guess
+            } else {
+               parts.pop();
+            }
+         }
+         /* The name as typed (a name may contain a colon and spaces), not
+            the trimmed pieces rejoined. */
+         var name = seg.split(":").slice(0, parts.length).join(":").trim();
+         if (!name || bad) {
+            if (rejected) rejected.push(seg);
+            return;
+         }
+         out[exactKey(name)] = { color: color, full: full };
+      });
+      return out;
+   }
+
+   /** Bar length in percent of the bar area, or null for no bar. */
+   function barPercent(value, spec, range) {
+      if (value == null || !spec || !range || range.max == null) return null;
+      var denom;
+      if (spec.full) {
+         denom = range.max <= 1 && (range.min == null || range.min >= -1) ? 1 : 100;
+      } else {
+         denom = range.max;
+      }
+      if (!(denom > 0) || value <= 0) return 0;
+      return Math.round(Math.min(1, value / denom) * 1000) / 10;
+   }
+
    function hexToRgb(hex) {
       var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex || "").trim());
       return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : null;
@@ -1834,6 +1903,10 @@ define(['jquery',
          "tr.gp-total-row th, tr.gp-total-row td, tr.total td { font-weight: 700; background: #eef2f4; }" +
          "td.total .lbl { display: block; text-align: left; }" +
          "td.gp-heat { background: var(--gp-cell-bg); color: var(--gp-cell-fg); }" +
+         ".gp-bar-wrap { display: flex; align-items: center; gap: 6px; }" +
+         ".gp-bar-track { flex: 1 1 auto; min-width: 36px; height: 9pt; }" +
+         ".gp-bar { display: block; height: 100%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }" +
+         ".gp-bar-num { flex: 0 0 auto; margin-left: auto; text-align: right; }" +
          "th, tr.gp-total-row td, tr.total td, td.gp-heat { -webkit-print-color-adjust: exact; print-color-adjust: exact; }" +
          "</style></head><body>" + bodyHtml + "</body></html>";
    }
@@ -2582,6 +2655,42 @@ define(['jquery',
       }
 
       if (wantCellColor) colorRanges = computeMeasureRanges(num, nRows, nCols, measureIdByCol, colHidden);
+
+      var barMap = parseDataBars(this.Config.dataBars, rejected);
+      var anyBars = Object.keys(barMap).length > 0;
+      var barRanges = anyBars ? computeMeasureRanges(num, nRows, nCols, measureIdByCol, colHidden) : null;
+      function barSpecFor(mId) {
+         if (!anyBars || mId === "__single__") return null;
+         return lookupByName(barMap, mId, measureNameById[mId]);
+      }
+
+      /* What a value cell prints: Auto shows OAC's own string, an explicit
+         format works from the raw number. */
+      function cellText(vRaw, vFormatted, fmt) {
+         var displayVal = fmt.numberFormat === "auto"
+            ? (vFormatted != null && vFormatted !== "" ? vFormatted : vRaw)
+            : (vRaw != null && vRaw !== "" ? vRaw : vFormatted);
+         var t = formatValue(displayVal, fmt);
+         return t == null ? "" : String(t);
+      }
+
+      /* Every number in a barred column gets the width of the column's
+         widest one, so the bar area is the same in every row and bar
+         lengths compare fairly ("866" would otherwise leave a longer track
+         than "3,714"). Numbers use tabular figures, so ch is close. */
+      var barNumCache = [];
+      function barNumWidth(cc) {
+         if (barNumCache[cc] != null) return barNumCache[cc];
+         var mId = measureIdByCol[cc];
+         var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId, measureNameById[mId]);
+         var widest = 1;
+         for (var br = 0; br < bufferRows.length; br++) {
+            var len = cellText(bufferRows[br].raw[cc], bufferRows[br].formatted[cc], fmt).length;
+            if (len > widest) widest = len;
+         }
+         barNumCache[cc] = widest;
+         return widest;
+      }
       if (wantTotalCol && buckets) {
          var keptBuckets = [];
          buckets.order.forEach(function (bid) {
@@ -2907,11 +3016,21 @@ define(['jquery',
                   }
                }
             }
-            var displayVal = fmt.numberFormat === "auto"
-               ? (vFormatted != null && vFormatted !== "" ? vFormatted : vRaw)
-               : (vRaw != null && vRaw !== "" ? vRaw : vFormatted);
+            var text = escapeHtml(cellText(vRaw, vFormatted, fmt));
+            var bar = barSpecFor(mId);
+            if (bar) {
+               /* A bar replaces the heat map on this cell — two color
+                  encodings of the same number would compete. The bar is
+                  decorative (aria-hidden); the number is still the text. */
+               var pct = barPercent(cellNumber(vRaw), bar, barRanges[mId]);
+               styleAttr = "";
+               heatClass = " gp-bar-cell";
+               text = "<span class='gp-bar-wrap'><span class='gp-bar-track' aria-hidden='true'>" +
+                  (pct ? "<span class='gp-bar' style='width:" + pct + "%;background:" + bar.color + "'></span>" : "") +
+                  "</span><span class='gp-bar-num' style='min-width:" + barNumWidth(cc) + "ch'>" + text + "</span></span>";
+            }
             parts.push("<td class='gp-val" + heatClass + "'" + styleAttr + " data-gp-mark-rows='" + layoutRow + ":" + layoutRow + "'>" +
-                       escapeHtml(formatValue(displayVal, fmt)) + "</td>");
+                       text + "</td>");
          }
          if (wantTotalCol) {
             buckets.order.forEach(function (bid) {
@@ -3403,6 +3522,7 @@ define(['jquery',
       addText(pGen, factory, "cellColorHighGadget", "Style: Cell Color High (hex)", this.Config.cellColorHigh);
       addText(pGen, factory, "headerColorGadget", "Style: Header Color (hex)", this.Config.headerColor);
       addText(pGen, factory, "headerDataColorGadget", "Style: Header Data Color (hex)", this.Config.headerDataColor);
+      addText(pGen, factory, "dataBarsGadget", "Style: Data Bars (name: #hex[: 100%]; ...)", this.Config.dataBars);
 
       addToggle(pGen, "showDescriptionsGadget", "Tooltip: Glossary Descriptions", this.Config.showDescriptions);
       addToggle(pGen, "showSourceBadgesGadget", "Tooltip: Source Badges (Live / Workbook)", this.Config.showSourceBadges);
@@ -3455,6 +3575,7 @@ define(['jquery',
          tableWidthGadget: "tableWidth",
          tableWidthPxGadget: "tableWidthPx",
          cellColorGadget: "cellColor",
+         dataBarsGadget: "dataBars",
          cellColorLowGadget: "cellColorLow",
          cellColorHighGadget: "cellColorHigh",
          headerColorGadget: "headerColor",
@@ -3625,6 +3746,8 @@ define(['jquery',
       _parseColumnWidths: parseColumnWidths,
       _tableLayoutAttrs: tableLayoutAttrs,
       _wrapPrintDocument: wrapPrintDocument,
-      _labelHtml: labelHtml
+      _labelHtml: labelHtml,
+      _parseDataBars: parseDataBars,
+      _barPercent: barPercent
    };
 });

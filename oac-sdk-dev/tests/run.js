@@ -1085,6 +1085,45 @@ suite("WSU Glossary Pivot", function() {
     assert.strictEqual(mod._labelHtml("<b>"), "&lt;b&gt;", "still escaped");
   });
 
+  /* ---- 0.18.0: data bars ---- */
+  test("data bars: listed measures only, own color, number after the bar, none on totals", function() {
+    var viz = H.instance(mod, null, { showDescriptions: "off", showGrandTotalRow: "on",
+      dataBars: "Headcount: #981e32; % International: #e08a1e: 100%; Bad: crimson" });
+    viz._glossary = mod._buildGlossary();
+    var warnings = [];
+    viz._warnConfig = function(rejected) { warnings.push(JSON.parse(JSON.stringify(rejected))); };
+    var html = viz._buildTable(ipedsLayout());
+    var bars = html.match(/<span class='gp-bar' style='width:[\d.]+%;background:[^']+'><\/span>/g) || [];
+    assert.strictEqual(bars.length, 6, "3 rows x 2 barred measures; no bar on the total row");
+    assert.ok(bars[0].indexOf("width:100%;background:rgb(152,30,50)") >= 0, "largest Headcount fills the bar");
+    assert.ok(html.indexOf("width:13.7%;background:rgb(152,30,50)") >= 0, "2,679 / 19,518 from zero");
+    assert.ok(html.indexOf("width:2.3%;background:rgb(224,138,30)") >= 0, "100% bar: 2.3% of the full bar");
+    assert.ok(/gp-bar-track[^>]*>(<span[^>]*><\/span>)?<\/span><span class='gp-bar-num' style='min-width:6ch'>19,518</.test(html), "number follows the bar");
+    assert.strictEqual((html.match(/gp-bar-cell/g) || []).length, 6);
+    assert.deepStrictEqual(warnings[0], ["Bad: crimson"]);
+  });
+
+  test("data bars: parsing, 100% scale for fraction and percent-number columns, heat map yields", function() {
+    var rejected = [];
+    var b = mod._parseDataBars("Headcount; % Female: 9fd3dc; Ratio: A: #111111: 100; X: blue", rejected);
+    assert.ok(b.HEADCOUNT && !b.HEADCOUNT.full, "a bare name gets the default color");
+    assert.strictEqual(b["% FEMALE"].color, "rgb(159,211,220)");
+    assert.ok(b["RATIO: A"].full);
+    assert.strictEqual(JSON.stringify(rejected), JSON.stringify(["X: blue"]));
+    assert.strictEqual(mod._barPercent(0.398, { full: true }, { min: 0.1, max: 0.5 }), 39.8);
+    assert.strictEqual(mod._barPercent(89.14, { full: true }, { min: 60, max: 90 }), 89.1);
+    assert.strictEqual(mod._barPercent(50, { full: false }, { min: 0, max: 200 }), 25);
+    assert.strictEqual(mod._barPercent(-5, { full: false }, { min: -5, max: 10 }), 0, "no bar below zero");
+    assert.strictEqual(mod._barPercent(null, { full: false }, { min: 0, max: 10 }), null);
+    var viz = H.instance(mod, null, { showDescriptions: "off", cellColor: "on", dataBars: "Headcount: #981e32" });
+    viz._glossary = mod._buildGlossary();
+    var html = viz._buildTable(ipedsLayout());
+    var firstRow = html.slice(html.indexOf("<tr data-gp-row='0'>"), html.indexOf("</tr>", html.indexOf("<tr data-gp-row='0'>")));
+    var cells = firstRow.split("<td").slice(1);
+    assert.ok(cells[0].indexOf("gp-bar-cell") >= 0 && cells[0].indexOf("gp-heat") < 0, "the bar replaces the heat map on its measure");
+    assert.ok(cells[1].indexOf("gp-heat") >= 0, "other measures keep the heat map");
+  });
+
   test("the tooltip heading carries the renamed label", function() {
     var viz = H.instance(mod, null, { showDescriptions: "on", headerLabels: "c34: Pct FT" });
     viz._glossary = mod._buildGlossary();
