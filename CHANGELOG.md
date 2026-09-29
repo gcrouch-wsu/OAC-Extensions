@@ -21,6 +21,81 @@ The 1.x commits they describe are on `main`.
 
 Glossary Pivot versions on its own line, not on the 1.x tags.
 
+## 2026-09-29 — WSU Glossary Pivot 0.17.0 — data-team fix list: rate totals, alignment, wrapping and widths
+
+From the data team's fix list, checked against their IPEDS 2026 Spring
+screenshot (Glossary Pivot vs. the native pivot on the same canvas).
+
+- **Totals: Measure Rules** (`totalRules`, text). The total line summed
+  every measure, so a rate's total was wrong (% Full-Time 89.14 + 63.57 +
+  90.34 = 243.05; native 86.29). Each measure can name its rule:
+  `sum` (default, unchanged), `avg`, `min`, `max`, `none`, `weighted(W)`,
+  or `ratio(N, D[, scale])`. `weighted(Headcount)` = sum(value × Headcount)
+  / sum(Headcount), which is sum(numerator) / sum(denominator) when
+  Headcount is the rate's denominator, and keeps the column's own scale.
+  Reproduces the native totals: % Full-Time 86.29, % Female 54.37. The
+  rule applies to the grand total row, subtotals, collapsed groups, and the
+  grand total column. Referenced measures must be in the query and may be
+  hidden. A rule naming a measure not on the pivot leaves that total blank
+  and logs a warning — never a wrong sum. The plugin still cannot request a
+  server-side total from OAC.
+  - Note for report authors: the native pivot's own totals for % International,
+    % Minority, % First Generation and Age in that screenshot are plain
+    averages of the three rows (0.10 = mean of 0.02, 0.26, 0.02), not
+    sum(numerator) / sum(denominator) (1,174 / 23,460 = 5.0%).
+- **Totals under Auto format** copy the look of the measure's own
+  OAC-formatted cells ($, %, ×100, decimals, grouping) instead of the raw
+  float (`0.30000000000000004`, `1234567.891`). Number format with Auto
+  decimals also trims float noise.
+- **Layout: alignment** — horizontal (left/center/right) and vertical
+  (top/middle/bottom) for row headers, column headers, and values. Print
+  follows the same settings.
+- **Layout: wrapping and widths** — Wrap Header Text and Wrap Row and Value
+  Text (off by default; on-screen text was `nowrap` because an earlier print
+  change split words); Value Column Width (px); Column Widths
+  (`name: px; ...`, measures or row fields); Table Width (fill tile /
+  fit content / fixed px). Wrapping happens at spaces only: no
+  `overflow-wrap`/`word-break` permission, automatic table layout (a column
+  is never narrower than its longest word), and hyphenated or slashed words
+  (`Full-Time`) plus a leading `%`/`#`/`$` are kept whole — a headless
+  Chrome layout check caught Chrome breaking `Full-Time` at the hyphen and
+  leaving `%` alone on a line before this was added.
+- **Print never breaks a word** — `overflow-wrap: break-word` removed from
+  the print stylesheet. A table still too wide at the 6pt floor runs past
+  the margin with the existing advisory instead of splitting words.
+- **Format: Per-Measure Override** accepts any letter case and aliases
+  (`percentage`, `pct`, `usd`, `dollars`, `numeric`), parses from the right
+  so a measure name may contain a colon, matches a qualified id by its last
+  segment (same as hide and rename), and logs rejected entries instead of
+  dropping them silently.
+- The tooltip heading shows a header's Display Label rename rather than the
+  original column name.
+- Totals and heat-map ranges read from the row buffer already built for the
+  body instead of calling `getValue` again for every total.
+
+New Config keys (all default to the previous behavior, so saved workbooks
+render unchanged): `totalRules`, `rowHeaderAlign`, `rowHeaderVAlign`,
+`colHeaderAlign`, `colHeaderVAlign`, `valueAlign`, `valueVAlign`,
+`wrapHeaders`, `wrapCells`, `columnWidth`, `columnWidths`, `tableWidth`,
+`tableWidthPx`. Root id and `viz:chart.type` unchanged.
+
+Verification: `node --check`, `node tests/run.js` (83 passed; 12 new,
+including the screenshot's own numbers), `node tests/lint.js` clean.
+Wrapping checked in headless Chrome against the screenshot's header text
+at 40px and 90px widths: no word split.
+
+Installed on the WSU dev tenant 2026-09-29 and checked live on the data
+team's "Test census student profile" workbook: loaded module confirmed
+0.17.0; with no new settings the table rendered as before; with the
+measure rules set, totals read % Full-Time 86.29, % Female 54.4, % WA
+Residency 81.2 (native 86.29 / 54.37 / 81.24), % International 5.0%,
+% Minority 37.8%, % First Generation 32.2%, Age 23.6 (headcount-weighted;
+native shows the row average 27.28 — pending the data team's choice).
+Header wrap + 70px value width + Fit content fit the whole table on the
+canvas with no word split (live Range check). Settings saved to that
+workbook and confirmed after reopening. Print PDF with the new layout
+settings was not exercised.
+
 ## 2026-09-25 — WSU Glossary Pivot 0.16.2 — corrects 0.16.1: the real cause was an opaque id, not a null one
 
 0.16.1 (below) was deployed and tested live the same day. It did not fix

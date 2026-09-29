@@ -17,7 +17,7 @@ data, because that is what they were built to explain.
 | **WSU Line** | `com-wsu-line` | 1.2.2 | Multi-series line with a shared-X tooltip table (sortable, with vs-average / rank / year-over-year deltas), drag-to-zoom, header attribute chips, parameter-driven value labels. |
 | **WSU Dumbbell** | `com-wsu-dumbbell` | 1.1.2 | Paired before/after comparison from wide (two measures) or long (role column) data. In-chart sort/filter strips, group aggregation, small multiples. |
 | **WSU Lattice Scatter** | `com-wsu-lattice-scatter` | 1.1.2 | Course × term lattice with grade-letter or grade-point markers per student row. |
-| **WSU Glossary Pivot** | `com-wsu-glossary-pivot` | 0.16.2 | Pivot table with a glossary tooltip on headers. Rows, columns, and values; click-to-sort; sum totals; hide a field without dropping it from the query; rename the field title. Number format groups thousands. Print PDF prints this table. Print Canvas prints every Glossary Pivot on the active canvas tab. Versioned on its own line, not with the 1.x plugins. |
+| **WSU Glossary Pivot** | `com-wsu-glossary-pivot` | 0.17.0 | Pivot table with a glossary tooltip on headers. Rows, columns, and values; click-to-sort; totals with per-measure rules (sum, average, weighted, ratio); alignment, word-safe wrapping, and column/table widths; hide a field without dropping it from the query; rename the field title. Number format groups thousands. Print PDF prints this table. Print Canvas prints every Glossary Pivot on the active canvas tab. Versioned on its own line, not with the 1.x plugins. |
 
 Source for each lives in `oac-sdk-dev/src/customviz/<root id>/`. Each has a
 reference spec in `docs/plugins/`.

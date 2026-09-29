@@ -94,10 +94,17 @@
   font-size: 12px;
 }
 
+/* Layout: Table Width. "fill" (default) stretches to the tile; "content"
+   keeps each column at its own width; "fixed" gets an inline width. */
 .gp-table {
   border-collapse: collapse;
   width: auto;
   min-width: 100%;
+}
+
+.gp-table.gp-tw-content,
+.gp-table.gp-tw-fixed {
+  min-width: 0;
 }
 
 .gp-table th,
@@ -108,15 +115,33 @@
   vertical-align: middle;
 }
 
+/* Layout: Wrap. Break at spaces only, never inside a word: no
+   overflow-wrap/word-break permission, no hyphenation. With automatic
+   table layout a column is never narrower than its longest word, so a
+   narrow width setting leaves the word whole instead of splitting it. */
+.gp-table.gp-wrap-hdr thead th,
+.gp-table.gp-wrap-body tbody th,
+.gp-table.gp-wrap-body tbody td {
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+  hyphens: manual;
+}
+
+.gp-table .gp-nobr {
+  white-space: nowrap;
+}
+
 .gp-table th.gp-colhdr,
 .gp-table th.gp-corner {
   background: #f0f2f4;
   font-weight: 600;
-  text-align: center;
+  text-align: var(--gp-ch-align, center);
+  vertical-align: var(--gp-ch-valign, middle);
 }
 
 .gp-table th.gp-corner {
-  text-align: left;
+  text-align: var(--gp-rh-align, left);
 }
 
 /* Painted headers set --gp-hdr-bg/--gp-hdr-fg rather than an inline
@@ -136,11 +161,13 @@
 .gp-table th.gp-rowhdr {
   background: #f7f8f9;
   font-weight: 500;
-  text-align: left;
+  text-align: var(--gp-rh-align, left);
+  vertical-align: var(--gp-rh-valign, middle);
 }
 
 .gp-table td.gp-val {
-  text-align: right;
+  text-align: var(--gp-v-align, right);
+  vertical-align: var(--gp-v-valign, middle);
   font-variant-numeric: tabular-nums;
 }
 
@@ -313,7 +340,7 @@
 
 .gp-table tr.gp-group-row th.gp-group-label {
   cursor: pointer;
-  text-align: left;
+  text-align: var(--gp-rh-align, left);
 }
 
 /* ---- click-to-sort ---- */

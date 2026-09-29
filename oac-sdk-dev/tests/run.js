@@ -910,6 +910,189 @@ suite("WSU Glossary Pivot", function() {
     assert.strictEqual(hidden.indexOf("gp-collapsed"), -1, "a hidden control cannot leave an unexpandable aggregate");
     assert.ok(hidden.indexOf("data-gp-row='0'") >= 0 && hidden.indexOf("data-gp-row='1'") >= 0);
   });
+
+  /* ---- 0.17.0: the data team's fix list (2026-09-29) ----
+     The IPEDS 2026 Spring pivot from the report: the native pivot's Grand
+     Total for % Full-Time is 86.29 and for % Female 54.37; the Glossary
+     Pivot summed the rows (243.05, 182.8). */
+  function ipedsLayout(opts) {
+    opts = opts || {};
+    var hc = [19518, 2679, 1263], ft = [17399, 1703, 1141], fem = [10344, 1459, 952], intl = [458, 693, 23];
+    var cols = [
+      { id: "HEADCOUNT", name: "Headcount", raw: hc, fmt: function(v) { return v.toLocaleString("en-US"); } },
+      { id: "c31", name: "Full-Time", raw: ft, fmt: function(v) { return v.toLocaleString("en-US"); } },
+      { id: "c34", name: "% Full-Time", raw: hc.map(function(h, i) { return ft[i] / h * 100; }), fmt: function(v) { return v.toFixed(2); } },
+      { id: "c40", name: "% Female", raw: hc.map(function(h, i) { return fem[i] / h * 100; }), fmt: function(v) { return v.toFixed(1); } },
+      { id: "INTL", name: "International", raw: intl, fmt: function(v) { return v.toLocaleString("en-US"); } },
+      { id: "c44", name: "% International", raw: hc.map(function(h, i) { return intl[i] / h; }), fmt: function(v) { return (v * 100).toFixed(1) + "%"; } }
+    ];
+    if (opts.dropHeadcount) cols.shift();
+    return {
+      cols: cols,
+      getLayerCount: function(edge) { return edge === "row" ? 2 : (edge === "column" ? 1 : 0); },
+      getEdgeExtent: function(edge) { return edge === "row" ? 3 : (edge === "column" ? cols.length : 0); },
+      getLayerMetadata: function(edge, layer, key) {
+        if (edge === "column") return key === "isMeasureLabels" ? true : (key === "id" ? "DM!MEASURE_DIMENSION" : "Measures");
+        if (key === "isMeasureLabels") return false;
+        if (key === "id") return layer ? "IPEDS_LEVEL" : "TERM";
+        return layer ? "IPEDS Degree Level" : "Term";
+      },
+      getValue: function(edge, a, b, raw) {
+        if (edge === "row") return a === 0 ? "2026 Spring" : ["Undergraduate", "Graduate", "Professional"][b];
+        if (edge === "column") return raw ? cols[b].id : cols[b].name;
+        if (edge === "data") return raw ? cols[b].raw[a] : cols[b].fmt(cols[b].raw[a]);
+        return null;
+      },
+      getItemEndSlice: function(edge, layer, index) { return edge === "row" && layer === 0 ? 2 : index; }
+    };
+  }
+  function totalRowCells(html) {
+    var row = html.slice(html.lastIndexOf("<tr class='gp-total-row'>"));
+    var cells = [], re = /<td class='gp-val gp-total-val'>([^<]*)<\/td>/g, m;
+    while ((m = re.exec(row))) cells.push(m[1]);
+    return cells;
+  }
+
+  test("without a rule a rate still sums (unchanged default), but formatted like its cells", function() {
+    var viz = H.instance(mod, null, { showGrandTotalRow: "on", showDescriptions: "off" });
+    viz._glossary = mod._buildGlossary();
+    var cells = totalRowCells(viz._buildTable(ipedsLayout()));
+    assert.strictEqual(cells[0], "23,460", "Headcount sum keeps OAC's grouping");
+    assert.strictEqual(cells[2], "243.05", "the reported wrong total, now at least two decimals like its cells");
+  });
+
+  test("weighted(Headcount) and ratio(N, D) reproduce the native pivot's grand totals", function() {
+    var viz = H.instance(mod, null, {
+      showGrandTotalRow: "on", showDescriptions: "off",
+      totalRules: "% Full-Time = weighted(Headcount); % Female = WEIGHTED( headcount ); % International = ratio(International, Headcount)"
+    });
+    viz._glossary = mod._buildGlossary();
+    var cells = totalRowCells(viz._buildTable(ipedsLayout()));
+    assert.strictEqual(cells[2], "86.29", "% Full-Time = 20,243 / 23,460");
+    assert.strictEqual(cells[3], "54.4", "% Female = 12,755 / 23,460, at the column's own 1 decimal");
+    assert.strictEqual(cells[5], "5.0%", "% International = 1,174 / 23,460, not the row average (10%) or the sum (30%)");
+    assert.strictEqual(cells[0], "23,460", "unlisted measures still sum");
+  });
+
+  test("a weight can be hidden and still drives the total; ratio scale argument applies", function() {
+    var viz = H.instance(mod, null, {
+      showGrandTotalRow: "on", showDescriptions: "off", hiddenColumns: "Headcount",
+      totalRules: "% Full-Time = ratio(Full-Time, Headcount, 100)"
+    });
+    viz._glossary = mod._buildGlossary();
+    var html = viz._buildTable(ipedsLayout());
+    assert.strictEqual(html.indexOf(">Headcount<"), -1, "Headcount is not drawn");
+    assert.strictEqual(totalRowCells(html)[1], "86.29");
+  });
+
+  test("a rule naming a measure that is not on the pivot leaves the total blank and says why", function() {
+    var viz = H.instance(mod, null, { showGrandTotalRow: "on", showDescriptions: "off",
+      totalRules: "% Full-Time = weighted(Headcount); bogus rule" });
+    viz._glossary = mod._buildGlossary();
+    var warnings = [];
+    viz._warnConfig = function(rejected, missing) { warnings.push(JSON.parse(JSON.stringify([rejected, missing]))); };
+    var cells = totalRowCells(viz._buildTable(ipedsLayout({ dropHeadcount: true })));
+    assert.strictEqual(cells[1], "", "blank, never a wrong sum");
+    assert.deepStrictEqual(warnings[0][0], ["bogus rule"]);
+    assert.deepStrictEqual(warnings[0][1], ["Headcount"]);
+  });
+
+  test("subtotals, collapsed groups, and the grand total column use the same rule", function() {
+    var ctx = {
+      num: function(r, cc) { return [[80, 100], [20, 50]][r][cc]; },
+      sibling: function(cc, ref) { return ref === "W" ? 1 : null; }
+    };
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], { kind: "weighted", a: "W" }, ctx), (80 * 100 + 20 * 50) / 150);
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], { kind: "avg" }, ctx), 50);
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], { kind: "min" }, ctx), 20);
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], { kind: "none" }, ctx), null);
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], null, ctx), 100);
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], { kind: "weighted", a: "X" }, ctx), null);
+  });
+
+  test("total rules parse case-insensitively and reject malformed entries", function() {
+    var rejected = [];
+    var rules = mod._parseTotalRules("A = Sum; B=AVERAGE; C = weighted(Head count); D = ratio(N, D, 100); E = ratio(N); F = what; = sum", rejected);
+    assert.strictEqual(rules.A.kind, "sum");
+    assert.strictEqual(rules.B.kind, "avg");
+    assert.strictEqual(rules.C.a, "Head count");
+    assert.strictEqual(rules.D.scale, 100);
+    assert.deepStrictEqual(Object.keys(rules), ["A", "B", "C", "D"]);
+    assert.strictEqual(rejected.length, 3);
+  });
+
+  test("auto format for a computed total copies the cells' look", function() {
+    function like(n, raw, formatted) { return mod._formatLike(n, mod._inferAutoFormat(raw, formatted)); }
+    assert.strictEqual(like(1234567.891, 18105.33, "18,105.33"), "1,234,567.89");
+    assert.strictEqual(like(1234567.891, 18105.33, "$18,105.33"), "$1,234,567.89");
+    assert.strictEqual(like(-5.5, 1, "$1.00"), "-$5.50");
+    assert.strictEqual(like(0.05004, 0.398, "39.8%"), "5.0%", "OAC multiplied by 100");
+    assert.strictEqual(like(86.29, 89.14, "89.14%"), "86.29%", "a percent sign without ×100");
+    assert.strictEqual(like(0.1 + 0.2, 1, "1"), "0");
+    assert.strictEqual(mod._formatLike(0.1 + 0.2, null), "0.3", "no sample: float noise trimmed");
+    assert.strictEqual(mod._formatLike(1234567.5, null), "1,234,567.5");
+    assert.strictEqual(mod._formatValue(0.1 + 0.2, { numberFormat: "number", decimalPlaces: "auto" }), "0.3");
+  });
+
+  test("per-measure overrides: any case, aliases, colons in names, qualified ids by tail", function() {
+    var rejected = [];
+    var o = mod._parseMeasureFormatOverrides("% Full-Time:Percent:1; Ratio: A:B:number:0; Rate:percentage; X:bogus:2", rejected);
+    assert.strictEqual(o["% FULL-TIME"].numberFormat, "percent");
+    assert.strictEqual(o["RATIO: A:B"].decimalPlaces, "0");
+    assert.strictEqual(o.RATE.numberFormat, "percent");
+    assert.deepStrictEqual(rejected, ["X:bogus:2"]);
+    var cfg = { numberFormat: "auto", decimalPlaces: "auto" };
+    var q = mod._parseMeasureFormatOverrides("Headcount:number:0");
+    assert.strictEqual(mod._resolveFormat(cfg, q, "\"SA\".\"Facts\".\"Headcount\"", "Student Headcount").numberFormat, "number");
+  });
+
+  test("layout settings: alignment variables, width classes, and the colgroup", function() {
+    var attrs = mod._tableLayoutAttrs({ rowHeaderAlign: "right", rowHeaderVAlign: "top", colHeaderAlign: "bogus",
+      tableWidth: "fixed", tableWidthPx: "900", wrapHeaders: "on" });
+    assert.ok(attrs.style.indexOf("--gp-rh-align:right") >= 0);
+    assert.ok(attrs.style.indexOf("--gp-rh-valign:top") >= 0);
+    assert.ok(attrs.style.indexOf("--gp-ch-align:center") >= 0, "an invalid value falls back to the default");
+    assert.ok(attrs.style.indexOf("width:900px") >= 0);
+    assert.ok(attrs.cls.indexOf("gp-tw-fixed") >= 0 && attrs.cls.indexOf("gp-wrap-hdr") >= 0);
+    assert.ok(mod._tableLayoutAttrs({ tableWidth: "fixed", tableWidthPx: "" }).cls.indexOf("gp-tw-fill") >= 0,
+      "fixed without a width fills");
+
+    var viz = H.instance(mod, null, { showDescriptions: "off", columnWidth: "70",
+      columnWidths: "% Full-Time: 55; IPEDS Degree Level: 120; Bad: wide" });
+    viz._glossary = mod._buildGlossary();
+    var warnings = [];
+    viz._warnConfig = function(rejected) { warnings.push(JSON.parse(JSON.stringify(rejected))); };
+    var html = viz._buildTable(ipedsLayout());
+    var cg = html.slice(html.indexOf("<colgroup>"), html.indexOf("</colgroup>"));
+    assert.strictEqual((cg.match(/<col[ >]/g) || []).length, 2 + 6, "two row fields plus six value columns");
+    assert.ok(cg.indexOf("width:120px") >= 0 && cg.indexOf("width:55px") >= 0 && cg.indexOf("width:70px") >= 0);
+    assert.deepStrictEqual(warnings[0], ["Bad: wide"]);
+    viz.Config.columnWidth = ""; viz.Config.columnWidths = "";
+    assert.strictEqual(viz._buildTable(ipedsLayout()).indexOf("<colgroup>"), -1, "no widths, no colgroup");
+  });
+
+  test("print never grants a mid-word break and follows the alignment settings", function() {
+    var doc = mod._wrapPrintDocument("T", "landscape", "<table></table>", "normal");
+    assert.strictEqual(doc.indexOf("break-word"), -1);
+    assert.strictEqual(doc.indexOf("break-all"), -1);
+    assert.ok(doc.indexOf("overflow-wrap: normal") >= 0);
+    assert.ok(doc.indexOf("var(--gp-rh-align, left)") >= 0);
+  });
+
+  test("wrapped labels keep hyphenated words and a leading % whole", function() {
+    assert.strictEqual(mod._labelHtml("% Full-Time"), "% <span class='gp-nobr'>Full-Time</span>");
+    assert.strictEqual(mod._labelHtml("Headcount Converted FTE"), "Headcount Converted FTE");
+    assert.strictEqual(mod._labelHtml("<b>"), "&lt;b&gt;", "still escaped");
+  });
+
+  test("the tooltip heading carries the renamed label", function() {
+    var viz = H.instance(mod, null, { showDescriptions: "on", headerLabels: "c34: Pct FT" });
+    viz._glossary = mod._buildGlossary();
+    viz._glossary.mergeLive({ c34: { text: "Share of students enrolled full time", origin: "override" } });
+    var html = viz._buildTable(ipedsLayout());
+    assert.ok(html.indexOf("data-gp-title='Pct FT'") >= 0);
+    assert.ok(html.indexOf("data-gp-name='% Full-Time'") >= 0, "the glossary still looks up the real name");
+  });
 });
 
 // ============================================================================

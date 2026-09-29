@@ -220,6 +220,29 @@
  * measures ("c34"), which never matches what an author can see to type.
  * The actual fix is in resolveFormat (see its own note). Both fixes ship;
  * neither hurts, only one mattered for the reported bug.
+ *
+ * v0.17.0 — data-team fix list (2026-09-29):
+ *   - Totals: Measure Rules. A rate or average column's total was a plain
+ *     sum (% Full-Time 89.14 + 63.57 + 90.34 = 243.05). Each measure can now
+ *     name its rule: sum, avg, min, max, none, weighted(W) or ratio(N, D).
+ *     weighted(Headcount) is sum(value × Headcount) / sum(Headcount), which
+ *     is exactly sum(numerator) / sum(denominator) when Headcount is the
+ *     rate's denominator, and it keeps the column's own scale. The plugin
+ *     still cannot ask OAC for a server-side total; referenced measures
+ *     must be in the query (they may be hidden). Default stays sum.
+ *   - Totals under Auto format now copy the look of that measure's own
+ *     OAC-formatted cells ($, %, decimals, grouping) instead of printing the
+ *     raw float (0.30000000000000004).
+ *   - Layout: horizontal and vertical alignment for row headers, column
+ *     headers and values; header and body wrapping at word boundaries only
+ *     (never mid-word); value column width, per-column widths, and table
+ *     width (fill tile, fit content, fixed px). Print no longer breaks a
+ *     word either.
+ *   - Per-measure format overrides accept any letter case and common
+ *     aliases (percentage, pct, usd), parse from the right so a measure name
+ *     may contain a colon, match a qualified id by its last segment the
+ *     same way hide and rename do, and log rejected entries.
+ *   - The tooltip heading shows the display label a header was renamed to.
  ******************************************************************************/
 
 define(['jquery',
@@ -300,7 +323,7 @@ define(['jquery',
       PRINT_MIXED_ORIENTATION: L("GLOSSARYPIVOT_LBL_PRINT_MIXED_ORIENTATION", "Tables use different page orientations; Print Canvas uses the orientation of the table whose button you clicked.")
    };
 
-   GlossaryPivotViz.VERSION = "0.16.2";
+   GlossaryPivotViz.VERSION = "0.17.0";
 
    /**
     * @constructor
@@ -349,6 +372,20 @@ define(['jquery',
          showRowSubtotals: "off",           // only takes effect with 2+ Row layers
          showGrandTotalColumn: "off",
          rowGroupCollapse: "off",           // on | off — adds a click-to-collapse toggle to the outer Row group; only takes effect with 2+ Row layers
+         totalRules: "",                    // "NAME = sum|avg|min|max|none|weighted(W)|ratio(N, D[, scale]); ..." — how each measure totals. Unlisted measures sum.
+         // Layout
+         rowHeaderAlign: "left",            // left | center | right
+         rowHeaderVAlign: "middle",         // top | middle | bottom
+         colHeaderAlign: "center",
+         colHeaderVAlign: "middle",
+         valueAlign: "right",
+         valueVAlign: "middle",
+         wrapHeaders: "off",                // on | off — wrap header text at spaces, never mid-word
+         wrapCells: "off",                  // on | off — wrap row labels and values at spaces, never mid-word
+         columnWidth: "",                   // px for every value column; blank = automatic
+         columnWidths: "",                  // "NAME: px; NAME: px" — measures or row fields; wins over columnWidth
+         tableWidth: "fill",                // fill | content | fixed
+         tableWidthPx: "",                  // px, used when tableWidth is fixed
          // Style
          cellColor: "off",                  // off | on — per-measure heat-map background on Values cells
          cellColorLow: "#eff6ff",           // background at the measure's minimum value
@@ -598,20 +635,58 @@ define(['jquery',
       switches for the named measure id.
       ========================================================================= */
 
-   function parseMeasureFormatOverrides(str) {
+   /* Format words an author is likely to type. "percentage" silently
+      dropping an entry was a reported trap (KB, 0.16.2). */
+   var FORMAT_ALIASES = {
+      auto: "auto", number: "number", numeric: "number", num: "number",
+      percent: "percent", percentage: "percent", pct: "percent",
+      currency: "currency", usd: "currency", dollar: "currency", dollars: "currency",
+      compact: "compact"
+   };
+
+   function formatWord(s) {
+      var k = String(s == null ? "" : s).trim().toLowerCase();
+      if (k === "") return "auto";
+      return Object.prototype.hasOwnProperty.call(FORMAT_ALIASES, k) ? FORMAT_ALIASES[k] : null;
+   }
+
+   function decimalsWord(s) {
+      var k = String(s == null ? "" : s).trim().toLowerCase();
+      if (k === "") return "auto";
+      return /^(auto|[0-4])$/.test(k) ? k : null;
+   }
+
+   /* "NAME:format:decimals" parsed from the RIGHT, so a measure name that
+      contains a colon ("Ratio: A:B:number:0") still works. Format and
+      decimals may be omitted from the end. Keys are the typed name,
+      upper-cased; resolveFormat does the id/tail/name matching. An entry
+      that does not parse is pushed onto `rejected` (when given) instead of
+      vanishing without a trace. */
+   function parseMeasureFormatOverrides(str, rejected) {
       var out = Object.create(null);
       if (!str) return out;
       String(str).split(";").forEach(function (seg) {
          seg = seg.trim();
          if (!seg) return;
          var parts = seg.split(":");
-         var id = (parts[0] || "").trim();
-         if (!id) return;
-         var fmt = (parts[1] || "auto").trim() || "auto";
-         var dp = (parts[2] || "auto").trim() || "auto";
-         if (parts.length > 3 || !/^(auto|number|percent|currency|compact)$/.test(fmt) ||
-             !/^(auto|[0-4])$/.test(dp)) return;
-         out[id.toUpperCase()] = { numberFormat: fmt, decimalPlaces: dp };
+         var n = parts.length;
+         var name = null, fmt = "auto", dp = "auto";
+         if (n === 1) {
+            name = parts[0];
+         } else if (n >= 3 && formatWord(parts[n - 2]) && decimalsWord(parts[n - 1])) {
+            name = parts.slice(0, n - 2).join(":");
+            fmt = formatWord(parts[n - 2]);
+            dp = decimalsWord(parts[n - 1]);
+         } else if (formatWord(parts[n - 1])) {
+            name = parts.slice(0, n - 1).join(":");
+            fmt = formatWord(parts[n - 1]);
+         }
+         name = name == null ? "" : name.trim();
+         if (!name) {
+            if (rejected) rejected.push(seg);
+            return;
+         }
+         out[exactKey(name)] = { numberFormat: fmt, decimalPlaces: dp };
       });
       return out;
    }
@@ -681,11 +756,245 @@ define(['jquery',
       never matched. Falls back to matching by measure name (confirmed live:
       the same override text that failed to match "c34" matches "Full-Time"
       directly) only when the id lookup misses, so a real id match — the
-      documented, primary behavior for a native measure — still wins. */
+      documented, primary behavior for a native measure — still wins.
+      0.17.0: the same nameKeys order hide and rename use (id, the id's last
+      segment, then the display name), so "Headcount" also matches a
+      qualified "SA"."Facts"."Headcount" id. */
+   function lookupByName(map, id, name) {
+      var keys = nameKeys(id, name);
+      for (var i = 0; i < keys.length; i++) if (map[keys[i]]) return map[keys[i]];
+      return null;
+   }
+
    function resolveFormat(Config, overrides, measureId, measureName) {
-      var o = measureId != null ? overrides[String(measureId).toUpperCase()] : null;
-      if (!o && measureName != null) o = overrides[String(measureName).toUpperCase()];
-      return o || { numberFormat: Config.numberFormat, decimalPlaces: Config.decimalPlaces };
+      return lookupByName(overrides, measureId, measureName) ||
+         { numberFormat: Config.numberFormat, decimalPlaces: Config.decimalPlaces };
+   }
+
+   /* =========================================================================
+      2a. TOTAL RULES — how each measure's total is computed.
+      "NAME = rule; ..." where rule is one of:
+        sum            the default; the numbers on screen added up
+        avg            mean of the non-blank cells (the native report-based
+                       average — the data team's "rare case")
+        min / max
+        none           blank total
+        weighted(W)    sum(value × W) / sum(W). With W the rate's denominator
+                       this equals sum(numerator) / sum(denominator) and keeps
+                       the column's own scale (89.14 or 0.8914).
+        ratio(N, D)    sum(N) / sum(D), optionally × a third argument
+                       (ratio(Full-Time, Headcount, 100)).
+      W, N and D are other measures on the same pivot, matched like hide and
+      rename. They can be hidden. The plugin only ever sees the rows on the
+      canvas — there is no server-side total to ask OAC for — so a measure
+      that is not in the query cannot be referenced; its total is blank
+      rather than a wrong sum.
+      ========================================================================= */
+   function parseTotalRules(str, rejected) {
+      var out = Object.create(null);
+      if (!str) return out;
+      String(str).split(";").forEach(function (seg) {
+         seg = seg.trim();
+         if (!seg) return;
+         var eq = seg.lastIndexOf("=");
+         var name = eq > 0 ? seg.slice(0, eq).trim() : "";
+         var body = eq > 0 ? seg.slice(eq + 1).trim() : "";
+         var rule = null, m;
+         if (/^(sum|total)$/i.test(body)) rule = { kind: "sum" };
+         else if (/^(avg|average|mean)$/i.test(body)) rule = { kind: "avg" };
+         else if (/^min$/i.test(body)) rule = { kind: "min" };
+         else if (/^max$/i.test(body)) rule = { kind: "max" };
+         else if (/^(none|blank|off)$/i.test(body)) rule = { kind: "none" };
+         else if ((m = /^weighted\s*\((.+)\)$/i.exec(body)) && m[1].trim()) {
+            rule = { kind: "weighted", a: m[1].trim() };
+         } else if ((m = /^ratio\s*\((.+)\)$/i.exec(body))) {
+            var args = m[1].split(",").map(function (a) { return a.trim(); });
+            var scale = args.length === 3 ? Number(args[2]) : 1;
+            if ((args.length === 2 || args.length === 3) && args[0] && args[1] &&
+                isFinite(scale) && scale !== 0) {
+               rule = { kind: "ratio", a: args[0], b: args[1], scale: scale };
+            }
+         }
+         if (!name || !rule) {
+            if (rejected) rejected.push(seg);
+            return;
+         }
+         out[exactKey(name)] = rule;
+      });
+      return out;
+   }
+
+   /** A number from a raw cell value, or null for a blank/non-numeric cell. */
+   function cellNumber(v) {
+      /* A blank cell is ABSENT, not zero — Number(null) and Number("") are
+         both 0, so a measure with no data would total "0" and an empty cell
+         would drag a heat-map minimum to 0. */
+      if (v == null || v === "") return null;
+      var n = Number(v);
+      return isNaN(n) ? null : n;
+   }
+
+   /**
+    * One total over layout rows rStart..rEnd × data columns `cols`, which
+    * all belong to the same measure. ctx.num(r, cc) reads a cell;
+    * ctx.sibling(cc, ref) is the data column of measure `ref` under the
+    * same Columns members as cc (undefined when that measure is absent).
+    */
+   function aggregateCells(rStart, rEnd, cols, rule, ctx) {
+      var kind = rule ? rule.kind : "sum";
+      if (kind === "none") return null;
+      var total = 0, count = 0, best = null, sw = 0, sn = 0, sd = 0, anyN = false, anyD = false;
+      var i, r, cc, v, w;
+      var refA = [], refB = [];
+      if (kind === "weighted" || kind === "ratio") {
+         for (i = 0; i < cols.length; i++) {
+            refA[i] = ctx.sibling(cols[i], rule.a);
+            if (kind === "ratio") refB[i] = ctx.sibling(cols[i], rule.b);
+            if (refA[i] == null || (kind === "ratio" && refB[i] == null)) return null;
+         }
+      }
+      for (r = rStart; r <= rEnd; r++) {
+         for (i = 0; i < cols.length; i++) {
+            cc = cols[i];
+            if (kind === "ratio") {
+               var nv = ctx.num(r, refA[i]), dv = ctx.num(r, refB[i]);
+               if (nv != null) { sn += nv; anyN = true; }
+               if (dv != null) { sd += dv; anyD = true; }
+               continue;
+            }
+            v = ctx.num(r, cc);
+            if (v == null) continue;
+            if (kind === "weighted") {
+               w = ctx.num(r, refA[i]);
+               if (w == null) continue;
+               total += v * w;
+               sw += w;
+               count++;
+            } else if (kind === "min") {
+               if (best == null || v < best) best = v;
+            } else if (kind === "max") {
+               if (best == null || v > best) best = v;
+            } else {
+               total += v;
+               count++;
+            }
+         }
+      }
+      if (kind === "min" || kind === "max") return best;
+      if (kind === "weighted") return count && sw !== 0 ? total / sw : null;
+      if (kind === "ratio") return anyN && anyD && sd !== 0 ? (sn / sd) * rule.scale : null;
+      if (kind === "avg") return count ? total / count : null;
+      return count ? total : null;
+   }
+
+   /* =========================================================================
+      2b. AUTO FORMAT FOR COMPUTED CELLS
+      A total has no OAC-formatted string of its own. Under Auto, copy the
+      look of the same measure's formatted cells: prefix ($), suffix (%),
+      decimals, thousands grouping, and whether OAC multiplied by 100.
+      ========================================================================= */
+   function inferAutoFormat(raw, formatted) {
+      var n = cellNumber(raw);
+      if (n == null || formatted == null) return null;
+      var s = String(formatted).trim();
+      var mm = /[\d.,]*\d/.exec(s);
+      if (!mm) return null;
+      var core = mm[0];
+      if (core.charAt(0) === "," || !/^[\d,]*\.?\d+$/.test(core)) return null;
+      var prefix = s.slice(0, mm.index).replace(/[\s(\-−]/g, "");
+      var suffix = s.slice(mm.index + core.length).replace(/[\s)]/g, "");
+      var dot = core.indexOf(".");
+      var dp = dot < 0 ? 0 : core.length - dot - 1;
+      if (dp > 6) dp = 6;
+      if (/^[KMB]$/i.test(suffix)) return { compact: true, dp: dp };
+      var shown = Number(core.replace(/,/g, ""));
+      var scale = 1;
+      if (suffix === "%") {
+         var abs = Math.abs(n);
+         scale = abs === 0 || Math.abs(shown - abs * 100) <= Math.abs(shown - abs) ? 100 : 1;
+      }
+      var group = core.indexOf(",") >= 0 || shown < 1000;
+      return { prefix: prefix, suffix: suffix, dp: dp, scale: scale, group: group };
+   }
+
+   function groupThousands(body) {
+      var parts = body.split(".");
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      return parts.join(".");
+   }
+
+   /* Up to 12 significant digits: enough for any report value, and it drops
+      binary float noise (0.1 + 0.2 = 0.30000000000000004). */
+   function tidyNumber(n) {
+      return parseFloat(n.toPrecision(12));
+   }
+
+   function formatLike(n, spec) {
+      if (n == null) return "";
+      if (!spec) {
+         var t = tidyNumber(n);
+         return (t < 0 ? "-" : "") + groupThousands(String(Math.abs(t)));
+      }
+      if (spec.compact) return compactNumber(n, spec.dp);
+      var x = n * spec.scale;
+      var body = Math.abs(x).toFixed(spec.dp);
+      if (spec.group) body = groupThousands(body);
+      var negative = x < 0 && Number(body.replace(/,/g, "")) !== 0;
+      return (negative ? "-" : "") + spec.prefix + body + spec.suffix;
+   }
+
+   /* =========================================================================
+      2c. LAYOUT — alignment, wrapping and widths.
+      ========================================================================= */
+   function pickOption(value, allowed, fallback) {
+      return allowed.indexOf(value) >= 0 ? value : fallback;
+   }
+
+   /** "90", "90px" → 90. Out of range or not a number → null (automatic). */
+   function parsePx(value) {
+      var m = /^\s*(\d{1,4})\s*(px)?\s*$/i.exec(String(value == null ? "" : value));
+      if (!m) return null;
+      var px = parseInt(m[1], 10);
+      return px >= 20 && px <= 4000 ? px : null;
+   }
+
+   function parseColumnWidths(str, rejected) {
+      var out = Object.create(null);
+      if (!str) return out;
+      String(str).split(";").forEach(function (seg) {
+         seg = seg.trim();
+         if (!seg) return;
+         var idx = seg.lastIndexOf(":");
+         var name = idx > 0 ? seg.slice(0, idx).trim() : "";
+         var px = idx > 0 ? parsePx(seg.slice(idx + 1)) : null;
+         if (!name || px == null) {
+            if (rejected) rejected.push(seg);
+            return;
+         }
+         out[exactKey(name)] = px;
+      });
+      return out;
+   }
+
+   var H_ALIGN = ["left", "center", "right"];
+   var V_ALIGN = ["top", "middle", "bottom"];
+
+   /** Table class and inline custom properties for the Layout settings. */
+   function tableLayoutAttrs(Config) {
+      var tw = pickOption(Config.tableWidth, ["fill", "content", "fixed"], "fill");
+      var twPx = parsePx(Config.tableWidthPx);
+      if (tw === "fixed" && twPx == null) tw = "fill";
+      var cls = " gp-tw-" + tw +
+         (Config.wrapHeaders === "on" ? " gp-wrap-hdr" : "") +
+         (Config.wrapCells === "on" ? " gp-wrap-body" : "");
+      var style = "--gp-rh-align:" + pickOption(Config.rowHeaderAlign, H_ALIGN, "left") +
+         ";--gp-rh-valign:" + pickOption(Config.rowHeaderVAlign, V_ALIGN, "middle") +
+         ";--gp-ch-align:" + pickOption(Config.colHeaderAlign, H_ALIGN, "center") +
+         ";--gp-ch-valign:" + pickOption(Config.colHeaderVAlign, V_ALIGN, "middle") +
+         ";--gp-v-align:" + pickOption(Config.valueAlign, H_ALIGN, "right") +
+         ";--gp-v-valign:" + pickOption(Config.valueVAlign, V_ALIGN, "middle") +
+         (tw === "fixed" ? ";width:" + twPx + "px" : "");
+      return { cls: cls, style: style };
    }
 
    function compactNumber(n, dp) {
@@ -716,10 +1025,10 @@ define(['jquery',
          case "compact":  return compactNumber(n, dp);
          case "number":
             /* Same thousands grouping as currency, without the $. Auto
-               decimals keep the number's own fraction; an explicit count
-               uses toFixed. */
+               decimals keep the number's own fraction (float noise
+               trimmed); an explicit count uses toFixed. */
             var nSign = n < 0 ? "-" : "";
-            var nBody = dp == null ? String(Math.abs(n)) : Math.abs(n).toFixed(dp);
+            var nBody = dp == null ? String(Math.abs(tidyNumber(n))) : Math.abs(n).toFixed(dp);
             var nParts = nBody.split(".");
             nParts[0] = nParts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
             return nSign + nParts.join(".");
@@ -728,32 +1037,11 @@ define(['jquery',
    }
 
    /* =========================================================================
-      3. TOTALS — client-side SUM over already-rendered cell values.
-      See the v0.5 header note: this is a display convenience, not a
-      re-aggregation, and is wrong for a non-additive measure. Default off.
+      3. TOTALS — client-side, over already-rendered cell values.
+      See the v0.5 header note: the plugin cannot re-run each measure's
+      aggregation on the server. Sum is the default rule; a rate or average
+      needs a Totals: Measure Rules entry (section 2a). Default off.
       ========================================================================= */
-
-   /** Sums dl.getValue(DATA, r, cc) over rStart..rEnd × the given column indices. Returns null if nothing numeric was found. */
-   function sumBlock(dl, rStart, rEnd, colIndices) {
-      var total = 0, any = false;
-      for (var r = rStart; r <= rEnd; r++) {
-         for (var i = 0; i < colIndices.length; i++) {
-            var cc = colIndices[i];
-            var v = null;
-            try { v = dl.getValue(PHYS_DATA, r, cc, true); } catch (e) {}
-            if (v == null) { try { v = dl.getValue(PHYS_DATA, r, cc); } catch (e) {} }
-            /* A blank cell is ABSENT, not zero — Number(null) and Number("")
-               both evaluate to 0, so this check must happen before the
-               numeric conversion or a measure with no data at all would
-               render "0" instead of blank, and an empty cell would drag a
-               heat-map's minimum down to 0. */
-            if (v == null || v === "") continue;
-            var n = Number(v);
-            if (!isNaN(n)) { total += n; any = true; }
-         }
-      }
-      return any ? total : null;
-   }
 
    /**
     * Which measure each DATA column index belongs to, so a grand-total COLUMN
@@ -829,22 +1117,18 @@ define(['jquery',
       as a sum and defeat the scale.
       ========================================================================= */
 
-   function computeMeasureRanges(dl, nRows, nCols, measureIdByCol, colHidden) {
+   /** @param {function(number, number): ?number} num cell reader (see _buildTable) */
+   function computeMeasureRanges(num, nRows, nCols, measureIdByCol, colHidden) {
       var ranges = Object.create(null);
       for (var cc = 0; cc < nCols; cc++) {
          if (colHidden && colHidden[cc]) continue;
          var mId = measureIdByCol[cc];
          var range = ranges[mId] || (ranges[mId] = { min: null, max: null });
          for (var r = 0; r < nRows; r++) {
-            var v = null;
-            try { v = dl.getValue(PHYS_DATA, r, cc, true); } catch (e) {}
-            if (v == null) { try { v = dl.getValue(PHYS_DATA, r, cc); } catch (e) {} }
-            if (v == null || v === "") continue;   // a blank cell is absent, not zero
-            var n = Number(v);
-            if (!isNaN(n)) {
-               if (range.min == null || n < range.min) range.min = n;
-               if (range.max == null || n > range.max) range.max = n;
-            }
+            var n = num(r, cc);   // null for a blank cell: absent, not zero
+            if (n == null) continue;
+            if (range.min == null || n < range.min) range.min = n;
+            if (range.max == null || n > range.max) range.max = n;
          }
       }
       return ranges;
@@ -1532,15 +1816,21 @@ define(['jquery',
          "@page { size: " + box.size + "; margin: " + box.margin + "; }" +
          "html, body { margin: 0; padding: 0; width: " + box.contentWidthIn + "in; color: #1b1f24; font-family: Arial, Helvetica, sans-serif; font-size: 9pt; }" +
          "table { border-collapse: collapse; width: max-content; }" +
-         /* Prefer a word boundary; force a mid-word break only when one word
-            exceeds its column. Keep automatic table layout for print. */
-         "th, td { border: 1px solid #b7bcc2; padding: 3px 6px; vertical-align: top; white-space: normal; word-break: normal; overflow-wrap: break-word; }" +
+         /* Wrap at spaces only — never mid-word (0.17.0; the data team
+            reported words split across lines). Automatic table layout keeps
+            every column at least as wide as its longest word, so a table
+            that is still too wide at 6pt runs past the margin (with the
+            overflow advisory) rather than breaking a word. Alignment comes
+            from the table's own Layout custom properties. */
+         "th, td { border: 1px solid #b7bcc2; padding: 3px 6px; vertical-align: top; white-space: normal; word-break: normal; overflow-wrap: normal; hyphens: manual; }" +
          "thead { display: table-header-group; }" +
+         "span.gp-nobr { white-space: nowrap; }" +
          "tr { break-inside: avoid; page-break-inside: avoid; }" +
-         "th { background: #f0f2f4; font-weight: 700; text-align: center; }" +
+         "th { background: #f0f2f4; font-weight: 700; text-align: var(--gp-ch-align, center); vertical-align: var(--gp-ch-valign, top); }" +
          "th.gp-print-title, th.title { background: #ffffff; color: #1b1f24; font-size: 13pt; font-weight: 700; text-align: left; border: none; border-bottom: 1px solid #b7bcc2; padding: 0 0 8px; }" +
-         "th.gp-rowhdr, th.gp-corner, td.rh { text-align: left; background: #f7f8f9; }" +
-         "td.gp-val, td.num, td.total { text-align: right; font-variant-numeric: tabular-nums; }" +
+         "th.gp-corner { text-align: var(--gp-rh-align, left); background: #f7f8f9; }" +
+         "th.gp-rowhdr, td.rh { text-align: var(--gp-rh-align, left); vertical-align: var(--gp-rh-valign, top); background: #f7f8f9; }" +
+         "td.gp-val, td.num, td.total { text-align: var(--gp-v-align, right); vertical-align: var(--gp-v-valign, top); font-variant-numeric: tabular-nums; }" +
          "tr.gp-total-row th, tr.gp-total-row td, tr.total td { font-weight: 700; background: #eef2f4; }" +
          "td.total .lbl { display: block; text-align: left; }" +
          "td.gp-heat { background: var(--gp-cell-bg); color: var(--gp-cell-fg); }" +
@@ -2088,6 +2378,20 @@ define(['jquery',
       }
    };
 
+   /* Browsers treat a hyphen or slash as a line-break opportunity even
+      with overflow-wrap and word-break at normal, so wrapped text split
+      "Full-Time" into "Full-" / "Time" (caught in a headless Chrome layout
+      check). A run of non-space characters that contains one is kept on
+      one line; wrapping then happens only at spaces. Harmless when
+      wrapping is off. A lone %, # or $ is glued to the next word with a
+      no-break space so "% Full-Time" never leaves "%" on its own line. */
+   function labelHtml(s) {
+      var text = s == null ? "" : String(s).replace(/(^|\s)([%#$]) (?=\S)/g, "$1$2 ");
+      return escapeHtml(text).replace(/[^\s]*[\-‐–—\/][^\s]*/g, function (run) {
+         return "<span class='gp-nobr'>" + run + "</span>";
+      });
+   }
+
    function escapeHtml(s) {
       if (s == null) return "";
       /* Includes single quotes: header attributes are built single-quoted, and
@@ -2119,7 +2423,11 @@ define(['jquery',
          return "<div class='gp-empty'>" + escapeHtml(LBL.EMPTY_STATE) + "</div>";
       }
 
-      var overrides = parseMeasureFormatOverrides(this.Config.measureFormatOverrides);
+      var rejected = [];
+      var overrides = parseMeasureFormatOverrides(this.Config.measureFormatOverrides, rejected);
+      var totalRules = parseTotalRules(this.Config.totalRules, rejected);
+      var widthMap = parseColumnWidths(this.Config.columnWidths, rejected);
+      var defaultValueWidth = parsePx(this.Config.columnWidth);
       var measureInfo = computeMeasureIdByCol(dl, LM, nColLayers, nCols);
       var measureIdByCol = measureInfo.idByCol;
       var measureNameById = measureInfo.nameById;
@@ -2183,7 +2491,97 @@ define(['jquery',
          colHidden[hc] = hMid !== "__single__" &&
             columnListed(hiddenSet, hMid, measureNameById[hMid]);
       }
-      if (wantCellColor) colorRanges = computeMeasureRanges(dl, nRows, nCols, measureIdByCol, colHidden);
+
+      /* Every DataLayout row read once, in delivery order (indexed by the
+         layout row). Totals, the heat map, and the body all read from it
+         instead of calling getValue again per total. */
+      var bufferRows = nRows ? buildRowBuffer(dl, nRows, nRowLayers, nCols) : [];
+      function num(r, cc) {
+         if (cc == null || cc < 0 || cc >= nCols) return null;
+         var row = bufferRows[r];
+         var v = null;
+         if (row) {
+            v = row.raw[cc];
+            if (v == null) v = row.formatted[cc];
+         } else {
+            try { v = dl.getValue(DATA, r, cc, true); } catch (e) {}
+            if (v == null) { try { v = dl.getValue(DATA, r, cc); } catch (e) {} }
+         }
+         return cellNumber(v);
+      }
+
+      /* The data column of another measure under the same Columns members:
+         weighted(Headcount) for "% Female · Fall" reads "Headcount · Fall".
+         Hidden columns are included — a weight is usually hidden. */
+      var colTuple = [];
+      for (var tc = 0; tc < nCols; tc++) {
+         var tparts = [];
+         for (var tl = 0; tl < nColLayers; tl++) {
+            if (colLayerIsMeasure[tl]) continue;
+            var tv = null;
+            try { tv = dl.getValue(COL, tl, tc, true); } catch (e) {}
+            if (tv == null) { try { tv = dl.getValue(COL, tl, tc, false); } catch (e) {} }
+            tparts.push(tv == null ? "" : String(tv));
+         }
+         colTuple[tc] = tparts.join("\u0001");
+      }
+      var colBySibling = Object.create(null);
+      for (tc = 0; tc < nCols; tc++) {
+         var sk = colTuple[tc] + "\u0002" + measureIdByCol[tc];
+         if (!(sk in colBySibling)) colBySibling[sk] = tc;
+      }
+      var refCache = Object.create(null);
+      var missingRefs = Object.create(null);
+      function measureIdFor(ref) {
+         var key = exactKey(ref);
+         if (key in refCache) return refCache[key];
+         var found = null;
+         for (var mc = 0; mc < nCols && found == null; mc++) {
+            var mid = measureIdByCol[mc];
+            if (mid !== "__single__" && nameKeys(mid, measureNameById[mid]).indexOf(key) >= 0) found = mid;
+         }
+         if (found == null) missingRefs[ref] = true;
+         refCache[key] = found;
+         return found;
+      }
+      var aggCtx = {
+         num: num,
+         sibling: function (cc, ref) {
+            var mid = measureIdFor(ref);
+            if (mid == null) return null;
+            var at = colBySibling[colTuple[cc] + "\u0002" + mid];
+            return at == null ? null : at;
+         }
+      };
+      function ruleFor(mId) {
+         return mId === "__single__" ? null : lookupByName(totalRules, mId, measureNameById[mId]);
+      }
+
+      /* A computed total has no OAC string of its own. Auto copies the look
+         of that column's own formatted cells; an explicit format applies
+         as it does everywhere else. */
+      var sampleCache = [];
+      function sampleSpec(cc) {
+         if (sampleCache[cc] !== undefined) return sampleCache[cc];
+         var spec = null;
+         for (var sr = 0; sr < bufferRows.length && !spec; sr++) {
+            var row = bufferRows[sr];
+            if (row.formatted[cc] == null || row.formatted[cc] === "") continue;
+            spec = inferAutoFormat(row.raw[cc], row.formatted[cc]);
+         }
+         sampleCache[cc] = spec;
+         return spec;
+      }
+      function totalText(val, fmt, cc) {
+         if (val == null) return "";
+         if (fmt.numberFormat !== "auto") return formatValue(val, fmt);
+         return formatLike(val, sampleSpec(cc));
+      }
+      function totalFor(rStart, rEnd, cols, mId) {
+         return aggregateCells(rStart, rEnd, cols, ruleFor(mId), aggCtx);
+      }
+
+      if (wantCellColor) colorRanges = computeMeasureRanges(num, nRows, nCols, measureIdByCol, colHidden);
       if (wantTotalCol && buckets) {
          var keptBuckets = [];
          buckets.order.forEach(function (bid) {
@@ -2237,7 +2635,10 @@ define(['jquery',
          return parseInt(p[1], 10) === sortState.layer && parseInt(p[2], 10) === sortState.key;
       }
 
-      function headerCell(tag, label, lookupName, columnId, span, spanAttr, cls, markRows, sortKey, paintHex) {
+      /* tipTitle is the tooltip heading: the column's name as this table
+         shows it (after a Display Label rename), which on a member-value
+         header is the layer's name, not the member. */
+      function headerCell(tag, label, lookupName, columnId, span, spanAttr, cls, markRows, sortKey, paintHex, tipTitle) {
          var d = null;
          if (self.Config.showDescriptions !== "off") {
             try { d = self._glossary.getDescription(lookupName, columnId); } catch (e) {}
@@ -2248,6 +2649,9 @@ define(['jquery',
          if (d) {
             attrs += " data-gp-name='" + escapeHtml(lookupName == null ? "" : lookupName) + "'";
             if (columnId != null) attrs += " data-gp-key='" + escapeHtml(columnId) + "'";
+            if (tipTitle != null && tipTitle !== "" && tipTitle !== lookupName) {
+               attrs += " data-gp-title='" + escapeHtml(tipTitle) + "'";
+            }
          }
          if (d || sortKey) attrs += " tabindex='0'";
          if (markRows) attrs += " data-gp-mark-rows='" + markRows[0] + ":" + markRows[1] + "'";
@@ -2262,13 +2666,43 @@ define(['jquery',
             }
          }
          return "<" + tag + attrs + "><span class='gp-lbl'>" +
-                escapeHtml(label) + "</span>" + ind + "</" + tag + ">";
+                labelHtml(label) + "</span>" + ind + "</" + tag + ">";
       }
 
       /* The underline is a border on .gp-has-desc. That class also opens the
          tooltip, so turning the line off must not remove the class. */
-      var tableClass = "gp-table" + (this.Config.showHeaderUnderline === "on" ? "" : " gp-no-underline");
-      var out = ["<table class='" + tableClass + "'>"];
+      var layoutAttrs = tableLayoutAttrs(this.Config);
+      var tableClass = "gp-table" + (this.Config.showHeaderUnderline === "on" ? "" : " gp-no-underline") + layoutAttrs.cls;
+      var out = ["<table class='" + tableClass + "' style='" + layoutAttrs.style + "'>"];
+
+      /* Widths go on <col>, one per drawn column, so every cell in the
+         column follows without a style on each cell. Automatic table layout
+         never makes a column narrower than its longest word, so a width
+         smaller than that word leaves the word whole. Only emitted when a
+         width is set. */
+      var colWidths = [];
+      var anyWidth = false;
+      for (var wv = 0; wv < visibleRowLayers.length; wv++) {
+         var wl = visibleRowLayers[wv], wId = null, wName = null;
+         try { wId = dl.getLayerMetadata(ROW, wl, LM.LAYER_ID); } catch (e) {}
+         try { wName = dl.getLayerMetadata(ROW, wl, LM.LAYER_DISPLAY_NAME); } catch (e) {}
+         colWidths.push(lookupByName(widthMap, wId, wName));
+      }
+      for (var wc = 0; wc < nCols; wc++) {
+         if (colHidden[wc]) continue;
+         var wMid = measureIdByCol[wc];
+         var named = wMid === "__single__" ? null : lookupByName(widthMap, wMid, measureNameById[wMid]);
+         colWidths.push(named || defaultValueWidth);
+      }
+      if (wantTotalCol) buckets.order.forEach(function () { colWidths.push(defaultValueWidth); });
+      for (var wi = 0; wi < colWidths.length; wi++) if (colWidths[wi]) anyWidth = true;
+      if (anyWidth) {
+         out.push("<colgroup>");
+         colWidths.forEach(function (px) {
+            out.push(px ? "<col style='width:" + px + "px'>" : "<col>");
+         });
+         out.push("</colgroup>");
+      }
 
       /* ---- column headers, one row per VISIBLE column layer ---- */
       out.push("<thead>");
@@ -2292,7 +2726,7 @@ define(['jquery',
                   var rId   = dl.getLayerMetadata(ROW, rl, LM.LAYER_ID);
                   var rTxt  = rName == null ? "" : String(rName);
                   var rShown = resolveHeaderLabel(headerLabelMap, rId, rTxt, rTxt);
-                  out.push(headerCell("th", rShown, rTxt, rId, 1, "colspan", "gp-corner", null, "row:" + rl, self.Config.headerColor));
+                  out.push(headerCell("th", rShown, rTxt, rId, 1, "colspan", "gp-corner", null, "row:" + rl, self.Config.headerColor, rShown));
                }
             }
          }
@@ -2327,9 +2761,13 @@ define(['jquery',
                   var lookup = isMeasureLayer ? label : (layerName ? layerName : label);
                   var shown = label == null ? "" : String(label);
                   var paintHex = self.Config.headerDataColor;
+                  var tipTitle = layerName == null ? "" : String(layerName);
                   if (isMeasureLayer) {
                      shown = resolveHeaderLabel(headerLabelMap, colId, shown, shown);
                      paintHex = self.Config.headerColor;
+                     tipTitle = shown;
+                  } else if (layerName) {
+                     tipTitle = resolveHeaderLabel(headerLabelMap, colId, tipTitle, tipTitle);
                   }
 
                   /* A header that spans several visible data columns has no
@@ -2338,7 +2776,7 @@ define(['jquery',
                   var sortKey = span.sortCol >= 0 ? ("col:" + cl + ":" + span.sortCol) : null;
                   out.push(headerCell("th", shown,
                                       lookup == null ? "" : lookup, colId,
-                                      span.n, "colspan", "gp-colhdr", null, sortKey, paintHex));
+                                      span.n, "colspan", "gp-colhdr", null, sortKey, paintHex, tipTitle));
                }
                c = end + 1;
             }
@@ -2363,7 +2801,7 @@ define(['jquery',
                var rs = nHeaderRows > 1 ? " rowspan='" + nHeaderRows + "'" : "";
                var totalPaint = headerPaint(self.Config.headerColor);
                out.push("<th class='gp-colhdr gp-total-colhdr" + totalPaint.cls + "' scope='col'" + totalPaint.style + rs + ">" +
-                        "<span class='gp-lbl'>" + escapeHtml(lbl) + "</span></th>");
+                        "<span class='gp-lbl'>" + labelHtml(lbl) + "</span></th>");
             });
          }
          out.push("</tr>");
@@ -2378,20 +2816,20 @@ define(['jquery',
          if (nVisRows > 0) {
             cells.push("<th class='gp-rowhdr gp-total-label' scope='row'" +
                        (nVisRows > 1 ? " colspan='" + nVisRows + "'" : "") +
-                       ">" + escapeHtml(labelText) + "</th>");
+                       ">" + labelHtml(labelText) + "</th>");
          }
          for (var cc = 0; cc < nCols; cc++) {
             if (colHidden[cc]) continue;
             var mId = measureIdByCol[cc];
             var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId, measureNameById[mId]);
-            var val = sumBlock(dl, rStart, rEnd, [cc]);
-            cells.push("<td class='gp-val gp-total-val'>" + escapeHtml(val == null ? "" : formatValue(val, fmt)) + "</td>");
+            var val = totalFor(rStart, rEnd, [cc], mId);
+            cells.push("<td class='gp-val gp-total-val'>" + escapeHtml(totalText(val, fmt, cc)) + "</td>");
          }
          if (wantTotalCol) {
             buckets.order.forEach(function (bid) {
                var fmt = resolveFormat(self.Config, overrides, bid === "__single__" ? null : bid, measureNameById[bid]);
-               var val = sumBlock(dl, rStart, rEnd, buckets.map[bid]);
-               cells.push("<td class='gp-val gp-total-val gp-grand-total-val'>" + escapeHtml(val == null ? "" : formatValue(val, fmt)) + "</td>");
+               var val = totalFor(rStart, rEnd, buckets.map[bid], bid);
+               cells.push("<td class='gp-val gp-total-val gp-grand-total-val'>" + escapeHtml(totalText(val, fmt, buckets.map[bid][0])) + "</td>");
             });
          }
          cells.push("</tr>");
@@ -2414,20 +2852,20 @@ define(['jquery',
                        ">" +
                        "<button type='button' class='gp-group-toggle' data-gp-toggle-group='" + groupKey +
                        "' aria-expanded='false' aria-label='Expand group " + escapeHtml(labelText) + "'>▸</button><span class='gp-lbl'>" +
-                       escapeHtml(labelText) + "</span></th>");
+                       labelHtml(labelText) + "</span></th>");
          }
          for (var cc = 0; cc < nCols; cc++) {
             if (colHidden[cc]) continue;
             var mId = measureIdByCol[cc];
             var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId, measureNameById[mId]);
-            var val = sumBlock(dl, rStart, rEnd, [cc]);
-            cells.push("<td class='gp-val gp-group-val'>" + escapeHtml(val == null ? "" : formatValue(val, fmt)) + "</td>");
+            var val = totalFor(rStart, rEnd, [cc], mId);
+            cells.push("<td class='gp-val gp-group-val'>" + escapeHtml(totalText(val, fmt, cc)) + "</td>");
          }
          if (wantTotalCol) {
             buckets.order.forEach(function (bid) {
                var fmt = resolveFormat(self.Config, overrides, bid === "__single__" ? null : bid, measureNameById[bid]);
-               var val = sumBlock(dl, rStart, rEnd, buckets.map[bid]);
-               cells.push("<td class='gp-val gp-group-val gp-grand-total-val'>" + escapeHtml(val == null ? "" : formatValue(val, fmt)) + "</td>");
+               var val = totalFor(rStart, rEnd, buckets.map[bid], bid);
+               cells.push("<td class='gp-val gp-group-val gp-grand-total-val'>" + escapeHtml(totalText(val, fmt, buckets.map[bid][0])) + "</td>");
             });
          }
          cells.push("</tr>");
@@ -2478,9 +2916,9 @@ define(['jquery',
          if (wantTotalCol) {
             buckets.order.forEach(function (bid) {
                var fmt2 = resolveFormat(self.Config, overrides, bid === "__single__" ? null : bid, measureNameById[bid]);
-               var val = sumBlock(dl, layoutRow, layoutRow, buckets.map[bid]);
+               var val = totalFor(layoutRow, layoutRow, buckets.map[bid], bid);
                parts.push("<td class='gp-val gp-total-val gp-grand-total-val' data-gp-mark-rows='" + layoutRow + ":" + layoutRow + "'>" +
-                          escapeHtml(val == null ? "" : formatValue(val, fmt2)) + "</td>");
+                          escapeHtml(totalText(val, fmt2, buckets.map[bid][0])) + "</td>");
             });
          }
          return parts.join("");
@@ -2496,7 +2934,7 @@ define(['jquery',
          }
          out.push("<tr data-gp-row='0'>" + dataCellsHtml({ r: 0, raw: phantomRaw, formatted: phantomFmt }) + "</tr>");
       } else {
-         var displayRows = orderRowsForSort(buildRowBuffer(dl, nRows, nRowLayers, nCols), sortState, nRowLayers);
+         var displayRows = orderRowsForSort(bufferRows, sortState, nRowLayers);
          var di = 0;
          while (di < displayRows.length) {
             var lead = displayRows[di];
@@ -2538,7 +2976,7 @@ define(['jquery',
                   var span = spanEnd - rowi + 1;
                   out.push("<th class='gp-rowhdr' scope='row' data-gp-mark-rows='" + markRowsAttr(indices) + "'" +
                            (span > 1 ? " rowspan='" + span + "'" : "") +
-                           ">" + toggle + "<span class='gp-lbl'>" + escapeHtml(cur.rowVals[l]) + "</span></th>");
+                           ">" + toggle + "<span class='gp-lbl'>" + labelHtml(cur.rowVals[l]) + "</span></th>");
                }
                /* No phantom column when the COLUMN edge is empty — a rows-only
                   drop renders headers alone, keeping thead and tbody aligned. */
@@ -2562,7 +3000,23 @@ define(['jquery',
       }
       out.push("</tbody></table>");
 
+      this._warnConfig(rejected, Object.keys(missingRefs));
       return out.join("");
+   };
+
+   /* A property entry that does not parse, or a total rule naming a
+      measure that is not on this pivot, used to vanish without a trace.
+      Logged once per distinct message (not per render) — setting text only,
+      never cell values. */
+   GlossaryPivotViz.prototype._warnConfig = function (rejected, missingRefs) {
+      var parts = [];
+      if (rejected && rejected.length) parts.push("ignored setting entries: " + rejected.join(" | "));
+      if (missingRefs && missingRefs.length) {
+         parts.push("total rules name measures not on this pivot (add them to Values; they may be hidden): " + missingRefs.join(", "));
+      }
+      var msg = parts.join("; ");
+      if (msg && msg !== this._lastConfigWarning) _logger.warning(msg);
+      this._lastConfigWarning = msg;
    };
 
    /* =========================================================================
@@ -2588,6 +3042,7 @@ define(['jquery',
          var $el = $(el);
          var name = $el.attr("data-gp-name") || "";
          var key  = $el.attr("data-gp-key") || null;
+         var title = $el.attr("data-gp-title") || name;
          var d = null;
          try { d = self._glossary.getDescription(name, key); } catch (e) {}
          if (!d) { hide(); return; }
@@ -2599,7 +3054,7 @@ define(['jquery',
             distinguish them from. */
          var showBadge = self.Config.showSourceBadges === "on";
          var srcLabel = d.origin === "override" ? LBL.SRC_OVERRIDE : LBL.SRC_LIVE;
-         var $name = $("<div class='gp-tip-name'></div>").text(name);
+         var $name = $("<div class='gp-tip-name'></div>").text(title);
          if (showBadge) $name.append($("<span class='gp-tip-src'></span>").text(srcLabel));
          var align = self.Config.tooltipAlign;
          if (align !== "center" && align !== "right") align = "left";
@@ -2923,6 +3378,25 @@ define(['jquery',
       addToggle(pGen, "showRowSubtotalsGadget", "Totals: Row Subtotals (2+ Row layers)", this.Config.showRowSubtotals);
       addToggle(pGen, "showGrandTotalColumnGadget", "Totals: Grand Total Column", this.Config.showGrandTotalColumn);
       addToggle(pGen, "rowGroupCollapseGadget", "Totals: Row Group Collapse (2+ Row layers)", this.Config.rowGroupCollapse);
+      addText(pGen, factory, "totalRulesGadget",
+         "Totals: Measure Rules (name = sum | avg | weighted(W) | ratio(N, D) | none; ...)", this.Config.totalRules);
+
+      var hOpts = [{ value: "left", label: "Left" }, { value: "center", label: "Center" }, { value: "right", label: "Right" }];
+      var vOpts = [{ value: "top", label: "Top" }, { value: "middle", label: "Middle" }, { value: "bottom", label: "Bottom" }];
+      addSwitcher(pGen, "rowHeaderAlignGadget", "Layout: Row Header Align", this.Config.rowHeaderAlign, hOpts, nx("FMT"));
+      addSwitcher(pGen, "rowHeaderVAlignGadget", "Layout: Row Header Vertical", this.Config.rowHeaderVAlign, vOpts, nx("FMT"));
+      addSwitcher(pGen, "colHeaderAlignGadget", "Layout: Column Header Align", this.Config.colHeaderAlign, hOpts, nx("FMT"));
+      addSwitcher(pGen, "colHeaderVAlignGadget", "Layout: Column Header Vertical", this.Config.colHeaderVAlign, vOpts, nx("FMT"));
+      addSwitcher(pGen, "valueAlignGadget", "Layout: Value Align", this.Config.valueAlign, hOpts, nx("FMT"));
+      addSwitcher(pGen, "valueVAlignGadget", "Layout: Value Vertical", this.Config.valueVAlign, vOpts, nx("FMT"));
+      addToggle(pGen, "wrapHeadersGadget", "Layout: Wrap Header Text", this.Config.wrapHeaders);
+      addToggle(pGen, "wrapCellsGadget", "Layout: Wrap Row and Value Text", this.Config.wrapCells);
+      addText(pGen, factory, "columnWidthGadget", "Layout: Value Column Width (px, blank = auto)", this.Config.columnWidth);
+      addText(pGen, factory, "columnWidthsGadget", "Layout: Column Widths (name: px; ...)", this.Config.columnWidths);
+      addSwitcher(pGen, "tableWidthGadget", "Layout: Table Width", this.Config.tableWidth,
+         [{ value: "fill", label: "Fill tile" }, { value: "content", label: "Fit content" },
+          { value: "fixed", label: "Fixed (px below)" }], nx("FMT"));
+      addText(pGen, factory, "tableWidthPxGadget", "Layout: Fixed Table Width (px)", this.Config.tableWidthPx);
 
       addToggle(pGen, "cellColorGadget", "Style: Cell Color (heat map)", this.Config.cellColor);
       addText(pGen, factory, "cellColorLowGadget", "Style: Cell Color Low (hex)", this.Config.cellColorLow);
@@ -2967,6 +3441,19 @@ define(['jquery',
          showRowSubtotalsGadget: "showRowSubtotals",
          showGrandTotalColumnGadget: "showGrandTotalColumn",
          rowGroupCollapseGadget: "rowGroupCollapse",
+         totalRulesGadget: "totalRules",
+         rowHeaderAlignGadget: "rowHeaderAlign",
+         rowHeaderVAlignGadget: "rowHeaderVAlign",
+         colHeaderAlignGadget: "colHeaderAlign",
+         colHeaderVAlignGadget: "colHeaderVAlign",
+         valueAlignGadget: "valueAlign",
+         valueVAlignGadget: "valueVAlign",
+         wrapHeadersGadget: "wrapHeaders",
+         wrapCellsGadget: "wrapCells",
+         columnWidthGadget: "columnWidth",
+         columnWidthsGadget: "columnWidths",
+         tableWidthGadget: "tableWidth",
+         tableWidthPxGadget: "tableWidthPx",
          cellColorGadget: "cellColor",
          cellColorLowGadget: "cellColorLow",
          cellColorHighGadget: "cellColorHigh",
@@ -2992,7 +3479,8 @@ define(['jquery',
          rowGroupCollapseGadget: 1, cellColorGadget: 1, showDescriptionsGadget: 1,
          showSourceBadgesGadget: 1, showHeaderUnderlineGadget: 1,
          showPrintPdfGadget: 1, showPrintCanvasGadget: 1,
-         printFollowThemeGadget: 1, debugLogMetadataGadget: 1
+         printFollowThemeGadget: 1, debugLogMetadataGadget: 1,
+         wrapHeadersGadget: 1, wrapCellsGadget: 1
       };
       if (TOGGLE_GADGETS[sGadgetID]) {
          this.Config[key] = oPropChange.checked ? "on" : "off";
@@ -3129,6 +3617,14 @@ define(['jquery',
       _collectPrintCanvasEntries: collectPrintCanvasEntries,
       _openGlossaryPrint: openGlossaryPrint,
       _computeMeasureIdByCol: computeMeasureIdByCol,
-      _resolveFormat: resolveFormat
+      _resolveFormat: resolveFormat,
+      _parseTotalRules: parseTotalRules,
+      _aggregateCells: aggregateCells,
+      _inferAutoFormat: inferAutoFormat,
+      _formatLike: formatLike,
+      _parseColumnWidths: parseColumnWidths,
+      _tableLayoutAttrs: tableLayoutAttrs,
+      _wrapPrintDocument: wrapPrintDocument,
+      _labelHtml: labelHtml
    };
 });

@@ -13,7 +13,7 @@ WSU Glossary Pivot development without re-deriving design decisions.
 - **Short name**: WSU Glossary Pivot
 - **Category**: WSU
 - **Root id**: `com-wsu-glossary-pivot`
-- **Version constant**: `GlossaryPivotViz.VERSION = "0.16.2"` (see `CHANGELOG.md`)
+- **Version constant**: `GlossaryPivotViz.VERSION = "0.17.0"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-glossary-pivot.zip`
 
@@ -39,8 +39,14 @@ It is not a reimplementation of every native-pivot command.
 - **Click-to-sort** — one header at a time, ascending then descending then
   off. Session-only. Original row indexes are kept for marking and collapse.
 - **Totals** — grand total row, grand total column (the total of each row),
-  and outer-group row subtotals. Each is a sum of the numbers on screen.
-  Default off.
+  and outer-group row subtotals. Default off. Each measure totals by its
+  rule in Totals: Measure Rules — sum (default), avg, min, max, none,
+  weighted(W), or ratio(N, D) — so a rate totals as sum(numerator) /
+  sum(denominator). Under Auto format a total copies its column's look.
+- **Layout** — horizontal and vertical alignment for row headers, column
+  headers, and values; header and body text wrapping at spaces only (never
+  inside a word); value column width, per-column widths, and table width
+  (fill, content, fixed px).
 - **Row-group collapse** — with 2 or more Row fields, collapse the outer
   group to one summary row. Session-only.
 - **Row marking** — click a row header or a value cell to mark that source
@@ -350,7 +356,11 @@ The per-measure box wins over the two switches for the named measure. The
 token is matched against the measure's real id first — `CUM_GPA:currency:2`
 matches a native measure whose id is `CUM_GPA`; the header title does not
 match unless that title happens to be the id. **If the id doesn't match,
-the token is tried again against the measure's display title** — confirmed
+the token is tried again against the measure's display title** (0.17.0:
+also the last segment of a qualified id, the same `nameKeys` order hide and
+rename use; format words are case-insensitive with aliases `percentage`,
+`pct`, `usd`, `dollar(s)`, `numeric`; entries parse from the right so a
+name may contain a colon; rejected entries are logged) — confirmed
 live to be necessary for a calculated measure: OAC gives a calculated
 measure (Full-Time, a workbook ratio calc, ...) a real, non-null raw id,
 but an opaque, auto-generated one ("c34") that is never shown anywhere in
@@ -418,6 +428,7 @@ nothing.
 | `showRowSubtotals` | `"off"` | on / off — a subtotal under each outer row group. Does nothing with fewer than 2 Row fields |
 | `showGrandTotalColumn` | `"off"` | on / off — a column on the right, one total per measure, summing that row. Does nothing when the Columns edge has no layer |
 | `rowGroupCollapse` | `"off"` | on / off — collapse toggle on the outer row group. Does nothing with fewer than 2 Row fields |
+| `totalRules` | `""` | `NAME = rule; ...` — rule is `sum`, `avg`, `min`, `max`, `none`, `weighted(W)`, or `ratio(N, D[, scale])`. Unlisted measures sum |
 
 The three total switches are independent. All three can be on. The
 right-hand column is labeled **Grand Total Column** because it is a column;
@@ -431,10 +442,38 @@ correctly produced separate ids per measure, so this was not found to be
 broken; see CHANGELOG.md's 0.16.2 entry, which corrects an 0.16.1 claim
 that calculated measures shared one bucket here.
 
-Each total is a sum of the raw numbers in the cells it covers. Blank cells
-are skipped, not treated as zero. The plugin does not know the measure's
-aggregation rule, so the sum is wrong for an average, a ratio, or a GPA.
-That is why the default is off and the label is "Total".
+Each total is computed from the raw numbers in the cells it covers, by that
+measure's rule. Blank cells are skipped, not treated as zero. The plugin
+does not know the measure's server-side aggregation and cannot ask OAC for
+a server total (a custom visualization receives only the cells in its
+buckets), so the default rule is sum, which is wrong for an average, a
+ratio, or a GPA. Name the rule for those measures:
+
+- `weighted(W)` — sum(value × W) / sum(W) over the covered cells, pairing
+  each cell with measure W's cell under the same Columns members. With W
+  the rate's denominator this is exactly sum(numerator) / sum(denominator),
+  and it keeps the column's own scale (89.14 or 0.8914). Needs only the
+  denominator on the pivot. Example: `% Full-Time = weighted(Headcount)`.
+- `ratio(N, D)` — sum(N) / sum(D), times an optional third argument
+  (`ratio(Full-Time, Headcount, 100)` for a column shown as 89.14). The
+  rate's own cells are not used.
+- `avg` — the mean of the covered cells (the native report-based average).
+  `min`, `max`, `none` (blank) are also accepted. Rule words and measure
+  names are case-insensitive; names match like hide and rename.
+
+A referenced measure must be in the query; it can be hidden with Header:
+Hidden Columns. A rule naming a measure that is not on the pivot leaves the
+total blank (never a wrong sum) and logs a warning. The same rule drives
+the grand total row, subtotals, collapsed-group rows, and the Grand Total
+Column (across a measure's columns). Checked against the data team's IPEDS
+2026 Spring screenshot: weighted(Headcount) gives 86.29 for % Full-Time
+and 54.37 for % Female, matching the native pivot.
+
+Under Auto format a total has no OAC string of its own, so it copies the
+look of its column's first formatted cell: prefix (`$`), suffix (`%`),
+whether OAC multiplied by 100, decimals, and thousands grouping. With no
+sample it prints the number with grouping and float noise trimmed. An
+explicit format (Number, Percent, ...) applies as it does to cells.
 
 A collapsed group is one summary row using the same sum. It does not also
 draw a subtotal.
@@ -467,6 +506,37 @@ measure's real (if opaque) id keeps its heat-map range separate from every
 other measure's, the same as a native measure's; see CHANGELOG.md's 0.16.2
 entry, which corrects an 0.16.1 claim that calculated measures shared one
 range here.
+
+### Layout
+| Key | Default | Values |
+|-----|---------|--------|
+| `rowHeaderAlign` / `rowHeaderVAlign` | `"left"` / `"middle"` | left / center / right; top / middle / bottom — row labels, the corner field names, total labels |
+| `colHeaderAlign` / `colHeaderVAlign` | `"center"` / `"middle"` | column headers (members and measure names) |
+| `valueAlign` / `valueVAlign` | `"right"` / `"middle"` | value and total cells |
+| `wrapHeaders` | `"off"` | on / off — wrap header text |
+| `wrapCells` | `"off"` | on / off — wrap row labels and values |
+| `columnWidth` | `""` | px for every value column; blank is automatic |
+| `columnWidths` | `""` | `NAME: px; ...` — a measure or a Rows field; wins over `columnWidth` |
+| `tableWidth` | `"fill"` | fill (stretch to the tile, the old behavior) / content / fixed |
+| `tableWidthPx` | `""` | px for `fixed`; a blank or invalid value falls back to fill |
+
+Alignment is emitted as CSS custom properties on the `<table>` (`--gp-rh-align`
+and so on), read by the stylesheet and by the print document, so print
+follows the same settings. Widths are `<col>` elements in a `<colgroup>`,
+emitted only when a width is set; 20–4000 px is accepted.
+
+**Wrapping never breaks inside a word.** On-screen text stayed `nowrap`
+until 0.17.0 because an earlier print path split words. Wrapped text uses
+`white-space: normal; word-break: normal; overflow-wrap: normal; hyphens:
+manual` with automatic table layout, so no column is narrower than its
+longest word; a width smaller than that word leaves the column at the
+word's width. Browsers also break after a hyphen or slash, so each label
+run containing one (`Full-Time`) is wrapped in `span.gp-nobr` (nowrap),
+and a lone `%`, `#` or `$` is joined to the next word with a no-break
+space (`labelHtml`). Checked in headless Chrome with the screenshot's
+headers at 40px and 90px: no word split. The print stylesheet dropped
+`overflow-wrap: break-word` for the same reason; a table still too wide
+at 6pt runs past the margin with the overflow advisory.
 
 ---
 
@@ -531,6 +601,16 @@ fields and toggles appear in the order they are added.
 | `showRowSubtotalsGadget` | Totals: Row Subtotals (2+ Row layers) | toggle |
 | `showGrandTotalColumnGadget` | Totals: Grand Total Column | toggle |
 | `rowGroupCollapseGadget` | Totals: Row Group Collapse (2+ Row layers) | toggle |
+| `totalRulesGadget` | Totals: Measure Rules (name = sum \| avg \| weighted(W) \| ratio(N, D) \| none; ...) | text |
+| `rowHeaderAlignGadget` / `rowHeaderVAlignGadget` | Layout: Row Header Align / Vertical | switcher |
+| `colHeaderAlignGadget` / `colHeaderVAlignGadget` | Layout: Column Header Align / Vertical | switcher |
+| `valueAlignGadget` / `valueVAlignGadget` | Layout: Value Align / Vertical | switcher |
+| `wrapHeadersGadget` | Layout: Wrap Header Text | toggle |
+| `wrapCellsGadget` | Layout: Wrap Row and Value Text | toggle |
+| `columnWidthGadget` | Layout: Value Column Width (px, blank = auto) | text |
+| `columnWidthsGadget` | Layout: Column Widths (name: px; ...) | text |
+| `tableWidthGadget` | Layout: Table Width | switcher |
+| `tableWidthPxGadget` | Layout: Fixed Table Width (px) | text |
 | `cellColorGadget` | Style: Cell Color (heat map) | toggle |
 | `cellColorLowGadget` | Style: Cell Color Low (hex) | text |
 | `cellColorHighGadget` | Style: Cell Color High (hex) | text |
