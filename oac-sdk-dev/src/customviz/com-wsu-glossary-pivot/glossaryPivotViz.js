@@ -251,6 +251,21 @@
  *   The number stays at the right end of the cell so it lines up with a
  *   total line. Bars replace the heat map on that measure and are not
  *   drawn on total rows.
+ *
+ * v0.19.0 — data-team follow-ups (2026-09-30):
+ *   - Style: Glossary Hover Color, default WSU gray #5e6a71 with contrast-
+ *     picked (white) text, replacing the light teal hover; the focus ring
+ *     and sort arrow follow the text color. No underline by default.
+ *   - Values: Show as % of Total — "NAME; NAME: by FIELD". The listed
+ *     measure shows its share of the column total, or of each group of the
+ *     named Rows field (no field is built in). Intended for a calculated-
+ *     field copy of a measure next to the original, so each keeps its own
+ *     format. Shares feed the heat map, bars, sort and totals; a share
+ *     column's total is its block over the totals of the groups it covers
+ *     (100% on the grand total).
+ *   - Tooltip: Indicator — an always-visible cue on headers that have a
+ *     description: a small corner triangle (default, Excel-comment style,
+ *     no width), a faint (i) icon, or none. Screen only.
  ******************************************************************************/
 
 define(['jquery',
@@ -331,7 +346,7 @@ define(['jquery',
       PRINT_MIXED_ORIENTATION: L("GLOSSARYPIVOT_LBL_PRINT_MIXED_ORIENTATION", "Tables use different page orientations; Print Canvas uses the orientation of the table whose button you clicked.")
    };
 
-   GlossaryPivotViz.VERSION = "0.18.0";
+   GlossaryPivotViz.VERSION = "0.19.0";
 
    /**
     * @constructor
@@ -365,8 +380,9 @@ define(['jquery',
          headerColor: "",                  // hex for field-name headers (corner, measure names)
          headerDataColor: "",              // hex for column headers that show a member value
          printOrientation: "landscape",    // landscape | portrait
-         showPrintPdf: "off",              // on | off — Print PDF on this visualization. Off until switched on.
-         showPrintCanvas: "off",           // on | off — Print Canvas. Leave off except on one visualization.
+         printButtons: "none",             // none | pdf | canvas | both — which print buttons show (0.19.0; replaces the two keys below)
+         showPrintPdf: "off",              // legacy (read-only since 0.19.0) — migrated into printButtons
+         showPrintCanvas: "off",           // legacy (read-only since 0.19.0) — migrated into printButtons
          printMargin: "normal",            // narrow | normal | wide — @page margin, repeated on every page
          printTableSize: "margins",        // margins | content — margins fills the page; content keeps header width
          printCanvasSpacing: "perReport",   // perReport | compact — Print Canvas only. perReport (default) forces every
@@ -388,8 +404,9 @@ define(['jquery',
          colHeaderVAlign: "middle",
          valueAlign: "right",
          valueVAlign: "middle",
-         wrapHeaders: "off",                // on | off — wrap header text at spaces, never mid-word
-         wrapCells: "off",                  // on | off — wrap row labels and values at spaces, never mid-word
+         wrapText: "off",                   // off | headers | body | all — wrap at spaces, never mid-word (0.19.0; replaces the two keys below)
+         wrapHeaders: "off",                // legacy (read-only since 0.19.0) — migrated into wrapText
+         wrapCells: "off",                  // legacy (read-only since 0.19.0) — migrated into wrapText
          columnWidth: "",                   // px for every value column; blank = automatic
          columnWidths: "",                  // "NAME: px; NAME: px" — measures or row fields; wins over columnWidth
          tableWidth: "fill",                // fill | content | fixed
@@ -398,12 +415,15 @@ define(['jquery',
          cellColor: "off",                  // off | on — per-measure heat-map background on Values cells
          cellColorLow: "#eff6ff",           // background at the measure's minimum value
          cellColorHigh: "#1e3a8a",          // background at the measure's maximum value
+         hoverColor: "#5e6a71",             // glossary header hover fill; text color picked for contrast
+         percentOfTotal: "",                // "NAME; NAME: by FIELD" — show the measure as its share of the column / group total
          dataBars: "",                      // "NAME: #hex; NAME: #hex: 100%" — in-cell bar before the number
          // Tooltip
          showDescriptions: "on",            // on | off — glossary hover tooltips on headers
          showSourceBadges: "off",           // on | off — Live and Workbook override chips
-         showHeaderUnderline: "off",        // on | off — dotted underline on headers that have a description
+         showHeaderUnderline: "off",        // legacy (read-only since 0.19.0) — "on" migrates to tooltipIndicator "underline"
          tooltipAlign: "left",              // left | center | right — text inside the tooltip, not the bubble's position
+         tooltipIndicator: "corner",        // corner | underline | icon | none — always-visible cue that a header has a description
          // Debug
          debugLogMetadata: "off"            // on | off — log metadata IDs and source labels, never cell values
       };
@@ -417,9 +437,30 @@ define(['jquery',
          Object.keys(this.Config).forEach(function (key) {
             if (!jsx.isNull(conf[key]) && typeof conf[key] !== "undefined") this.Config[key] = conf[key];
          }, this);
+         migrateLegacyConfig(conf, this.Config);
       };
    }
    jsx.extend(GlossaryPivotViz, dataviz.DataVisualization);
+
+   /* 0.19.0 combined six panel controls into three. A workbook saved
+      before that has only the old keys; carry each choice into the new
+      key, but only while the new key has never been saved, so a choice
+      made in the new control always wins. The old keys stay in Config
+      (unchanged, no longer shown) so this can keep reading them. */
+   function migrateLegacyConfig(saved, C) {
+      saved = saved || {};
+      if (saved.printButtons == null) {
+         var pdf = saved.showPrintPdf === "on", canvas = saved.showPrintCanvas === "on";
+         C.printButtons = pdf && canvas ? "both" : (pdf ? "pdf" : (canvas ? "canvas" : "none"));
+      }
+      if (saved.wrapText == null) {
+         var hdr = saved.wrapHeaders === "on", body = saved.wrapCells === "on";
+         C.wrapText = hdr && body ? "all" : (hdr ? "headers" : (body ? "body" : "off"));
+      }
+      if (saved.tooltipIndicator == null && saved.showHeaderUnderline === "on") {
+         C.tooltipIndicator = "underline";
+      }
+   }
 
    /* =========================================================================
       1. GLOSSARY — the seam.
@@ -833,6 +874,39 @@ define(['jquery',
       return out;
    }
 
+   /* =========================================================================
+      2a-bis. SHOW AS % OF TOTAL (0.19.0)
+      "NAME; NAME: by FIELD" — the listed measure shows each cell as its
+      share of a total instead of the number. Without "by", the total is the
+      whole data column. "by FIELD" groups by that Rows field (and the Rows
+      fields above it), so each group adds to 100% — no field name is built
+      in. The data team's pattern is a calculated-field copy of Headcount
+      set to % of total, next to the real Headcount, so the two keep
+      separate formats.
+      ========================================================================= */
+   function parsePercentOfTotal(str, rejected) {
+      var out = Object.create(null);
+      if (!str) return out;
+      String(str).split(";").forEach(function (seg) {
+         seg = seg.trim();
+         if (!seg) return;
+         var idx = seg.lastIndexOf(":");
+         var name = seg, by = null;
+         if (idx > 0) {
+            var tail = seg.slice(idx + 1).trim();
+            var m = /^by\s+(.+)$/i.exec(tail);
+            if (m) { name = seg.slice(0, idx).trim(); by = m[1].trim(); }
+            else if (/^(column|all)$/i.test(tail)) { name = seg.slice(0, idx).trim(); }
+         }
+         if (!name) {
+            if (rejected) rejected.push(seg);
+            return;
+         }
+         out[exactKey(name)] = { by: by };
+      });
+      return out;
+   }
+
    /** A number from a raw cell value, or null for a blank/non-numeric cell. */
    function cellNumber(v) {
       /* A blank cell is ABSENT, not zero — Number(null) and Number("") are
@@ -985,6 +1059,8 @@ define(['jquery',
       return out;
    }
 
+   var DEFAULT_HOVER_COLOR = "#5e6a71";   // WSU gray (data team, 2026-09-30)
+   var INFO_ICON_HTML = "<span class='gp-info' aria-hidden='true'>ⓘ</span>";
    var H_ALIGN = ["left", "center", "right"];
    var V_ALIGN = ["top", "middle", "bottom"];
 
@@ -994,8 +1070,8 @@ define(['jquery',
       var twPx = parsePx(Config.tableWidthPx);
       if (tw === "fixed" && twPx == null) tw = "fill";
       var cls = " gp-tw-" + tw +
-         (Config.wrapHeaders === "on" ? " gp-wrap-hdr" : "") +
-         (Config.wrapCells === "on" ? " gp-wrap-body" : "");
+         (Config.wrapText === "headers" || Config.wrapText === "all" ? " gp-wrap-hdr" : "") +
+         (Config.wrapText === "body" || Config.wrapText === "all" ? " gp-wrap-body" : "");
       var style = "--gp-rh-align:" + pickOption(Config.rowHeaderAlign, H_ALIGN, "left") +
          ";--gp-rh-valign:" + pickOption(Config.rowHeaderVAlign, V_ALIGN, "middle") +
          ";--gp-ch-align:" + pickOption(Config.colHeaderAlign, H_ALIGN, "center") +
@@ -1003,6 +1079,10 @@ define(['jquery',
          ";--gp-v-align:" + pickOption(Config.valueAlign, H_ALIGN, "right") +
          ";--gp-v-valign:" + pickOption(Config.valueVAlign, V_ALIGN, "middle") +
          (tw === "fixed" ? ";width:" + twPx + "px" : "");
+      /* Glossary hover: an empty or invalid hex falls back to WSU gray. */
+      var hover = hexToRgb(Config.hoverColor) || hexToRgb(DEFAULT_HOVER_COLOR);
+      style += ";--gp-hover-bg:rgb(" + hover.r + "," + hover.g + "," + hover.b + ")" +
+         ";--gp-hover-fg:" + readableForeground(hover);
       return { cls: cls, style: style };
    }
 
@@ -1602,7 +1682,7 @@ define(['jquery',
 
    function stripInteractive(el) {
       if (!el.querySelectorAll) return;
-      var junk = el.querySelectorAll(".gp-group-toggle, .gp-sort-ind");
+      var junk = el.querySelectorAll(".gp-group-toggle, .gp-sort-ind, .gp-info");
       for (var i = junk.length - 1; i >= 0; i--) {
          if (junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
       }
@@ -2378,8 +2458,9 @@ define(['jquery',
       var $oldWrap = $c.find(".gp-wrap");
       var scrollTop = $oldWrap.length ? $oldWrap.scrollTop() : 0;
       var scrollLeft = $oldWrap.length ? $oldWrap.scrollLeft() : 0;
-      var showPdf = this.Config.showPrintPdf === "on";
-      var showCanvas = this.Config.showPrintCanvas === "on";
+      var buttons = this.Config.printButtons;
+      var showPdf = buttons === "pdf" || buttons === "both";
+      var showCanvas = buttons === "canvas" || buttons === "both";
       var bar = "";
       if (showPdf || showCanvas) {
          bar = "<div class='gp-printbar'>" +
@@ -2630,6 +2711,97 @@ define(['jquery',
          return mId === "__single__" ? null : lookupByName(totalRules, mId, measureNameById[mId]);
       }
 
+      /* Show as % of Total: each listed measure's cells become their share
+         of the column total, or of their group's total ("by FIELD" = that
+         Rows field and the fields above it). Done on the buffer, before the
+         heat map, bars, sort, and totals read it, so all of them see the
+         share. The original number is kept in row.orig for totals. */
+      var shareMap = parsePercentOfTotal(this.Config.percentOfTotal, rejected);
+      var shareLayerByCol = [];          // cc -> Rows layer the share groups by (-1 = whole column)
+      var shareSums = [];                // cc -> { groupKey: column total within that group }
+      var shareMeasure = Object.create(null);
+      function shareKey(row, layer) {
+         return layer < 0 ? "" : row.rowVals.slice(0, layer + 1).join("\u0001");
+      }
+      if (Object.keys(shareMap).length && bufferRows.length) {
+         for (var sc = 0; sc < nCols; sc++) {
+            var sMid = measureIdByCol[sc];
+            if (sMid === "__single__") continue;
+            var sSpec = lookupByName(shareMap, sMid, measureNameById[sMid]);
+            if (!sSpec) continue;
+            var sLayer = -1;
+            if (sSpec.by) {
+               var byKey = exactKey(sSpec.by);
+               for (var sl = 0; sl < nRowLayers && sLayer < 0; sl++) {
+                  var slId = null, slName = null;
+                  try { slId = dl.getLayerMetadata(ROW, sl, LM.LAYER_ID); } catch (e) {}
+                  try { slName = dl.getLayerMetadata(ROW, sl, LM.LAYER_DISPLAY_NAME); } catch (e) {}
+                  if (nameKeys(slId, slName).indexOf(byKey) >= 0) sLayer = sl;
+               }
+               if (sLayer < 0) {
+                  /* Not a Rows field on this pivot: leave the numbers as
+                     they are and say so, rather than divide by a guess. */
+                  missingRefs["by " + sSpec.by] = true;
+                  continue;
+               }
+            }
+            var sums = Object.create(null);
+            bufferRows.forEach(function (row) {
+               var v = cellNumber(row.raw[sc] != null ? row.raw[sc] : row.formatted[sc]);
+               if (v == null) return;
+               var k = shareKey(row, sLayer);
+               sums[k] = (sums[k] || 0) + v;
+            });
+            bufferRows.forEach(function (row) {
+               if (!row.orig) row.orig = [];
+               var v = cellNumber(row.raw[sc] != null ? row.raw[sc] : row.formatted[sc]);
+               row.orig[sc] = v;
+               var d = sums[shareKey(row, sLayer)];
+               row.raw[sc] = v == null || !d ? null : v / d;
+               row.formatted[sc] = null;
+            });
+            shareLayerByCol[sc] = sLayer;
+            shareSums[sc] = sums;
+            shareMeasure[sMid] = true;
+         }
+      }
+
+      /* A share measure prints as a percent unless its own Per-Measure
+         Override says otherwise; the pivot-wide Number Format does not
+         turn a share back into 0.7. */
+      function fmtFor(mId) {
+         var id = mId === "__single__" ? null : mId;
+         if (shareMeasure[mId] && !lookupByName(overrides, id, measureNameById[mId])) {
+            return { numberFormat: "percent", decimalPlaces: self.Config.decimalPlaces };
+         }
+         return resolveFormat(self.Config, overrides, id, measureNameById[mId]);
+      }
+
+      /* A share column's total is the block's own numbers over the totals
+         of the groups it touches: 100% for a grand total, a group's share
+         of the column for a subtotal when shares are by column. Totals:
+         Measure Rules do not apply to a share column. */
+      function shareTotal(rStart, rEnd, cols) {
+         var sv = 0, sd = 0, any = false, seen = Object.create(null);
+         for (var r = rStart; r <= rEnd; r++) {
+            var row = bufferRows[r];
+            if (!row || !row.orig) continue;
+            for (var i = 0; i < cols.length; i++) {
+               var cc = cols[i];
+               if (shareLayerByCol[cc] == null) continue;
+               var v = row.orig[cc];
+               if (v != null) { sv += v; any = true; }
+               var k = shareKey(row, shareLayerByCol[cc]);
+               var seenKey = cc + "\u0002" + k;
+               if (!seen[seenKey]) {
+                  seen[seenKey] = true;
+                  sd += shareSums[cc][k] || 0;
+               }
+            }
+         }
+         return any && sd ? sv / sd : null;
+      }
+
       /* A computed total has no OAC string of its own. Auto copies the look
          of that column's own formatted cells; an explicit format applies
          as it does everywhere else. */
@@ -2651,6 +2823,7 @@ define(['jquery',
          return formatLike(val, sampleSpec(cc));
       }
       function totalFor(rStart, rEnd, cols, mId) {
+         if (shareMeasure[mId]) return shareTotal(rStart, rEnd, cols);
          return aggregateCells(rStart, rEnd, cols, ruleFor(mId), aggCtx);
       }
 
@@ -2682,7 +2855,7 @@ define(['jquery',
       function barNumWidth(cc) {
          if (barNumCache[cc] != null) return barNumCache[cc];
          var mId = measureIdByCol[cc];
-         var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId, measureNameById[mId]);
+         var fmt = fmtFor(mId);
          var widest = 1;
          for (var br = 0; br < bufferRows.length; br++) {
             var len = cellText(bufferRows[br].raw[cc], bufferRows[br].formatted[cc], fmt).length;
@@ -2775,13 +2948,22 @@ define(['jquery',
             }
          }
          return "<" + tag + attrs + "><span class='gp-lbl'>" +
-                labelHtml(label) + "</span>" + ind + "</" + tag + ">";
+                labelHtml(label) + "</span>" + (d && infoIcon ? INFO_ICON_HTML : "") + ind + "</" + tag + ">";
       }
 
       /* The underline is a border on .gp-has-desc. That class also opens the
          tooltip, so turning the line off must not remove the class. */
       var layoutAttrs = tableLayoutAttrs(this.Config);
-      var tableClass = "gp-table" + (this.Config.showHeaderUnderline === "on" ? "" : " gp-no-underline") + layoutAttrs.cls;
+      /* Tooltip: Indicator (0.19.0). "corner" is a small triangle drawn by
+         CSS on the cell's top-right corner (no width, like Excel's comment
+         mark); "icon" appends a faint (i) after the label. Screen only: the
+         print stylesheet has no corner rule and stripInteractive removes
+         the icon. */
+      var indicator = this.Config.showDescriptions === "off" ? "none" :
+         pickOption(this.Config.tooltipIndicator, ["corner", "underline", "icon", "none"], "corner");
+      var infoIcon = indicator === "icon";
+      var tableClass = "gp-table" + (indicator === "underline" ? "" : " gp-no-underline") +
+         (indicator === "corner" ? " gp-ind-corner" : "") + layoutAttrs.cls;
       var out = ["<table class='" + tableClass + "' style='" + layoutAttrs.style + "'>"];
 
       /* Widths go on <col>, one per drawn column, so every cell in the
@@ -2930,13 +3112,13 @@ define(['jquery',
          for (var cc = 0; cc < nCols; cc++) {
             if (colHidden[cc]) continue;
             var mId = measureIdByCol[cc];
-            var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId, measureNameById[mId]);
+            var fmt = fmtFor(mId);
             var val = totalFor(rStart, rEnd, [cc], mId);
             cells.push("<td class='gp-val gp-total-val'>" + escapeHtml(totalText(val, fmt, cc)) + "</td>");
          }
          if (wantTotalCol) {
             buckets.order.forEach(function (bid) {
-               var fmt = resolveFormat(self.Config, overrides, bid === "__single__" ? null : bid, measureNameById[bid]);
+               var fmt = fmtFor(bid);
                var val = totalFor(rStart, rEnd, buckets.map[bid], bid);
                cells.push("<td class='gp-val gp-total-val gp-grand-total-val'>" + escapeHtml(totalText(val, fmt, buckets.map[bid][0])) + "</td>");
             });
@@ -2966,13 +3148,13 @@ define(['jquery',
          for (var cc = 0; cc < nCols; cc++) {
             if (colHidden[cc]) continue;
             var mId = measureIdByCol[cc];
-            var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId, measureNameById[mId]);
+            var fmt = fmtFor(mId);
             var val = totalFor(rStart, rEnd, [cc], mId);
             cells.push("<td class='gp-val gp-group-val'>" + escapeHtml(totalText(val, fmt, cc)) + "</td>");
          }
          if (wantTotalCol) {
             buckets.order.forEach(function (bid) {
-               var fmt = resolveFormat(self.Config, overrides, bid === "__single__" ? null : bid, measureNameById[bid]);
+               var fmt = fmtFor(bid);
                var val = totalFor(rStart, rEnd, buckets.map[bid], bid);
                cells.push("<td class='gp-val gp-group-val gp-grand-total-val'>" + escapeHtml(totalText(val, fmt, buckets.map[bid][0])) + "</td>");
             });
@@ -2994,7 +3176,7 @@ define(['jquery',
             var vRaw = row.raw[cc];
             var vFormatted = row.formatted[cc];
             var mId = measureIdByCol[cc];
-            var fmt = resolveFormat(self.Config, overrides, mId === "__single__" ? null : mId, measureNameById[mId]);
+            var fmt = fmtFor(mId);
             var styleAttr = "", heatClass = "";
             if (wantCellColor) {
                var range = colorRanges[mId];
@@ -3034,7 +3216,7 @@ define(['jquery',
          }
          if (wantTotalCol) {
             buckets.order.forEach(function (bid) {
-               var fmt2 = resolveFormat(self.Config, overrides, bid === "__single__" ? null : bid, measureNameById[bid]);
+               var fmt2 = fmtFor(bid);
                var val = totalFor(layoutRow, layoutRow, buckets.map[bid], bid);
                parts.push("<td class='gp-val gp-total-val gp-grand-total-val' data-gp-mark-rows='" + layoutRow + ":" + layoutRow + "'>" +
                           escapeHtml(totalText(val, fmt2, buckets.map[bid][0])) + "</td>");
@@ -3450,17 +3632,20 @@ define(['jquery',
    }
 
    // TEXT_TOGGLE checkbox gadget for boolean on/off Config keys. Internal
-   // Config stays as "on"/"off" strings (gadget-boundary translation only) —
-   // saved workbooks load identically.
-   function addToggle(panel, id, labelText, configValue) {
+   // Config stays as "on"/"off" strings (gadget-boundary translation only) --
+   // saved workbooks load identically. The order argument (5th) is the same
+   // one Oracle's own samples pass (iframeViz); before 0.19.0 toggles and
+   // text fields had none, so OAC listed them apart from the switchers and
+   // each section was split in two.
+   function addToggle(panel, id, labelText, configValue, order) {
       var isOn = configValue !== "off";
       var gvp = new gadgets.CheckboxGadgetValueProperties(euidef.GadgetTypeIDs.TEXT_TOGGLE, id, isOn);
-      panel.addChild(new gadgets.TextToggleGadgetInfo(id, labelText, null, gvp));
+      panel.addChild(new gadgets.TextToggleGadgetInfo(id, labelText, null, gvp, order));
    }
 
-   function addText(panel, factory, id, labelText, value) {
+   function addText(panel, factory, id, labelText, value, order) {
       var gvp = new gadgets.GadgetValueProperties(euidef.GadgetTypeIDs.TEXT_FIELD, value);
-      panel.addChild(factory.createGadgetInfo(id, labelText, labelText, gvp));
+      panel.addChild(factory.createGadgetInfo(id, labelText, labelText, gvp, order));
    }
 
    GlossaryPivotViz.prototype._addVizSpecificPropsDialog = function (oTabbedPanelsGadgetInfo) {
@@ -3468,82 +3653,95 @@ define(['jquery',
       GlossaryPivotViz.superClass._addVizSpecificPropsDialog.call(this, oTabbedPanelsGadgetInfo);
    };
 
+   /* One position sequence for every control, in section order (0.19.0):
+      Format, Values, Header, Rows, Totals, Layout, Style, Tooltip, Print,
+      Debug. The sequence starts well past OAC's own General-tab items so
+      those do not land inside a section. Gadget ids are unchanged for every
+      control that still exists -- saved workbooks store values by id. */
    GlossaryPivotViz.prototype.doAddVizSpecificPropsDialog = function (oTransientRenderingContext, oTabbedPanelsGadgetInfo) {
       jsx.assertObject(oTransientRenderingContext, "oTransientRenderingContext");
       jsx.assertInstanceOf(oTabbedPanelsGadgetInfo, gadgets.TabbedPanelsGadgetInfo, "oTabbedPanelsGadgetInfo", "obitech-application/gadgets.TabbedPanelsGadgetInfo");
       this.loadConfig();
       var factory = this.getGadgetFactory();
+      var C = this.Config;
 
       var pGen = gadgetdialog.forcePanelByID(oTabbedPanelsGadgetInfo, euidef.GD_PANEL_ID_GENERAL);
-      var base = euidef.GD_FIELD_ORDER_GENERAL_LINE_TYPE;
-      var ord = { FMT: base + 100, TOT: base + 200 };
-      var nx = function (g) { return ord[g]++; };
-
-      addSwitcher(pGen, "numberFormatGadget", "Format: Number Format", this.Config.numberFormat,
-         [{ value: "auto", label: "Auto" }, { value: "number", label: "Number" },
-          { value: "percent", label: "Percent (×100)" }, { value: "currency", label: "Currency (USD)" },
-          { value: "compact", label: "Compact (K/M/B)" }], nx("FMT"));
-      addSwitcher(pGen, "decimalPlacesGadget", "Format: Decimal Places", this.Config.decimalPlaces,
-         [{ value: "auto", label: "Auto" }, { value: "0", label: "0" }, { value: "1", label: "1" },
-          { value: "2", label: "2" }, { value: "3", label: "3" }, { value: "4", label: "4" }], nx("FMT"));
-      addText(pGen, factory, "measureFormatOverridesGadget",
-         "Format: Per-Measure Override (id:format:decimals; ...)", this.Config.measureFormatOverrides);
-      addText(pGen, factory, "headerLabelsGadget",
-         "Header: Display Label (id: label; ...)", this.Config.headerLabels);
-      addText(pGen, factory, "hiddenColumnsGadget",
-         "Header: Hidden Columns (id; id; ...)", this.Config.hiddenColumns);
-
-      addToggle(pGen, "showGrandTotalRowGadget", "Totals: Grand Total Row", this.Config.showGrandTotalRow);
-      addToggle(pGen, "showRowSubtotalsGadget", "Totals: Row Subtotals (2+ Row layers)", this.Config.showRowSubtotals);
-      addToggle(pGen, "showGrandTotalColumnGadget", "Totals: Grand Total Column", this.Config.showGrandTotalColumn);
-      addToggle(pGen, "rowGroupCollapseGadget", "Totals: Row Group Collapse (2+ Row layers)", this.Config.rowGroupCollapse);
-      addText(pGen, factory, "totalRulesGadget",
-         "Totals: Measure Rules (name = sum | avg | weighted(W) | ratio(N, D) | none; ...)", this.Config.totalRules);
-
+      var order = euidef.GD_FIELD_ORDER_GENERAL_LINE_TYPE + 1000;
+      var nx = function () { return order++; };
       var hOpts = [{ value: "left", label: "Left" }, { value: "center", label: "Center" }, { value: "right", label: "Right" }];
       var vOpts = [{ value: "top", label: "Top" }, { value: "middle", label: "Middle" }, { value: "bottom", label: "Bottom" }];
-      addSwitcher(pGen, "rowHeaderAlignGadget", "Layout: Row Header Align", this.Config.rowHeaderAlign, hOpts, nx("FMT"));
-      addSwitcher(pGen, "rowHeaderVAlignGadget", "Layout: Row Header Vertical", this.Config.rowHeaderVAlign, vOpts, nx("FMT"));
-      addSwitcher(pGen, "colHeaderAlignGadget", "Layout: Column Header Align", this.Config.colHeaderAlign, hOpts, nx("FMT"));
-      addSwitcher(pGen, "colHeaderVAlignGadget", "Layout: Column Header Vertical", this.Config.colHeaderVAlign, vOpts, nx("FMT"));
-      addSwitcher(pGen, "valueAlignGadget", "Layout: Value Align", this.Config.valueAlign, hOpts, nx("FMT"));
-      addSwitcher(pGen, "valueVAlignGadget", "Layout: Value Vertical", this.Config.valueVAlign, vOpts, nx("FMT"));
-      addToggle(pGen, "wrapHeadersGadget", "Layout: Wrap Header Text", this.Config.wrapHeaders);
-      addToggle(pGen, "wrapCellsGadget", "Layout: Wrap Row and Value Text", this.Config.wrapCells);
-      addText(pGen, factory, "columnWidthGadget", "Layout: Value Column Width (px, blank = auto)", this.Config.columnWidth);
-      addText(pGen, factory, "columnWidthsGadget", "Layout: Column Widths (name: px; ...)", this.Config.columnWidths);
-      addSwitcher(pGen, "tableWidthGadget", "Layout: Table Width", this.Config.tableWidth,
+
+      // Format
+      addSwitcher(pGen, "numberFormatGadget", "Format: Number Format", C.numberFormat,
+         [{ value: "auto", label: "Auto" }, { value: "number", label: "Number" },
+          { value: "percent", label: "Percent (\u00d7100)" }, { value: "currency", label: "Currency (USD)" },
+          { value: "compact", label: "Compact (K/M/B)" }], nx());
+      addSwitcher(pGen, "decimalPlacesGadget", "Format: Decimal Places", C.decimalPlaces,
+         [{ value: "auto", label: "Auto" }, { value: "0", label: "0" }, { value: "1", label: "1" },
+          { value: "2", label: "2" }, { value: "3", label: "3" }, { value: "4", label: "4" }], nx());
+      addText(pGen, factory, "measureFormatOverridesGadget",
+         "Format: Per-Measure Override (id:format:decimals; ...)", C.measureFormatOverrides, nx());
+      // Values
+      addText(pGen, factory, "percentOfTotalGadget",
+         "Values: Show as % of Total (name[: by field]; ...)", C.percentOfTotal, nx());
+      // Header
+      addText(pGen, factory, "headerLabelsGadget", "Header: Display Label (id: label; ...)", C.headerLabels, nx());
+      addText(pGen, factory, "hiddenColumnsGadget", "Header: Hidden Columns (id; id; ...)", C.hiddenColumns, nx());
+      // Rows (was "Totals: Row Group Collapse" -- a collapse is not a total)
+      addToggle(pGen, "rowGroupCollapseGadget", "Rows: Group Collapse (2+ Row layers)", C.rowGroupCollapse, nx());
+      // Totals
+      addToggle(pGen, "showGrandTotalRowGadget", "Totals: Grand Total Row", C.showGrandTotalRow, nx());
+      addToggle(pGen, "showRowSubtotalsGadget", "Totals: Row Subtotals (2+ Row layers)", C.showRowSubtotals, nx());
+      addToggle(pGen, "showGrandTotalColumnGadget", "Totals: Grand Total Column", C.showGrandTotalColumn, nx());
+      addText(pGen, factory, "totalRulesGadget",
+         "Totals: Measure Rules (name = sum | avg | weighted(W) | ratio(N, D) | none; ...)", C.totalRules, nx());
+      // Layout
+      addSwitcher(pGen, "rowHeaderAlignGadget", "Layout: Row Header Align", C.rowHeaderAlign, hOpts, nx());
+      addSwitcher(pGen, "rowHeaderVAlignGadget", "Layout: Row Header Vertical", C.rowHeaderVAlign, vOpts, nx());
+      addSwitcher(pGen, "colHeaderAlignGadget", "Layout: Column Header Align", C.colHeaderAlign, hOpts, nx());
+      addSwitcher(pGen, "colHeaderVAlignGadget", "Layout: Column Header Vertical", C.colHeaderVAlign, vOpts, nx());
+      addSwitcher(pGen, "valueAlignGadget", "Layout: Value Align", C.valueAlign, hOpts, nx());
+      addSwitcher(pGen, "valueVAlignGadget", "Layout: Value Vertical", C.valueVAlign, vOpts, nx());
+      addSwitcher(pGen, "wrapTextGadget", "Layout: Wrap Text", C.wrapText,
+         [{ value: "off", label: "Off" }, { value: "headers", label: "Headers" },
+          { value: "body", label: "Rows and values" }, { value: "all", label: "All" }], nx());
+      addText(pGen, factory, "columnWidthGadget", "Layout: Value Column Width (px, blank = auto)", C.columnWidth, nx());
+      addText(pGen, factory, "columnWidthsGadget", "Layout: Column Widths (name: px; ...)", C.columnWidths, nx());
+      addSwitcher(pGen, "tableWidthGadget", "Layout: Table Width", C.tableWidth,
          [{ value: "fill", label: "Fill tile" }, { value: "content", label: "Fit content" },
-          { value: "fixed", label: "Fixed (px below)" }], nx("FMT"));
-      addText(pGen, factory, "tableWidthPxGadget", "Layout: Fixed Table Width (px)", this.Config.tableWidthPx);
-
-      addToggle(pGen, "cellColorGadget", "Style: Cell Color (heat map)", this.Config.cellColor);
-      addText(pGen, factory, "cellColorLowGadget", "Style: Cell Color Low (hex)", this.Config.cellColorLow);
-      addText(pGen, factory, "cellColorHighGadget", "Style: Cell Color High (hex)", this.Config.cellColorHigh);
-      addText(pGen, factory, "headerColorGadget", "Style: Header Color (hex)", this.Config.headerColor);
-      addText(pGen, factory, "headerDataColorGadget", "Style: Header Data Color (hex)", this.Config.headerDataColor);
-      addText(pGen, factory, "dataBarsGadget", "Style: Data Bars (name: #hex[: 100%]; ...)", this.Config.dataBars);
-
-      addToggle(pGen, "showDescriptionsGadget", "Tooltip: Glossary Descriptions", this.Config.showDescriptions);
-      addToggle(pGen, "showSourceBadgesGadget", "Tooltip: Source Badges (Live / Workbook)", this.Config.showSourceBadges);
-      addToggle(pGen, "showHeaderUnderlineGadget", "Tooltip: Underline Headers", this.Config.showHeaderUnderline);
-      addToggle(pGen, "showPrintPdfGadget", "Print: Show PDF Button", this.Config.showPrintPdf);
-      addToggle(pGen, "showPrintCanvasGadget", "Print: Show Canvas Button", this.Config.showPrintCanvas);
-      addSwitcher(pGen, "printOrientationGadget", "Print: Page Orientation", this.Config.printOrientation,
-         [{ value: "landscape", label: "Landscape" }, { value: "portrait", label: "Portrait" }], nx("FMT"));
-      addSwitcher(pGen, "printMarginGadget", "Print: Margins", this.Config.printMargin,
+          { value: "fixed", label: "Fixed (px below)" }], nx());
+      addText(pGen, factory, "tableWidthPxGadget", "Layout: Fixed Table Width (px)", C.tableWidthPx, nx());
+      // Style
+      addText(pGen, factory, "headerColorGadget", "Style: Header Color (hex)", C.headerColor, nx());
+      addText(pGen, factory, "headerDataColorGadget", "Style: Header Data Color (hex)", C.headerDataColor, nx());
+      addText(pGen, factory, "hoverColorGadget", "Style: Glossary Hover Color (hex)", C.hoverColor, nx());
+      addText(pGen, factory, "dataBarsGadget", "Style: Data Bars (name: #hex[: 100%]; ...)", C.dataBars, nx());
+      addToggle(pGen, "cellColorGadget", "Style: Cell Color (heat map)", C.cellColor, nx());
+      addText(pGen, factory, "cellColorLowGadget", "Style: Cell Color Low (hex)", C.cellColorLow, nx());
+      addText(pGen, factory, "cellColorHighGadget", "Style: Cell Color High (hex)", C.cellColorHigh, nx());
+      // Tooltip (Underline Headers is now the Indicator's "Underline" choice)
+      addToggle(pGen, "showDescriptionsGadget", "Tooltip: Glossary Descriptions", C.showDescriptions, nx());
+      addSwitcher(pGen, "tooltipIndicatorGadget", "Tooltip: Indicator", C.tooltipIndicator,
+         [{ value: "corner", label: "Corner mark" }, { value: "underline", label: "Underline" },
+          { value: "icon", label: "Info icon" }, { value: "none", label: "None" }], nx());
+      addSwitcher(pGen, "tooltipAlignGadget", "Tooltip: Text Align", C.tooltipAlign, hOpts, nx());
+      addToggle(pGen, "showSourceBadgesGadget", "Tooltip: Source Badges (Live / Workbook)", C.showSourceBadges, nx());
+      // Print (Show PDF Button + Show Canvas Button are now one choice)
+      addSwitcher(pGen, "printButtonsGadget", "Print: Buttons", C.printButtons,
+         [{ value: "none", label: "None" }, { value: "pdf", label: "Print PDF" },
+          { value: "canvas", label: "Print Canvas" }, { value: "both", label: "Both" }], nx());
+      addSwitcher(pGen, "printOrientationGadget", "Print: Page Orientation", C.printOrientation,
+         [{ value: "landscape", label: "Landscape" }, { value: "portrait", label: "Portrait" }], nx());
+      addSwitcher(pGen, "printMarginGadget", "Print: Margins", C.printMargin,
          [{ value: "narrow", label: "Narrow (0.25 in)" }, { value: "normal", label: "Normal (0.5 in)" },
-          { value: "wide", label: "Wide (1 in)" }], nx("FMT"));
-      addSwitcher(pGen, "printTableSizeGadget", "Print: Table Width", this.Config.printTableSize,
-         [{ value: "margins", label: "To margins" }, { value: "content", label: "To content" }], nx("FMT"));
-      addSwitcher(pGen, "printCanvasSpacingGadget", "Print: Canvas Page Breaks", this.Config.printCanvasSpacing,
-         [{ value: "compact", label: "Minimize blank space" }, { value: "perReport", label: "One page per report" }], nx("FMT"));
-      addToggle(pGen, "printFollowThemeGadget", "Print: Follow Theme", this.Config.printFollowTheme);
-      addSwitcher(pGen, "tooltipAlignGadget", "Tooltip: Text Align", this.Config.tooltipAlign,
-         [{ value: "left", label: "Left" }, { value: "center", label: "Center" },
-          { value: "right", label: "Right" }], nx("FMT"));
-
-      addToggle(pGen, "debugLogMetadataGadget", "Debug: Log Column Metadata (Console)", this.Config.debugLogMetadata);
+          { value: "wide", label: "Wide (1 in)" }], nx());
+      addSwitcher(pGen, "printTableSizeGadget", "Print: Table Width", C.printTableSize,
+         [{ value: "margins", label: "To margins" }, { value: "content", label: "To content" }], nx());
+      addSwitcher(pGen, "printCanvasSpacingGadget", "Print: Canvas Page Breaks", C.printCanvasSpacing,
+         [{ value: "compact", label: "Minimize blank space" }, { value: "perReport", label: "One page per report" }], nx());
+      addToggle(pGen, "printFollowThemeGadget", "Print: Follow Theme", C.printFollowTheme, nx());
+      // Debug
+      addToggle(pGen, "debugLogMetadataGadget", "Debug: Log Column Metadata (Console)", C.debugLogMetadata, nx());
 
       if (GlossaryPivotViz.superClass.doAddVizSpecificPropsDialog) GlossaryPivotViz.superClass.doAddVizSpecificPropsDialog.apply(this, arguments);
    };
@@ -3555,6 +3753,7 @@ define(['jquery',
          numberFormatGadget: "numberFormat",
          decimalPlacesGadget: "decimalPlaces",
          measureFormatOverridesGadget: "measureFormatOverrides",
+         percentOfTotalGadget: "percentOfTotal",
          headerLabelsGadget: "headerLabels",
          hiddenColumnsGadget: "hiddenColumns",
          showGrandTotalRowGadget: "showGrandTotalRow",
@@ -3568,25 +3767,24 @@ define(['jquery',
          colHeaderVAlignGadget: "colHeaderVAlign",
          valueAlignGadget: "valueAlign",
          valueVAlignGadget: "valueVAlign",
-         wrapHeadersGadget: "wrapHeaders",
-         wrapCellsGadget: "wrapCells",
+         wrapTextGadget: "wrapText",
          columnWidthGadget: "columnWidth",
          columnWidthsGadget: "columnWidths",
          tableWidthGadget: "tableWidth",
          tableWidthPxGadget: "tableWidthPx",
          cellColorGadget: "cellColor",
          dataBarsGadget: "dataBars",
+         hoverColorGadget: "hoverColor",
          cellColorLowGadget: "cellColorLow",
          cellColorHighGadget: "cellColorHigh",
          headerColorGadget: "headerColor",
          headerDataColorGadget: "headerDataColor",
          showDescriptionsGadget: "showDescriptions",
          showSourceBadgesGadget: "showSourceBadges",
-         showHeaderUnderlineGadget: "showHeaderUnderline",
+         tooltipIndicatorGadget: "tooltipIndicator",
          tooltipAlignGadget: "tooltipAlign",
          printOrientationGadget: "printOrientation",
-         showPrintPdfGadget: "showPrintPdf",
-         showPrintCanvasGadget: "showPrintCanvas",
+         printButtonsGadget: "printButtons",
          printMarginGadget: "printMargin",
          printTableSizeGadget: "printTableSize",
          printCanvasSpacingGadget: "printCanvasSpacing",
@@ -3598,10 +3796,8 @@ define(['jquery',
       var TOGGLE_GADGETS = {
          showGrandTotalRowGadget: 1, showRowSubtotalsGadget: 1, showGrandTotalColumnGadget: 1,
          rowGroupCollapseGadget: 1, cellColorGadget: 1, showDescriptionsGadget: 1,
-         showSourceBadgesGadget: 1, showHeaderUnderlineGadget: 1,
-         showPrintPdfGadget: 1, showPrintCanvasGadget: 1,
-         printFollowThemeGadget: 1, debugLogMetadataGadget: 1,
-         wrapHeadersGadget: 1, wrapCellsGadget: 1
+         showSourceBadgesGadget: 1,
+         printFollowThemeGadget: 1, debugLogMetadataGadget: 1
       };
       if (TOGGLE_GADGETS[sGadgetID]) {
          this.Config[key] = oPropChange.checked ? "on" : "off";
@@ -3747,7 +3943,9 @@ define(['jquery',
       _tableLayoutAttrs: tableLayoutAttrs,
       _wrapPrintDocument: wrapPrintDocument,
       _labelHtml: labelHtml,
+      _migrateLegacyConfig: migrateLegacyConfig,
       _parseDataBars: parseDataBars,
+      _parsePercentOfTotal: parsePercentOfTotal,
       _barPercent: barPercent
    };
 });

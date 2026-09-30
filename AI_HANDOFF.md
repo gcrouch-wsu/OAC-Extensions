@@ -16,7 +16,7 @@ Six Oracle Analytics custom visualization plugins, each a folder under
 | WSU Sankey | 1.1.2 | `main` |
 | WSU Dumbbell | 1.1.2 | `main` |
 | WSU Lattice Scatter | 1.1.2 | `main` |
-| WSU Glossary Pivot | 0.18.0 | working tree; `origin/main` is 0.17.0 (`b7247e5`) |
+| WSU Glossary Pivot | 0.19.0 | working tree; `origin/main` is 0.18.0 (`1f4367a`) |
 
 Glossary Pivot versions on its own line. Spec:
 `docs/plugins/project_spec_wsu_glossary_pivot.md`. The newest git tag is

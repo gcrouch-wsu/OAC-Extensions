@@ -13,7 +13,7 @@ WSU Glossary Pivot development without re-deriving design decisions.
 - **Short name**: WSU Glossary Pivot
 - **Category**: WSU
 - **Root id**: `com-wsu-glossary-pivot`
-- **Version constant**: `GlossaryPivotViz.VERSION = "0.18.0"` (see `CHANGELOG.md`)
+- **Version constant**: `GlossaryPivotViz.VERSION = "0.19.0"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-glossary-pivot.zip`
 
@@ -56,6 +56,12 @@ It is not a reimplementation of every native-pivot command.
 - **Hide and rename** — a field can stay in the query (so order and groups
   still follow it) and be omitted from the drawing. A display label changes
   the field title, not the member values and not the glossary lookup.
+- **% of total** — a listed measure (typically a calculated-field copy)
+  shows each cell as its share of the column total or of each group of a
+  named Rows field.
+- **Glossary hover** — a header with a description fills with WSU gray
+  (`#5e6a71`, configurable) and white text on hover and focus, and carries
+  an always-visible cue (Tooltip: Indicator — corner mark by default).
 - **Data bars** — an in-cell bar before the number on the measures listed
   in Style: Data Bars, each in its own color; standard (zero to the
   column's largest value) or 100%.
@@ -347,6 +353,7 @@ collapsed, which rows are marked) is not in this object.
 | `numberFormat` | `"auto"` | auto / number / percent / currency / compact |
 | `decimalPlaces` | `"auto"` | auto / "0" / "1" / "2" / "3" / "4" |
 | `measureFormatOverrides` | `""` | `MEASURE_ID:format:decimals; ...` |
+| `percentOfTotal` | `""` | `NAME; NAME: by FIELD` — show the measure as its share of the column total, or of each group of that Rows field |
 
 **Auto** shows the string OAC already produced for that cell. **Number**
 prints the raw value with a thousands separator (`1,234` or `1,234.50` when
@@ -487,13 +494,15 @@ draw a subtotal.
 | `cellColor` | `"off"` | on / off — per-measure heat map on value cells |
 | `cellColorLow` | `"#eff6ff"` | hex at the measure's minimum |
 | `cellColorHigh` | `"#1e3a8a"` | hex at the measure's maximum |
+| `hoverColor` | `"#5e6a71"` | hex for the glossary header hover/focus fill; text color is picked for contrast; empty or invalid falls back to the gray |
 | `dataBars` | `""` | `NAME: #hex; NAME: #hex: 100%` — in-cell bar before the number on listed measures |
 | `showDescriptions` | `"on"` | on / off |
 | `showSourceBadges` | `"off"` | on / off — Live and Workbook override chips |
-| `showHeaderUnderline` | `"off"` | on / off — dotted underline on headers that have a description. Tooltip, hover, and focus stay either way |
+| `showHeaderUnderline` | `"off"` | legacy since 0.19.0 — read only to migrate `on` into `tooltipIndicator: "underline"` |
+| `tooltipIndicator` | `"corner"` | corner / underline / icon / none — always-visible cue on headers that have a description. Corner: CSS triangle in the header's text color, no width. Icon: faint (i) after the label. Screen only |
 | `tooltipAlign` | `"left"` | left / center / right — text inside the tooltip. The bubble stays centered under the header |
-| `showPrintPdf` | `"off"` | on / off — Print PDF on this visualization. Off until switched on |
-| `showPrintCanvas` | `"off"` | on / off — Print Canvas. Turn on for one visualization on the canvas |
+| `printButtons` | `"none"` | none / pdf / canvas / both — which print buttons this visualization shows. Show Print Canvas on one visualization per canvas |
+| `showPrintPdf` / `showPrintCanvas` | `"off"` | legacy since 0.19.0 — read only to migrate into `printButtons` |
 | `printOrientation` | `"landscape"` | landscape / portrait |
 | `printMargin` | `"normal"` | narrow (0.25 in) / normal (0.5 in) / wide (1 in) — `@page` margin, repeated on every page |
 | `printTableSize` | `"margins"` | margins / content — margins fills the page width when it fits; content keeps the table at its own header-driven width. Both use automatic layout and the 6pt floor for wide tables (§3a) |
@@ -517,8 +526,8 @@ range here.
 | `rowHeaderAlign` / `rowHeaderVAlign` | `"left"` / `"middle"` | left / center / right; top / middle / bottom — row labels, the corner field names, total labels |
 | `colHeaderAlign` / `colHeaderVAlign` | `"center"` / `"middle"` | column headers (members and measure names) |
 | `valueAlign` / `valueVAlign` | `"right"` / `"middle"` | value and total cells |
-| `wrapHeaders` | `"off"` | on / off — wrap header text |
-| `wrapCells` | `"off"` | on / off — wrap row labels and values |
+| `wrapText` | `"off"` | off / headers / body / all — wrap header text, row labels and values, or both |
+| `wrapHeaders` / `wrapCells` | `"off"` | legacy since 0.19.0 — read only to migrate into `wrapText` |
 | `columnWidth` | `""` | px for every value column; blank is automatic |
 | `columnWidths` | `""` | `NAME: px; ...` — a measure or a Rows field; wins over `columnWidth` |
 | `tableWidth` | `"fill"` | fill (stretch to the tile, the old behavior) / content / fixed |
@@ -541,6 +550,35 @@ space (`labelHtml`). Checked in headless Chrome with the screenshot's
 headers at 40px and 90px: no word split. The print stylesheet dropped
 `overflow-wrap: break-word` for the same reason; a table still too wide
 at 6pt runs past the margin with the overflow advisory.
+
+### % of total
+`percentOfTotal` lists measures, each optionally `: by FIELD`
+(`Headcount Share; Headcount Share 2: by Term`). The listed measure's cells
+are replaced, on the row buffer before anything reads them, by
+value ÷ total, where total is the whole data column (no `by`) or the sum
+over rows that share the values of FIELD and every Rows field above it.
+FIELD is any Rows field, matched like hide and rename (no field is built
+in); a FIELD that is not a Rows field on the pivot leaves that measure's
+numbers unchanged and logs a warning. The share prints as a percent (the
+pivot's Decimal Places setting, 1 decimal on Auto) unless the measure has
+its own Per-Measure Override. The heat map, data bars, sort and totals all
+see the share. A share column's total is Σ its original numbers over the
+block ÷ Σ the totals of the (group, column) pairs the block touches — 100%
+for the grand total, a group's share of the column for a subtotal when
+shares are by column, 100% per group when grouped by that field. Totals:
+Measure Rules do not apply to a share column. Intended use (data team,
+2026-09-30): a calculated-field copy of a measure next to the original, so
+the count and the share keep separate formats. The native pivot's "Display
+as: Percent Of" is not readable by a plugin; this is computed on the rows
+on screen.
+
+### Glossary hover
+`hoverColor` (default `#5e6a71`) is emitted as `--gp-hover-bg` and a
+contrast-picked `--gp-hover-fg` on the table. `th.gp-has-desc:hover/:focus`
+uses them, including on painted (Header Color) headers; the focus ring,
+underline (when on), and sort arrow use `currentColor`. `#4D4D4D` was
+considered and rejected: its brightness is almost the same as crimson
+`#981e32` (1.03:1), so the hover would barely show.
 
 ### Data bars
 `dataBars` lists measures, each with an optional hex color and an optional
@@ -617,48 +655,63 @@ current layout/render revision; stale callbacks are discarded.
 
 ## 6. Property panel
 
-All gadgets are added to General. Switchers carry an order index; text
-fields and toggles appear in the order they are added.
+All gadgets are on the General tab. Since 0.19.0 every gadget (switcher,
+toggle, and text field) gets a position from one sequence, starting at
+`GD_FIELD_ORDER_GENERAL_LINE_TYPE + 1000`, so each section stays together
+in the order below. Before 0.19.0 only switchers had an order, so OAC
+listed toggles and text fields apart from them and every section was split
+in two. Toggles and text fields take the order as their 5th argument, the
+same as Oracle's own samples (`TextToggleGadgetInfo`, `createGadgetInfo`).
 
 | Gadget id | Label | Control |
 |-----------|-------|---------|
 | `numberFormatGadget` | Format: Number Format | switcher |
 | `decimalPlacesGadget` | Format: Decimal Places | switcher |
 | `measureFormatOverridesGadget` | Format: Per-Measure Override (id:format:decimals; ...) | text |
+| `percentOfTotalGadget` | Values: Show as % of Total (name[: by field]; ...) | text |
 | `headerLabelsGadget` | Header: Display Label (id: label; ...) | text |
 | `hiddenColumnsGadget` | Header: Hidden Columns (id; id; ...) | text |
+| `rowGroupCollapseGadget` | Rows: Group Collapse (2+ Row layers) | toggle (was labeled "Totals: Row Group Collapse" before 0.19.0; id unchanged) |
 | `showGrandTotalRowGadget` | Totals: Grand Total Row | toggle |
 | `showRowSubtotalsGadget` | Totals: Row Subtotals (2+ Row layers) | toggle |
 | `showGrandTotalColumnGadget` | Totals: Grand Total Column | toggle |
-| `rowGroupCollapseGadget` | Totals: Row Group Collapse (2+ Row layers) | toggle |
 | `totalRulesGadget` | Totals: Measure Rules (name = sum \| avg \| weighted(W) \| ratio(N, D) \| none; ...) | text |
 | `rowHeaderAlignGadget` / `rowHeaderVAlignGadget` | Layout: Row Header Align / Vertical | switcher |
 | `colHeaderAlignGadget` / `colHeaderVAlignGadget` | Layout: Column Header Align / Vertical | switcher |
 | `valueAlignGadget` / `valueVAlignGadget` | Layout: Value Align / Vertical | switcher |
-| `wrapHeadersGadget` | Layout: Wrap Header Text | toggle |
-| `wrapCellsGadget` | Layout: Wrap Row and Value Text | toggle |
+| `wrapTextGadget` | Layout: Wrap Text (Off / Headers / Rows and values / All) | switcher |
 | `columnWidthGadget` | Layout: Value Column Width (px, blank = auto) | text |
 | `columnWidthsGadget` | Layout: Column Widths (name: px; ...) | text |
 | `tableWidthGadget` | Layout: Table Width | switcher |
 | `tableWidthPxGadget` | Layout: Fixed Table Width (px) | text |
+| `headerColorGadget` | Style: Header Color (hex) | text |
+| `headerDataColorGadget` | Style: Header Data Color (hex) | text |
+| `hoverColorGadget` | Style: Glossary Hover Color (hex) | text |
+| `dataBarsGadget` | Style: Data Bars (name: #hex[: 100%]; ...) | text |
 | `cellColorGadget` | Style: Cell Color (heat map) | toggle |
 | `cellColorLowGadget` | Style: Cell Color Low (hex) | text |
 | `cellColorHighGadget` | Style: Cell Color High (hex) | text |
-| `headerColorGadget` | Style: Header Color (hex) | text |
-| `headerDataColorGadget` | Style: Header Data Color (hex) | text |
-| `dataBarsGadget` | Style: Data Bars (name: #hex[: 100%]; ...) | text |
 | `showDescriptionsGadget` | Tooltip: Glossary Descriptions | toggle |
+| `tooltipIndicatorGadget` | Tooltip: Indicator (Corner mark / Underline / Info icon / None) | switcher |
+| `tooltipAlignGadget` | Tooltip: Text Align | switcher |
 | `showSourceBadgesGadget` | Tooltip: Source Badges (Live / Workbook) | toggle |
-| `showHeaderUnderlineGadget` | Tooltip: Underline Headers | toggle |
-| `showPrintPdfGadget` | Print: Show PDF Button | toggle |
-| `showPrintCanvasGadget` | Print: Show Canvas Button | toggle |
+| `printButtonsGadget` | Print: Buttons (None / Print PDF / Print Canvas / Both) | switcher |
 | `printOrientationGadget` | Print: Page Orientation | switcher |
 | `printMarginGadget` | Print: Margins | switcher |
 | `printTableSizeGadget` | Print: Table Width | switcher |
 | `printCanvasSpacingGadget` | Print: Canvas Page Breaks | switcher |
 | `printFollowThemeGadget` | Print: Follow Theme | toggle |
-| `tooltipAlignGadget` | Tooltip: Text Align | switcher |
 | `debugLogMetadataGadget` | Debug: Log Column Metadata (Console) | toggle |
+
+**Removed in 0.19.0 (combined):** `showHeaderUnderlineGadget` (now the
+Indicator's Underline choice), `showPrintPdfGadget` and
+`showPrintCanvasGadget` (now Print: Buttons), `wrapHeadersGadget` and
+`wrapCellsGadget` (now Layout: Wrap Text). Their Config keys stay in
+`this.Config`, no longer shown, so `migrateLegacyConfig` (called from
+`loadConfig`) can carry a workbook's saved choice into the new key while
+the new key has never been saved: PDF on + Canvas on = Both, header wrap
+only = Headers, underline on = Underline, and so on. Once the new control
+is saved, it wins. No old gadget id was reused.
 
 The panel cannot list the fields on the viz. Hide, rename, and the
 per-measure override are text for that reason (`../oac_design.md` §2 and

@@ -155,7 +155,8 @@
 
 .gp-table th.gp-hdr-paint.gp-has-desc:hover,
 .gp-table th.gp-hdr-paint.gp-has-desc:focus {
-  color: #1b1f24;
+  background: var(--gp-hover-bg, #5e6a71);
+  color: var(--gp-hover-fg, #ffffff);
 }
 
 .gp-table th.gp-rowhdr {
@@ -203,19 +204,24 @@
   border-bottom: none;
 }
 
+/* Style: Glossary Hover Color (0.19.0). WSU gray #5e6a71 by default, with
+   the text color picked for contrast (white on the gray). Replaces the
+   light teal wash, which read as off-brand next to crimson headers. The
+   focus ring and an optional underline follow the text color. */
 .gp-table th.gp-has-desc:hover,
 .gp-table th.gp-has-desc:focus {
-  background: #e3efee;
+  background: var(--gp-hover-bg, #5e6a71);
+  color: var(--gp-hover-fg, #ffffff);
 }
 
 .gp-table th.gp-has-desc:hover .gp-lbl,
 .gp-table th.gp-has-desc:focus .gp-lbl {
-  border-bottom-color: #1f6f6b;
+  border-bottom-color: currentColor;
 }
 
 .gp-table th.gp-has-desc:focus {
-  outline: 2px solid #1f6f6b;
-  outline-offset: -2px;
+  outline: 2px solid currentColor;
+  outline-offset: -4px;
 }
 
 /* ---- tooltip ---- */
@@ -355,7 +361,7 @@
   display: inline-block;
   margin-left: 4px;
   font-size: 9px;
-  color: #1f6f6b;
+  color: inherit;
   vertical-align: 1px;
 }
 
@@ -390,4 +396,35 @@
   flex: 0 0 auto;
   margin-left: auto;
   text-align: right;
+}
+
+/* ---- tooltip indicator (0.19.0) ---- */
+/* Corner mark: a small triangle in the header's top-right corner, like
+   Excel's comment marker. Drawn with borders in the header's own text
+   color (white on crimson, dark on the default gray), so it takes no
+   width and never changes wrapping or column widths. */
+.gp-table.gp-ind-corner th.gp-has-desc {
+  position: relative;
+}
+
+.gp-table.gp-ind-corner th.gp-has-desc::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 7px 7px 0;
+  border-color: transparent currentColor transparent transparent;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+/* Info icon: a faint (i) after the label. */
+.gp-table .gp-info {
+  margin-left: 3px;
+  font-size: 0.85em;
+  font-weight: 400;
+  opacity: 0.7;
 }

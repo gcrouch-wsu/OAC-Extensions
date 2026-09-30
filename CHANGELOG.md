@@ -7,7 +7,7 @@ source of truth — check them directly (`grep VERSION` in the plugin's own
 this one. As of commit `0e043f3` (2026-09-27), `main` and `origin/main` agree:
 Network 1.2.2, Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, Lattice Scatter
 1.1.2, Glossary Pivot 0.16.2 (0.17.0 pushed 2026-09-29, commit `b7247e5`;
-0.18.0 below). WSU Report Print has been removed; Glossary
+0.18.0 pushed 2026-09-29, commit `1f4367a`; 0.19.0 below). WSU Report Print has been removed; Glossary
 Pivot prints its own table and the canvas.
 
 This file's own history below predates that sync — entries before 2026-09-27
@@ -21,6 +21,81 @@ or Glossary Pivot. Headings below that say "Unreleased" mean "no git tag".
 The 1.x commits they describe are on `main`.
 
 Glossary Pivot versions on its own line, not on the 1.x tags.
+
+## 2026-09-30 — WSU Glossary Pivot 0.19.0 — gray glossary hover, % of total
+
+Data-team follow-ups after 0.18.0 (answers recorded 2026-09-30).
+
+- **Style: Glossary Hover Color** (`hoverColor`, default `#5e6a71`, the WSU
+  brand gray the team uses). Hovering or focusing a header that has a
+  glossary description now fills it with that gray and white text
+  (contrast-picked, 5.6:1), replacing the light teal `#e3efee`. Chosen over
+  the newer `#4D4D4D`, which has almost the same brightness as crimson
+  `#981e32` (1.03:1) and would barely register as a change. The focus ring,
+  optional underline, and sort arrow follow the text color instead of
+  teal. No underline by default (the team declined one). An empty or
+  invalid hex falls back to the gray.
+- **Values: Show as % of Total** (`percentOfTotal`, text):
+  `NAME` (share of the whole data column) or `NAME: by FIELD` (share within
+  each group of that Rows field and the fields above it; no field name is
+  built in). The team's pattern: a calculated-field copy of Headcount next
+  to Headcount, listed here, so the count and the share keep separate
+  formats. Shares are computed on the rows on screen (the plugin cannot
+  use the native pivot's server-side "Percent Of"). They print as a
+  percent unless that measure has its own Per-Measure Override, and they
+  feed the heat map, data bars (a `100%` bar shows the share), sort, and
+  totals. A share column's total is its block's numbers over the totals of
+  the groups the block covers: 100% on the grand total, a group's share of
+  the column on a subtotal (or 100% per group when grouped by that field).
+  Totals: Measure Rules do not apply to a share column. A `by` field that
+  is not a Rows field on the pivot leaves the numbers unchanged and logs a
+  warning.
+
+- **Tooltip: Indicator** (`tooltipIndicator`: corner / icon / none,
+  default corner). Before this, a header with a description had no
+  always-visible cue: the underline is off by default, the gray fill only
+  appears on hover, and on sortable headers the sort's pointer cursor
+  overrides the help cursor. **Corner mark** draws a small triangle in the
+  header's top-right corner in the header's own text color (white on
+  crimson, dark on the default gray), like Excel's comment marker; it takes
+  no width, so wrapping and column widths are unaffected. **Info icon**
+  appends a faint (i) after the label. Screen only: the print stylesheet
+  has no corner rule and print removes the icon. Checked in headless
+  Chrome on crimson and default-gray headers.
+
+- **Property panel reorganized.** Six controls became three:
+  Tooltip: Underline Headers is now the Indicator's **Underline** choice
+  (Corner mark / Underline / Info icon / None); Print: Show PDF Button and
+  Print: Show Canvas Button are now **Print: Buttons** (None / Print PDF /
+  Print Canvas / Both); Layout: Wrap Header Text and Wrap Row and Value
+  Text are now **Layout: Wrap Text** (Off / Headers / Rows and values /
+  All). "Totals: Row Group Collapse" is relabeled **Rows: Group Collapse**
+  (a collapse is not a total; same id). Every control now has a position
+  from one sequence, so each section (Format, Values, Header, Rows, Totals,
+  Layout, Style, Tooltip, Print, Debug) stays together — previously only
+  the dropdowns had a position and each section was split in two. Saved
+  workbooks keep their choices: `migrateLegacyConfig` carries the old keys
+  into the new ones until the new control is saved. No gadget id was
+  reused.
+
+New Config keys `hoverColor`, `percentOfTotal`, `tooltipIndicator`,
+`printButtons`, `wrapText`; the hover and indicator defaults change the
+look of every existing Glossary Pivot's described headers (intended).
+`node tests/run.js` 92 passed (7 new), lint clean.
+
+Installed on the WSU dev tenant 2026-09-30 and checked live on "Test
+census student profile" (both canvases, "Enrollment by Term" and "10-Year
+Enrollment"): the loaded module is 0.19.0; the property panel lists every
+control in section order (Format, Values, Header, Rows, Totals, Layout,
+Style, Tooltip, Print, Debug) with no split sections; the saved legacy
+settings carried into the combined controls (Wrap Text = Headers from
+Wrap Header Text on; Print: Buttons = None; Indicator = Corner mark, since
+underline was off); hovering a described header (Full-Time) fills it with
+rgb(94,106,113) and white text and shows its tooltip; corner marks show on
+the 11 described headers only. Nothing was changed or saved on that
+workbook; OAC's "unsaved changes" prompt after only opening the property
+panel was discarded. % of total was not exercised on the tenant (it needs
+a calculated-field copy on the workbook).
 
 ## 2026-09-29 — WSU Glossary Pivot 0.18.0 — data bars
 

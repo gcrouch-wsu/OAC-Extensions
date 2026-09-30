@@ -1048,7 +1048,7 @@ suite("WSU Glossary Pivot", function() {
 
   test("layout settings: alignment variables, width classes, and the colgroup", function() {
     var attrs = mod._tableLayoutAttrs({ rowHeaderAlign: "right", rowHeaderVAlign: "top", colHeaderAlign: "bogus",
-      tableWidth: "fixed", tableWidthPx: "900", wrapHeaders: "on" });
+      tableWidth: "fixed", tableWidthPx: "900", wrapText: "headers" });
     assert.ok(attrs.style.indexOf("--gp-rh-align:right") >= 0);
     assert.ok(attrs.style.indexOf("--gp-rh-valign:top") >= 0);
     assert.ok(attrs.style.indexOf("--gp-ch-align:center") >= 0, "an invalid value falls back to the default");
@@ -1122,6 +1122,149 @@ suite("WSU Glossary Pivot", function() {
     var cells = firstRow.split("<td").slice(1);
     assert.ok(cells[0].indexOf("gp-bar-cell") >= 0 && cells[0].indexOf("gp-heat") < 0, "the bar replaces the heat map on its measure");
     assert.ok(cells[1].indexOf("gp-heat") >= 0, "other measures keep the heat map");
+  });
+
+  /* ---- 0.19.0: % of total, hover color ---- */
+  function shareLayout() {
+    var terms = ["2025 Fall", "2025 Fall", "2026 Fall", "2026 Fall"], levels = ["UGRD", "GRAD", "UGRD", "GRAD"];
+    var hc = [60, 40, 30, 70];
+    var cols = [{ id: "HEADCOUNT", name: "Headcount" }, { id: "c90", name: "Headcount Share" }];
+    return {
+      getLayerCount: function(edge) { return edge === "row" ? 2 : (edge === "column" ? 1 : 0); },
+      getEdgeExtent: function(edge) { return edge === "row" ? 4 : (edge === "column" ? 2 : 0); },
+      getLayerMetadata: function(edge, layer, key) {
+        if (edge === "column") return key === "isMeasureLabels" ? true : (key === "id" ? "DM!MEASURE_DIMENSION" : "Measures");
+        if (key === "isMeasureLabels") return false;
+        if (key === "id") return layer ? "IPEDS_LEVEL" : "TERM";
+        return layer ? "IPEDS Degree Level" : "Term";
+      },
+      getValue: function(edge, a, b, raw) {
+        if (edge === "row") return a === 0 ? terms[b] : levels[b];
+        if (edge === "column") return raw ? cols[b].id : cols[b].name;
+        if (edge === "data") return raw ? hc[a] : String(hc[a]);
+        return null;
+      },
+      getItemEndSlice: function(edge, layer, index) { return edge === "row" && layer === 0 ? (index < 2 ? 1 : 3) : index; }
+    };
+  }
+  function shareCells(html) {
+    var out = [], re = /<td class='gp-val[^']*'[^>]*>([^<]*)<\/td>/g, m;
+    while ((m = re.exec(html))) out.push(m[1]);
+    return out;
+  }
+
+  test("% of total by column: shares, subtotals, and a 100% grand total; the original column is untouched", function() {
+    var viz = H.instance(mod, null, { showDescriptions: "off", showGrandTotalRow: "on", showRowSubtotals: "on",
+      percentOfTotal: "Headcount Share" });
+    viz._glossary = mod._buildGlossary();
+    var c = shareCells(viz._buildTable(shareLayout()));
+    // rows: [60,30%] [40,20%] subtotal [100,50%] [30,15%] [70,35%] subtotal [100,50%] grand [200,100%]
+    assert.deepStrictEqual(c.slice(0, 2), ["60", "30.0%"]);
+    assert.deepStrictEqual(c.slice(2, 4), ["40", "20.0%"]);
+    assert.strictEqual(c[5], "50.0%", "first term's subtotal is its share of the column");
+    assert.strictEqual(c[7], "15.0%");
+    assert.strictEqual(c[c.length - 1], "100.0%", "grand total");
+    assert.strictEqual(c[c.length - 2], "200", "Headcount itself still sums");
+  });
+
+  test("% of total by a named Rows field: each group adds to 100%, nothing hardcoded", function() {
+    var viz = H.instance(mod, null, { showDescriptions: "off", showGrandTotalRow: "on", showRowSubtotals: "on",
+      percentOfTotal: "headcount share: by Term" });
+    viz._glossary = mod._buildGlossary();
+    var c = shareCells(viz._buildTable(shareLayout()));
+    assert.strictEqual(c[1], "60.0%");
+    assert.strictEqual(c[3], "40.0%");
+    assert.strictEqual(c[5], "100.0%", "each term's subtotal is 100%");
+    assert.strictEqual(c[7], "30.0%");
+    assert.strictEqual(c[9], "70.0%");
+    assert.strictEqual(c[c.length - 1], "100.0%");
+    var byLevel = H.instance(mod, null, { showDescriptions: "off", percentOfTotal: "Headcount Share: by IPEDS Degree Level" });
+    byLevel._glossary = mod._buildGlossary();
+    assert.strictEqual(shareCells(byLevel._buildTable(shareLayout()))[1], "100.0%", "grouping by the inner field works too");
+  });
+
+  test("% of total: an unknown field leaves the numbers alone and warns; own override wins; share bars", function() {
+    var viz = H.instance(mod, null, { showDescriptions: "off", percentOfTotal: "Headcount Share: by College" });
+    viz._glossary = mod._buildGlossary();
+    var warnings = [];
+    viz._warnConfig = function(rejected, missing) { warnings.push(JSON.parse(JSON.stringify(missing))); };
+    assert.strictEqual(shareCells(viz._buildTable(shareLayout()))[1], "60");
+    assert.deepStrictEqual(warnings[0], ["by College"]);
+    var fmt = H.instance(mod, null, { showDescriptions: "off", percentOfTotal: "Headcount Share",
+      measureFormatOverrides: "Headcount Share:percent:0", numberFormat: "number", dataBars: "Headcount Share: #5e6a71: 100%" });
+    fmt._glossary = mod._buildGlossary();
+    var html = fmt._buildTable(shareLayout());
+    assert.ok(html.indexOf(">30%<") >= 0, "the share column's own override applies");
+    assert.ok(html.indexOf("width:30%;background:rgb(94,106,113)") >= 0, "a 100% bar on a share is its share");
+    var p = mod._parsePercentOfTotal("A; B: by Term; C: column; Ratio: X", []);
+    assert.strictEqual(p.A.by, null);
+    assert.strictEqual(p.B.by, "Term");
+    assert.strictEqual(p.C.by, null);
+    assert.ok(p["RATIO: X"], "a colon in a name without 'by' keeps the whole name");
+  });
+
+  test("glossary hover defaults to WSU gray with white text; invalid hex falls back", function() {
+    var a = mod._tableLayoutAttrs({});
+    assert.ok(a.style.indexOf("--gp-hover-bg:rgb(94,106,113);--gp-hover-fg:#ffffff") >= 0);
+    assert.ok(mod._tableLayoutAttrs({ hoverColor: "nope" }).style.indexOf("rgb(94,106,113)") >= 0);
+    assert.ok(mod._tableLayoutAttrs({ hoverColor: "#f0f0f0" }).style.indexOf("--gp-hover-fg:#000000") >= 0);
+  });
+
+  test("tooltip indicator: corner mark by default, icon only on described headers, none when tooltips are off", function() {
+    function build(cfg) {
+      var viz = H.instance(mod, null, Object.assign({ showDescriptions: "on" }, cfg));
+      viz._glossary = mod._buildGlossary();
+      viz._glossary.mergeLive({ HEADCOUNT: { text: "Students enrolled", origin: "live" } });
+      return viz._buildTable(ipedsLayout());
+    }
+    var corner = build({});
+    assert.ok(/<table class='[^']*gp-ind-corner/.test(corner));
+    assert.strictEqual(corner.indexOf("gp-info"), -1);
+    var icon = build({ tooltipIndicator: "icon" });
+    assert.strictEqual((icon.match(/class='gp-info'/g) || []).length, 1, "only the header with a description");
+    assert.ok(icon.indexOf("gp-ind-corner") < 0);
+    assert.ok(build({ tooltipIndicator: "none" }).indexOf("gp-ind-corner") < 0);
+    assert.ok(build({ showDescriptions: "off" }).indexOf("gp-ind-corner") < 0);
+  });
+
+  /* ---- 0.19.0 panel consolidation: saved workbooks keep their choices ---- */
+  test("legacy print, wrap, and underline settings carry into the combined controls", function() {
+    function loaded(saved) {
+      var viz = H.instance(mod);
+      viz._savedConfig = saved;
+      viz.loadConfig();
+      return viz.Config;
+    }
+    var a = loaded({ showPrintPdf: "on", showPrintCanvas: "off", wrapHeaders: "on", wrapCells: "off", showHeaderUnderline: "off" });
+    assert.strictEqual(a.printButtons, "pdf");
+    assert.strictEqual(a.wrapText, "headers");
+    assert.strictEqual(a.tooltipIndicator, "corner", "underline off keeps the new default");
+    var b = loaded({ showPrintPdf: "on", showPrintCanvas: "on", wrapHeaders: "on", wrapCells: "on", showHeaderUnderline: "on" });
+    assert.strictEqual(b.printButtons, "both");
+    assert.strictEqual(b.wrapText, "all");
+    assert.strictEqual(b.tooltipIndicator, "underline");
+    var c = loaded({ showPrintCanvas: "on", wrapCells: "on" });
+    assert.strictEqual(c.printButtons, "canvas");
+    assert.strictEqual(c.wrapText, "body");
+    var d = loaded({});
+    assert.strictEqual(d.printButtons, "none");
+    assert.strictEqual(d.wrapText, "off");
+    var e = loaded({ printButtons: "none", showPrintPdf: "on", wrapText: "off", wrapHeaders: "on",
+      tooltipIndicator: "none", showHeaderUnderline: "on" });
+    assert.strictEqual(e.printButtons, "none", "a saved new-control choice wins over the legacy key");
+    assert.strictEqual(e.wrapText, "off");
+    assert.strictEqual(e.tooltipIndicator, "none");
+  });
+
+  test("underline is now an indicator choice", function() {
+    var viz = H.instance(mod, null, { showDescriptions: "on", tooltipIndicator: "underline" });
+    viz._glossary = mod._buildGlossary();
+    var html = viz._buildTable(ipedsLayout());
+    assert.ok(/<table class='gp-table /.test(html) && html.indexOf("gp-no-underline") < 0);
+    assert.ok(html.indexOf("gp-ind-corner") < 0);
+    var mod2 = H.instance(mod, null, { showDescriptions: "on" });
+    mod2._glossary = mod._buildGlossary();
+    assert.ok(mod2._buildTable(ipedsLayout()).indexOf("gp-no-underline") >= 0);
   });
 
   test("the tooltip heading carries the renamed label", function() {
