@@ -72,6 +72,12 @@
   color: #545c66;
 }
 
+.gp-authornote {
+  color: #8a2b2b;
+  font-size: 12px;
+  padding: 4px 8px 0;
+}
+
 .gp-shell > .gp-wrap {
   flex: 1 1 auto;
   height: auto;

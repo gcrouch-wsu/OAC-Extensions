@@ -601,6 +601,33 @@ suite("WSU Glossary Pivot", function() {
     assert.strictEqual(result.nameById["Full-Time"], "Full-Time");
   });
 
+  test("computeMeasureIdByCol names the one measure when the layout has no measure-label layer", function() {
+    var dl = {
+      getLayerMetadata: function() { return null; },
+      getValue: function() { return null; },
+      getDataMetadata: function() { return "c16"; }
+    };
+    var info = { c16: { displayName: "Headcount" } };
+    var named = mod._computeMeasureIdByCol(dl, LM_TEST, 0, 2, info);
+    assert.strictEqual(named.idByCol[0], "c16");
+    assert.strictEqual(named.idByCol[1], "c16");
+    assert.strictEqual(named.nameById.c16, "Headcount");
+    var mixed = {
+      getLayerMetadata: function() { return null; },
+      getDataMetadata: function(row, col) { return col ? "OTHER" : "c16"; }
+    };
+    var unnamed = mod._computeMeasureIdByCol(mixed, LM_TEST, 0, 2, info);
+    assert.strictEqual(unnamed.idByCol[0], "__single__");
+    assert.strictEqual(unnamed.idByCol[1], "__single__");
+    var partial = {
+      getLayerMetadata: function() { return null; },
+      getDataMetadata: function(row, col) { return col ? null : "c16"; }
+    };
+    var incomplete = mod._computeMeasureIdByCol(partial, LM_TEST, 0, 2, info);
+    assert.strictEqual(incomplete.idByCol[0], "__single__", "one identified column cannot identify another");
+    assert.strictEqual(incomplete.idByCol[1], "__single__");
+  });
+
   test("computeMeasureIdByCol still uses the __single__ sentinel when there is truly no measure-labels layer", function() {
     var dl = { getLayerMetadata: function() { return null; }, getValue: function() { return null; } };
     var result = mod._computeMeasureIdByCol(dl, LM_TEST, 0, 1);
@@ -985,6 +1012,99 @@ suite("WSU Glossary Pivot", function() {
     assert.strictEqual(totalRowCells(html)[1], "86.29");
   });
 
+  test("ratio and weighted totals use source counts when references display as shares", function() {
+    var viz = H.instance(mod, null, {
+      showGrandTotalRow: "on", showDescriptions: "off",
+      percentOfTotal: "Headcount; Full-Time",
+      totalRules: "% Full-Time = ratio(Full-Time, Headcount, 100); % Female = weighted(Headcount)"
+    });
+    viz._glossary = mod._buildGlossary();
+    var cells = totalRowCells(viz._buildTable(ipedsLayout()));
+    assert.strictEqual(cells[0], "100.0%", "the denominator still displays as shares");
+    assert.strictEqual(cells[1], "100.0%", "the numerator still displays as shares");
+    assert.strictEqual(cells[2], "86.29", "20,243 / 23,460, not 100 / 100");
+    assert.strictEqual(cells[3], "54.4", "source Headcount still supplies the weights");
+    viz.Config.percentOfTotal = "% Full-Time";
+    viz.Config.measureFormatOverrides = "% Full-Time:number:2";
+    assert.strictEqual(totalRowCells(viz._buildTable(ipedsLayout()))[2], "86.29",
+      "the explicit ratio rule takes precedence over the share total");
+  });
+
+  function scopedRatioLayout() {
+    var counts = [[1, 4], [1, 2], [3, 5]], heads = [[2, 5], [2, 5], [6, 10]];
+    var ids = ["N", "D", "P"], names = ["Selected Count", "Headcount", "Selected Percentage"];
+    return {
+      getLayerCount: function(edge) { return edge === "row" || edge === "column" ? 2 : 0; },
+      getEdgeExtent: function(edge) { return edge === "row" ? 3 : (edge === "column" ? 6 : 0); },
+      getLayerMetadata: function(edge, layer, key) {
+        if (key === "isMeasureLabels") return edge === "column" && layer === 1;
+        if (key === "id") return edge === "row" ? (layer ? "DETAIL" : "COLLEGE") : (layer ? "DM!MEASURE_DIMENSION" : "TERM");
+        return edge === "row" ? (layer ? "Detail" : "College") : (layer ? "Measures" : "Term");
+      },
+      getValue: function(edge, a, b, raw) {
+        if (edge === "row") return a ? ["X", "Y", "Z"][b] : ["A", "A", "B"][b];
+        var term = Math.floor(b / 3), measure = b % 3;
+        if (edge === "column") return a ? (raw ? ids[measure] : names[measure]) : ["Fall", "Spring"][term];
+        if (edge === "data") {
+          var value = measure === 0 ? counts[a][term] : (measure === 1 ? heads[a][term] : counts[a][term] / heads[a][term] * 100);
+          return raw ? value : (measure === 2 ? value.toFixed(2) : String(value));
+        }
+        return null;
+      },
+      getItemEndSlice: function(edge, layer, index) {
+        if (edge === "row" && layer === 0) return index < 2 ? 1 : 2;
+        if (edge === "column" && layer === 0) return index < 3 ? 2 : 5;
+        return index;
+      }
+    };
+  }
+
+  test("ratio uses each subtotal, term, across-column and grand-total scope", function() {
+    var viz = H.instance(mod, null, {
+      showDescriptions: "off", showGrandTotalRow: "on", showRowSubtotals: "on", showGrandTotalColumn: "on",
+      rowGroupCollapse: "on", totalRules: "Selected Percentage = ratio(Selected Count, Headcount, 100)",
+      measureFormatOverrides: "Selected Percentage:number:2"
+    });
+    viz._glossary = mod._buildGlossary();
+    var html = viz._buildTable(scopedRatioLayout());
+    var rows = html.split("<tr class='gp-total-row'>").slice(1);
+    function values(row) {
+      var result = [], re = /<td class='gp-val gp-total-val(?: gp-grand-total-val)?'>([^<]*)<\/td>/g, m;
+      row = row.slice(0, row.indexOf("</tr>"));
+      while ((m = re.exec(row))) result.push(m[1]);
+      return result;
+    }
+    assert.deepStrictEqual(values(rows[0]), ["2", "4", "50.00", "6", "10", "60.00", "8", "14", "57.14"]);
+    assert.deepStrictEqual(values(rows[1]), ["3", "6", "50.00", "5", "10", "50.00", "8", "16", "50.00"]);
+    assert.deepStrictEqual(values(rows[2]), ["5", "10", "50.00", "11", "20", "55.00", "16", "30", "53.33"]);
+    viz._collapsedGroups[0] = true;
+    html = viz._buildTable(scopedRatioLayout());
+    var collapsedAt = html.indexOf("gp-collapsed");
+    var collapsed = html.slice(collapsedAt, html.indexOf("</tr>", collapsedAt));
+    assert.ok(collapsed.indexOf(">50.00</td>") >= 0 && collapsed.indexOf(">60.00</td>") >= 0 && collapsed.indexOf(">57.14</td>") >= 0);
+    assert.deepStrictEqual(values(html.slice(html.lastIndexOf("<tr class='gp-total-row'>"))), ["5", "10", "50.00", "11", "20", "55.00", "16", "30", "53.33"]);
+  });
+
+  test("a percentage already scaled by 100 uses number:2; Auto preserves Oracle's string", function() {
+    var formats = mod._parseMeasureFormatOverrides("Selected Percentage:number:2");
+    var fmt = mod._resolveFormat({ numberFormat: "auto", decimalPlaces: "auto" }, formats, "P", "Selected Percentage");
+    assert.strictEqual(mod._formatValue(83 / 307 * 100, fmt), "27.04");
+    assert.strictEqual(mod._formatValue(83 / 307 * 100, { numberFormat: "percent", decimalPlaces: "2" }), "2703.58%");
+    assert.strictEqual(mod._formatValue("27.04%", { numberFormat: "auto", decimalPlaces: "2" }), "27.04%");
+  });
+
+  test("a ratio with a zero or missing denominator stays blank", function() {
+    var denominator = 0;
+    var ctx = {
+      num: function(r, cc) { return cc === 0 ? 2 : denominator; },
+      sibling: function(cc, ref) { return ref === "N" ? 0 : 1; }
+    };
+    var rule = { kind: "ratio", a: "N", b: "D", scale: 100 };
+    assert.strictEqual(mod._aggregateCells(0, 1, [2], rule, ctx), null);
+    denominator = null;
+    assert.strictEqual(mod._aggregateCells(0, 1, [2], rule, ctx), null);
+  });
+
   test("a rule naming a measure that is not on the pivot leaves the total blank and says why", function() {
     var viz = H.instance(mod, null, { showGrandTotalRow: "on", showDescriptions: "off",
       totalRules: "% Full-Time = weighted(Headcount); bogus rule" });
@@ -1274,6 +1394,444 @@ suite("WSU Glossary Pivot", function() {
     var html = viz._buildTable(ipedsLayout());
     assert.ok(html.indexOf("data-gp-title='Pct FT'") >= 0);
     assert.ok(html.indexOf("data-gp-name='% Full-Time'") >= 0, "the glossary still looks up the real name");
+  });
+
+  function paramHost(values) {
+    return {
+      dispatchClientEvent: function (type, params) {
+        assert.strictEqual(type, "getParameterValues");
+        params.aParameterInfos.forEach(function (info) {
+          var text = values[info.sName];
+          if (text == null) return;
+          info.aValues = [{ vValue: text, sFormattedValue: text }];
+          info.oParameterInfo = { dataType: "text", isAliasEnabled: false };
+        });
+        params.aParameterValueInfos = params.aParameterInfos;
+        return { getParams: function () { return params; } };
+      }
+    };
+  }
+
+  test("each header template resolves its own parameter text", function() {
+    var saved = 'measure_selected:@parameter("View By Selector");pct_measure_selected:% @parameter("View By Selector");Headcount:Students';
+    var map = mod._parseHeaderLabels(saved);
+    assert.strictEqual(map.MEASURE_SELECTED, '@parameter("View By Selector")');
+    assert.strictEqual(map.PCT_MEASURE_SELECTED, '% @parameter("View By Selector")');
+    assert.strictEqual(map.HEADCOUNT, "Students");
+    var host = paramHost({ "View By Selector": "Minority" });
+    var read = mod._readHostParameterValues(host, ["View By Selector"]);
+    assert.strictEqual(mod._applyHeaderTemplate(map.MEASURE_SELECTED, read, "measure_selected").text, "Minority");
+    assert.strictEqual(mod._applyHeaderTemplate(map.PCT_MEASURE_SELECTED, read, "pct_measure_selected").text, "% Minority");
+    assert.strictEqual(mod._applyHeaderTemplate(map.HEADCOUNT, read, "Headcount").text, "Students");
+    assert.strictEqual(saved.indexOf("@parameter"), 17, "the saved template is not replaced by the resolved value");
+    read = mod._readHostParameterValues(paramHost({ "View By Selector": "First Gen" }), ["View By Selector"]);
+    assert.strictEqual(mod._applyHeaderTemplate(map.MEASURE_SELECTED, read, "measure_selected").text, "First Gen");
+    assert.strictEqual(mod._applyHeaderTemplate(map.PCT_MEASURE_SELECTED, read, "pct").text, "% First Gen");
+  });
+
+  test("a template may mix literal text, a different parameter, and a static field", function() {
+    var read = mod._readHostParameterValues(paramHost({
+      "View By Selector": "WA State",
+      "Other": "Fall"
+    }), ["View By Selector", "Other"]);
+    assert.strictEqual(mod._applyHeaderTemplate('Count of @parameter("View By Selector") students', read, "x").text,
+      "Count of WA State students");
+    assert.strictEqual(mod._applyHeaderTemplate('@parameter("Other")', read, "x").text, "Fall");
+    assert.strictEqual(mod._applyHeaderTemplate("Share of Headcount", read, "x").status, "static");
+  });
+
+  test("missing, malformed, and unreadable parameter labels fall back to the field name", function() {
+    var read = mod._readHostParameterValues(paramHost({}), ["View By Selector"]);
+    var missing = mod._applyHeaderTemplate('@parameter("View By Selector")', read, "measure_selected");
+    assert.strictEqual(missing.status, "missing");
+    assert.strictEqual(missing.text, "measure_selected");
+    var bad = mod._applyHeaderTemplate("@parameter(View By Selector)", read, "measure_selected");
+    assert.strictEqual(bad.status, "malformed");
+    assert.strictEqual(bad.text, "measure_selected");
+    var offline = mod._applyHeaderTemplate('@parameter("View By Selector")', { available: false, values: {} }, "measure_selected");
+    assert.strictEqual(offline.status, "unavailable");
+    assert.strictEqual(offline.text, "measure_selected");
+    var aliasHost = {
+      dispatchClientEvent: function (type, params) {
+        params.aParameterInfos[0].aValues = [{ vValue: "MIN", sFormattedValue: "MIN", sDisplayValue: "Minority" }];
+        params.aParameterInfos[0].oParameterInfo = { isAliasEnabled: true };
+        params.aParameterValueInfos = params.aParameterInfos;
+      }
+    };
+    var alias = mod._readHostParameterValues(aliasHost, ["View By Selector"]);
+    assert.strictEqual(mod._applyHeaderTemplate('@parameter("View By Selector")', alias, "x").text, "Minority");
+  });
+
+  test("a host default is the label only when the parameter has no current value", function() {
+    var empty = mod._readHostParameterValues(paramHost({}), ["view"]);
+    var withDefault = "@parameter(\"view\")('Minority')";
+    var missing = mod._applyHeaderTemplate(withDefault, empty, "measure_selected");
+    assert.strictEqual(missing.status, "resolved");
+    assert.strictEqual(missing.text, "Minority");
+    var percent = mod._applyHeaderTemplate("% @parameter(\"view\")('Minority')", empty, "pct");
+    assert.strictEqual(percent.text, "% Minority");
+    var selected = mod._readHostParameterValues(paramHost({ view: "First Gen" }), ["view"]);
+    assert.strictEqual(mod._applyHeaderTemplate(withDefault, selected, "measure_selected").text, "First Gen");
+    assert.strictEqual(mod._applyHeaderTemplate("% @parameter(\"view\")('Minority')", selected, "pct").text, "% First Gen");
+    var bare = mod._applyHeaderTemplate('@parameter("view")', empty, "measure_selected");
+    assert.strictEqual(bare.status, "missing");
+    assert.strictEqual(bare.text, "measure_selected");
+    var broken = mod._applyHeaderTemplate("@parameter(\"view\")('Minority'", empty, "measure_selected");
+    assert.strictEqual(broken.status, "malformed");
+    assert.strictEqual(broken.text, "measure_selected");
+    var offline = mod._applyHeaderTemplate(withDefault, { available: false, values: {} }, "measure_selected");
+    assert.strictEqual(offline.status, "unavailable");
+    assert.strictEqual(offline.text, "measure_selected");
+    var parsed = mod._parameterRefs(withDefault);
+    assert.strictEqual(parsed.refs[0].defaultText, "Minority");
+    assert.strictEqual(parsed.refs[0].raw, withDefault);
+  });
+
+  test("one display name that matches two fields is not applied to either", function() {
+    var map = mod._parseHeaderLabels('Amount:@parameter("View By Selector")');
+    var bad = mod._ambiguousHeaderKeys(map, [
+      { id: "c1", name: "Amount" },
+      { id: "c2", name: "Amount" }
+    ]);
+    assert.strictEqual(bad.AMOUNT, 2);
+    var one = mod._ambiguousHeaderKeys(map, [
+      { id: "c34", name: "measure_selected" },
+      { id: "c35", name: "pct_measure_selected" }
+    ]);
+    assert.strictEqual(Object.keys(one).length, 0);
+  });
+
+  test("overlapping distinct counts are not summed, and one cell is kept", function() {
+    var ctx = {
+      num: function (r, cc) { return [2, 2][r]; },
+      sibling: function (cc, ref) { return ref === "N" ? 0 : 1; },
+      rule: function (ref) { return ref === "N" ? "distinct" : "sum"; }
+    };
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], { kind: "distinct" }, ctx), null, "2 and 2 is not 4 and is not guessed as 3");
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], { kind: "sum" }, ctx), 4, "an ordinary measure still sums");
+    assert.strictEqual(mod._aggregateCells(0, 0, [0], { kind: "distinct" }, ctx), 2, "one group's own count");
+    assert.strictEqual(mod._aggregateCells(0, 1, [1], { kind: "ratio", a: "N", b: "D", scale: 100 }, ctx), null);
+    var oneRow = {
+      num: function (r, cc) { return cc === 0 ? 2 : 10; },
+      sibling: function (cc, ref) { return ref === "N" ? 0 : 1; },
+      rule: function (ref) { return ref === "N" ? "distinct" : "sum"; }
+    };
+    assert.strictEqual(mod._aggregateCells(0, 0, [1], { kind: "ratio", a: "N", b: "D", scale: 100 }, oneRow), 20);
+    var rules = mod._parseTotalRules("measure_selected = distinct; pct = ratio(measure_selected, Headcount)");
+    assert.strictEqual(rules.MEASURE_SELECTED.kind, "distinct");
+    assert.strictEqual(rules.PCT.kind, "ratio");
+  });
+
+  function selectorHost(text) {
+    return function (type, params) {
+      assert.strictEqual(type, "getParameterValues");
+      params.aParameterInfos.forEach(function (info) {
+        if (text == null) return;
+        info.aValues = [{ vValue: text, sFormattedValue: text }];
+        info.oParameterInfo = { dataType: "text", isAliasEnabled: false };
+      });
+      params.aParameterValueInfos = params.aParameterInfos;
+      return { getParams: function () { return params; } };
+    };
+  }
+
+  function corinnaLayout() {
+    var cols = [
+      { id: "c34", name: "measure_selected", raw: [2, 2], fmt: function (v) { return String(v); } },
+      { id: "c35", name: "pct_measure_selected", raw: [0.5, 0.5], fmt: function (v) { return (v * 100).toFixed(0) + "%"; } },
+      { id: "HEADCOUNT", name: "Headcount", raw: [4, 4], fmt: function (v) { return String(v); } }
+    ];
+    return {
+      getLayerCount: function (edge) { return edge === "row" ? 1 : (edge === "column" ? 1 : 0); },
+      getEdgeExtent: function (edge) { return edge === "row" ? 2 : (edge === "column" ? cols.length : 0); },
+      getLayerMetadata: function (edge, layer, key) {
+        if (edge === "column") return key === "isMeasureLabels" ? true : (key === "id" ? "DM!MEASURE_DIMENSION" : "Measures");
+        if (key === "isMeasureLabels") return false;
+        if (key === "id") return "GROUP";
+        return "Group";
+      },
+      getValue: function (edge, a, b, raw) {
+        if (edge === "row") return ["A", "B"][b];
+        if (edge === "column") return raw ? cols[b].id : cols[b].name;
+        if (edge === "data") return raw ? cols[b].raw[a] : cols[b].fmt(cols[b].raw[a]);
+        return null;
+      },
+      getItemEndSlice: function (edge, layer, index) { return index; }
+    };
+  }
+
+  test("Corinna's templates resolve through the built table and keep the field identity", function() {
+    var saved = 'measure_selected:@parameter("View By Selector");pct_measure_selected:% @parameter("View By Selector");Headcount:Students';
+    var viz = H.instance(mod, null, { showDescriptions: "on", headerLabels: saved });
+    viz.dispatchClientEvent = selectorHost("Minority");
+    viz._glossary = mod._buildGlossary();
+    viz._glossary.mergeLive({ c34: { text: "Count for the selected population", origin: "live" } });
+    var html = viz._buildTable(corinnaLayout());
+    assert.ok(html.indexOf(">Minority</span>") >= 0, "the count header is the parameter text");
+    assert.ok(html.indexOf("%\u00a0Minority") >= 0, "the percent header keeps % as label text");
+    assert.ok(html.indexOf(">Students</span>") >= 0, "a static label is unchanged");
+    assert.ok(html.indexOf("data-gp-name='measure_selected'") >= 0, "glossary lookup stays on the calculated field");
+    assert.ok(html.indexOf("data-gp-title='Minority'") >= 0, "the tooltip heading is the resolved label");
+    assert.strictEqual(viz.Config.headerLabels, saved);
+    assert.strictEqual((viz._authorNotes || []).length, 0);
+    viz.dispatchClientEvent = selectorHost("WA State");
+    html = viz._buildTable(corinnaLayout());
+    assert.ok(html.indexOf(">WA State</span>") >= 0);
+    assert.ok(html.indexOf("%\u00a0WA State") >= 0);
+    assert.strictEqual(viz.Config.headerLabels, saved);
+  });
+
+  test("a default paints when view has no current value, and a selection replaces it", function() {
+    var saved = "measure_selected:@parameter(\"view\")('Minority');pct_measure_selected:% @parameter(\"view\")('Minority');Headcount:Students";
+    var viz = H.instance(mod, null, { showDescriptions: "off", headerLabels: saved });
+    viz.dispatchClientEvent = selectorHost(null);
+    viz._glossary = mod._buildGlossary();
+    var html = viz._buildTable(corinnaLayout());
+    assert.ok(html.indexOf(">Minority</span>") >= 0, "All uses the default");
+    assert.ok(html.indexOf("%\u00a0Minority") >= 0);
+    assert.ok(html.indexOf(">Students</span>") >= 0);
+    assert.strictEqual((viz._authorNotes || []).length, 0);
+    assert.strictEqual(viz.Config.headerLabels, saved);
+    viz.dispatchClientEvent = selectorHost("First Gen");
+    html = viz._buildTable(corinnaLayout());
+    assert.ok(html.indexOf(">First Gen</span>") >= 0);
+    assert.ok(html.indexOf("%\u00a0First Gen") >= 0);
+    assert.strictEqual(html.indexOf(">Minority</span>"), -1);
+    assert.strictEqual(viz.Config.headerLabels, saved);
+  });
+
+  test("a display value is used when the formatted value is empty", function() {
+    var host = {
+      dispatchClientEvent: function (type, params) {
+        params.aParameterInfos[0].aValues = [{ vValue: "MIN", sDisplayValue: "Minority" }];
+        params.aParameterInfos[0].oParameterInfo = { isAliasEnabled: false };
+        params.aParameterValueInfos = params.aParameterInfos;
+      }
+    };
+    var read = mod._readHostParameterValues(host, ["View By Selector"]);
+    assert.strictEqual(mod._applyHeaderTemplate('@parameter("View By Selector")', read, "measure_selected").text, "Minority");
+  });
+
+  test("parameterValuesChanged on topic ** rebuilds the table from the event values", function() {
+    var saved = 'measure_selected:@parameter("View By Selector");pct_measure_selected:% @parameter("View By Selector")';
+    var viz = H.instance(mod, null, { showDescriptions: "off", headerLabels: saved });
+    viz.dispatchClientEvent = function () { return { getParams: function () { return {}; } }; };
+    viz.getContainerElem = function () { return { contains: function () { return false; } }; };
+    viz._glossary = mod._buildGlossary();
+    var subs = [];
+    viz.subscribeToEvent = function (type, handler, topic) {
+      subs.push({ type: type, handler: handler, topic: topic });
+    };
+    viz._doInitializeComponent();
+    var sub = null;
+    subs.forEach(function (s) { if (s.type === "parameterValuesChanged") sub = s; });
+    assert.ok(sub, "the viz subscribes to parameter value changes");
+    assert.strictEqual(sub.topic, "**");
+    viz._lastDataLayout = corinnaLayout();
+    var before = viz._buildTable(viz._lastDataLayout);
+    assert.ok(before.indexOf(">measure_selected</span>") >= 0);
+    assert.strictEqual(before.indexOf("First Gen"), -1);
+    sub.handler({
+      getParams: function () {
+        return {
+          aParameterValueInfos: [{
+            sName: "View By Selector",
+            aValues: [{ vValue: "FG", sDisplayValue: "First Gen" }],
+            oParameterInfo: { dataType: "text", isAliasEnabled: false }
+          }]
+        };
+      }
+    });
+    assert.ok(H.jqCapture.lastHtml.indexOf(">First Gen</span>") >= 0);
+    assert.ok(H.jqCapture.lastHtml.indexOf("%\u00a0First Gen") >= 0);
+    assert.strictEqual(viz.Config.headerLabels, saved);
+    viz._doStopComponent();
+    sub.handler({
+      getParams: function () {
+        return {
+          aParameterValueInfos: [{
+            sName: "View By Selector",
+            aValues: [{ vValue: "WA", sDisplayValue: "WA State" }],
+            oParameterInfo: { isAliasEnabled: false }
+          }]
+        };
+      }
+    });
+    assert.strictEqual(H.jqCapture.lastHtml.indexOf("WA State"), -1);
+  });
+
+  test("independent parameter change payloads preserve other headers and clear only the changed value", function() {
+    var saved = 'measure_selected:@parameter("Count Label");pct_measure_selected:% @parameter("Rate Label")(\'Default\')';
+    var viz = H.instance(mod, null, { showDescriptions: "off", headerLabels: saved });
+    viz.dispatchClientEvent = function() { return { getParams: function() { return {}; } }; };
+    viz.getContainerElem = function() { return { contains: function() { return false; } }; };
+    viz._glossary = mod._buildGlossary();
+    var handler;
+    viz.subscribeToEvent = function(type, callback) { if (type === "parameterValuesChanged") handler = callback; };
+    viz._doInitializeComponent();
+    viz._lastDataLayout = corinnaLayout();
+    function change(name, value) {
+      handler({ getParams: function() { return { aParameterValueInfos: [{
+        sName: name, oParameterInfo: { dataType: "text", isAliasEnabled: false },
+        aValues: value == null ? [] : [{ vValue: value, sDisplayValue: value }]
+      }] }; } });
+    }
+    change("Count Label", "Population A");
+    change("Rate Label", "Rate B");
+    assert.ok(H.jqCapture.lastHtml.indexOf(">Population A</span>") >= 0);
+    assert.ok(H.jqCapture.lastHtml.indexOf("%\u00a0Rate B") >= 0);
+    change("Rate Label", null);
+    assert.ok(H.jqCapture.lastHtml.indexOf(">Population A</span>") >= 0);
+    assert.ok(H.jqCapture.lastHtml.indexOf("%\u00a0Default") >= 0);
+    assert.strictEqual(viz.Config.headerLabels, saved);
+    viz._doStopComponent();
+  });
+
+  test("distinct totals through the table stay blank across overlapping scopes", function() {
+    var cols = [
+      { id: "c34", name: "measure_selected", raw: [2, 2, 2, 2], fmt: function (v) { return String(v); } },
+      { id: "HEADCOUNT", name: "Headcount", raw: [3, 3, 3, 3], fmt: function (v) { return String(v); } },
+      { id: "c35", name: "pct_measure_selected", raw: [50, 50, 50, 50], fmt: function (v) { return String(v); } }
+    ];
+    var layout = {
+      getLayerCount: function (edge) { return edge === "row" ? 2 : (edge === "column" ? 1 : 0); },
+      getEdgeExtent: function (edge) { return edge === "row" ? 4 : (edge === "column" ? cols.length : 0); },
+      getLayerMetadata: function (edge, layer, key) {
+        if (edge === "column") return key === "isMeasureLabels" ? true : (key === "id" ? "DM!MEASURE_DIMENSION" : "Measures");
+        if (key === "isMeasureLabels") return false;
+        if (key === "id") return layer ? "PART" : "GROUP";
+        return layer ? "Part" : "Group";
+      },
+      getValue: function (edge, a, b, raw) {
+        if (edge === "row") return a === 0 ? (b < 2 ? "A" : "B") : ["1", "2", "1", "2"][b];
+        if (edge === "column") return raw ? cols[b].id : cols[b].name;
+        if (edge === "data") return raw ? cols[b].raw[a] : cols[b].fmt(cols[b].raw[a]);
+        return null;
+      },
+      getItemEndSlice: function (edge, layer, index) {
+        if (edge === "row" && layer === 0) return index < 2 ? 1 : 3;
+        return index;
+      }
+    };
+    var viz = H.instance(mod, null, {
+      showDescriptions: "off",
+      showGrandTotalRow: "on",
+      showRowSubtotals: "on",
+      showGrandTotalColumn: "on",
+      rowGroupCollapse: "on",
+      totalRules: "measure_selected = distinct; pct_measure_selected = ratio(measure_selected, Headcount, 100)"
+    });
+    viz._glossary = mod._buildGlossary();
+    viz._collapsedGroups[0] = true;
+    var html = viz._buildTable(layout);
+    assert.ok(html.indexOf(">2</td>") >= 0, "a single aggregated cell is still shown");
+    var totals = html.split("<tr class='gp-total-row'>").slice(1);
+    assert.strictEqual(totals.length, 2, "the open group's subtotal and the grand total; a collapsed group is not also a subtotal");
+    var headcounts = [];
+    totals.forEach(function (row) {
+      var cells = [], re = /<td class='gp-val gp-total-val'>([^<]*)<\/td>/g, m;
+      while ((m = re.exec(row))) cells.push(m[1]);
+      assert.strictEqual(cells[0], "", "distinct total is blank, not the sum and not 3");
+      assert.strictEqual(cells[2], "", "a ratio of that distinct count is blank at the same scope");
+      headcounts.push(cells[1]);
+    });
+    assert.deepStrictEqual(headcounts, ["6", "12"]);
+    var collapsedAt = html.indexOf("gp-collapsed");
+    var collapsed = html.slice(collapsedAt, html.indexOf("</tr>", collapsedAt));
+    assert.ok(collapsed.indexOf("gp-group-val'></td>") >= 0, "a collapsed group does not sum its distinct counts");
+    assert.ok(collapsed.indexOf(">6</td>") >= 0, "the same collapsed group still sums Headcount");
+    assert.ok((viz._authorNotes || []).join(" ").indexOf("Interim:") === 0);
+  });
+
+  function singleMeasureLayout(values, columnId) {
+    var nRows = values.length;
+    return {
+      getLayerCount: function(edge) { return edge === "row" ? 1 : 0; },
+      getEdgeExtent: function(edge) { return edge === "row" ? nRows : (edge === "column" ? 1 : 0); },
+      getLayerMetadata: function(edge, layer, key) {
+        if (key === "isMeasureLabels") return false;
+        if (key === "id") return "GROUP";
+        return "Group";
+      },
+      getValue: function(edge, a, b, raw) {
+        if (edge === "row") return ["A", "B", "C"][b];
+        if (edge === "data") return raw ? values[a] : String(values[a]);
+        return null;
+      },
+      getDataMetadata: columnId == null ? undefined : function() { return columnId; },
+      getItemEndSlice: function(edge, layer, index) { return index; }
+    };
+  }
+
+  function totalValueCells(html) {
+    var cells = [], re = /<td class='gp-val gp-total-val'>([^<]*)<\/td>/g, m;
+    while ((m = re.exec(html))) cells.push(m[1]);
+    return cells;
+  }
+
+  test("a one-measure layout applies Headcount = distinct instead of summing 2 and 2", function() {
+    var viz = H.instance(mod, null, {
+      showDescriptions: "off",
+      showGrandTotalRow: "on",
+      totalRules: "Headcount = distinct"
+    });
+    viz._glossary = mod._buildGlossary();
+    viz._columnInfoMap = { c16: { displayName: "Headcount" } };
+    var html = viz._buildTable(singleMeasureLayout([2, 2], "c16"));
+    assert.ok(html.indexOf(">2</td>") >= 0, "detail cells stay 2");
+    assert.deepStrictEqual(totalValueCells(html), [""]);
+    assert.ok(html.indexOf(">4<") < 0, "the two counts are not added");
+    assert.ok((viz._authorNotes || []).join(" ").indexOf("Interim:") === 0);
+  });
+
+  test("a one-cell distinct total on a one-measure layout stays that cell", function() {
+    var viz = H.instance(mod, null, {
+      showDescriptions: "off",
+      showGrandTotalRow: "on",
+      totalRules: "Headcount = distinct"
+    });
+    viz._glossary = mod._buildGlossary();
+    var html = viz._buildTable(singleMeasureLayout([2], "HEADCOUNT"));
+    assert.deepStrictEqual(totalValueCells(html), ["2"]);
+    assert.strictEqual((viz._authorNotes || []).length, 0);
+  });
+
+  test("a one-measure layout with no column id cannot bypass an explicit distinct rule", function() {
+    var viz = H.instance(mod, null, {
+      showDescriptions: "off",
+      showGrandTotalRow: "on",
+      totalRules: "Headcount = distinct"
+    });
+    viz._glossary = mod._buildGlossary();
+    var html = viz._buildTable(singleMeasureLayout([2, 2], null));
+    assert.deepStrictEqual(totalValueCells(html), [""]);
+    assert.ok((viz._authorNotes || []).join(" ").indexOf("did not identify the measure") >= 0);
+    assert.ok(html.indexOf(">4<") < 0);
+  });
+
+  test("an opaque cell id without its display name cannot bypass a named distinct rule", function() {
+    var viz = H.instance(mod, null, {
+      showDescriptions: "off", showGrandTotalRow: "on", totalRules: "Headcount = distinct"
+    });
+    viz._glossary = mod._buildGlossary();
+    assert.deepStrictEqual(totalValueCells(viz._buildTable(singleMeasureLayout([2, 2], "c16"))), [""]);
+    assert.ok((viz._authorNotes || []).join(" ").indexOf("did not identify the measure") >= 0);
+  });
+
+  test("an unidentified measure still sums when no total rules were configured", function() {
+    var viz = H.instance(mod, null, { showDescriptions: "off", showGrandTotalRow: "on" });
+    viz._glossary = mod._buildGlossary();
+    assert.deepStrictEqual(totalValueCells(viz._buildTable(singleMeasureLayout([2, 2], null))), ["4"]);
+    assert.strictEqual((viz._authorNotes || []).length, 0);
+  });
+
+  test("a malformed configured rule cannot silently sum an unidentified measure", function() {
+    var viz = H.instance(mod, null, {
+      showDescriptions: "off", showGrandTotalRow: "on", totalRules: "Headcount = not-a-rule"
+    });
+    viz._glossary = mod._buildGlossary();
+    assert.deepStrictEqual(totalValueCells(viz._buildTable(singleMeasureLayout([2, 2], null))), [""]);
+    assert.ok((viz._authorNotes || []).length > 0);
   });
 });
 

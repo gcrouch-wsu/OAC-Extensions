@@ -338,9 +338,21 @@ END
 ```
 
 Otherwise the parameter switch will desynchronize: the chart shows one metric
-while the tooltip shows another. **Never** push parameter-evaluation into the
-plugin — that ties the plugin to one workbook's parameters and breaks
-generality.
+while the tooltip shows another. **Never** push parameter-evaluation of a
+CASE or other workbook calculation into the plugin — that ties the plugin to
+one workbook's parameters and breaks generality.
+
+Glossary Pivot display headers are the one exception, and it is text only.
+From 0.20.0 an author template may contain `@parameter("Name")`. From 0.20.2
+it may also contain the host's optional default, `@parameter("Name")('text')`.
+The plugin asks the host for that parameter's current display text and paints
+it in the header. The default is label text used only when that parameter has
+no current value. It does not evaluate the parameter as an expression, does
+not run CASE, and does not compute the measure. The workbook still owns the
+selected measure. If the host does not supply the text and the template has
+no default, the original field name stays.
+The calculated-attribute pattern above remains the way to carry a
+parameter-driven value as data.
 
 For dynamic labels, mirror the same parameter into a categorical calculated
 attribute and bind it to a label/metadata bucket when the plugin provides one.

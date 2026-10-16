@@ -54,6 +54,7 @@ DataVisualization.prototype.getColorContext = function() { throw new Error("no c
 DataVisualization.prototype.getCachedColorInterpolator = function() { throw new Error("no color service in tests"); };
 DataVisualization.prototype.getDataItemColorInfo = function() { throw new Error("no color service in tests"); };
 DataVisualization.prototype.subscribeToEvent = function() {};
+DataVisualization.prototype._doInitializeComponent = function() {};
 DataVisualization.prototype._setIsRendered = function() {};
 DataVisualization.prototype._doStopComponent = function() {};
 DataVisualization.prototype.isStarted = function() { return true; };
@@ -109,8 +110,39 @@ function documentStub() {
   };
 }
 
+var jqCapture = { lastHtml: "" };
+
 function stubFor(dep) {
-  if (dep === "jquery") { var $ = function() { return { html: function() {}, width: function() { return 800; }, height: function() { return 500; } }; }; $.extend = function(deep, target) { for (var i = 2; i < arguments.length; i++) { Object.assign(target, JSON.parse(JSON.stringify(arguments[i]))); } return target; }; return $; }
+  if (dep === "jquery") {
+    function chain() {
+      var api = {
+        length: 0,
+        html: function (v) {
+          if (arguments.length) { jqCapture.lastHtml = String(v); return api; }
+          return jqCapture.lastHtml || "";
+        },
+        find: function () { return chain(); },
+        off: function () { return api; },
+        on: function () { return api; },
+        hide: function () { return api; },
+        attr: function () { return api; },
+        removeClass: function () { return api; },
+        addClass: function () { return api; },
+        closest: function () { return chain(); },
+        appendTo: function () { return api; },
+        removeAttr: function () { return api; },
+        scrollTop: function () { return api; },
+        scrollLeft: function () { return api; },
+        width: function () { return 800; },
+        height: function () { return 500; }
+      };
+      return api;
+    }
+    function $(arg) { return chain(); }
+    $.lastHtml = "";
+    $.extend = function (deep, target) { for (var i = 2; i < arguments.length; i++) { Object.assign(target, JSON.parse(JSON.stringify(arguments[i]))); } return target; };
+    return $;
+  }
   if (dep === "obitech-framework/jsx") return jsx;
   if (dep === "obitech-report/datavisualization") return { DataVisualization: DataVisualization, SettingsNS: { CHART: "chart" }, DataContextProperty: { DATA_LAYOUT: "dl", DATA_LAYOUT_HELPER: "dlh" } };
   if (dep === "obitech-reportservices/datamodelshapes") return { Physical: PHYS, Logical: LOGICAL, PhysicalPlacement: function(e) { this.edge = e; } };
@@ -124,6 +156,7 @@ function stubFor(dep) {
     LAYER_DISPLAY_NAME: "displayName", LAYER_ID: "id", LAYER_ISMEASURE_LABELS: "isMeasureLabels"
   } };
   if (dep === "obitech-appservices/logger") return { Logger: Logger };
+  if (dep === "obitech-appservices/datalayout") return { DataMetadata: { DATA_MEASURE_ID: 0, DATA_COLUMN_ID: 1 } };
   if (dep === "d3v6js") return d3Stub();
   if (/vis-network/.test(dep)) return { DataSet: function() {}, Network: function() {} };
   if (/^skin!/.test(dep)) return {};
@@ -213,4 +246,4 @@ function summary() {
   if (results.fail) { process.exitCode = 1; }
 }
 
-module.exports = { loadPlugin: loadPlugin, fakeLayout: fakeLayout, instance: instance, test: test, suite: suite, summary: summary, PHYS: PHYS };
+module.exports = { loadPlugin: loadPlugin, fakeLayout: fakeLayout, instance: instance, test: test, suite: suite, summary: summary, PHYS: PHYS, jqCapture: jqCapture };

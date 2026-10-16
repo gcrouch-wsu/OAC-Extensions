@@ -4,11 +4,12 @@ Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 `docs/plugins/`. Those constants are the versions in this folder and are the
 source of truth — check them directly (`grep VERSION` in the plugin's own
 `.js` file) rather than trusting a number restated in prose here, including
-this one. As of commit `0e043f3` (2026-09-27), `main` and `origin/main` agree:
-Network 1.2.2, Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, Lattice Scatter
-1.1.2, Glossary Pivot 0.16.2 (0.17.0 pushed 2026-09-29, commit `b7247e5`;
-0.18.0 pushed 2026-09-29, commit `1f4367a`; 0.19.0 below). WSU Report Print has been removed; Glossary
-Pivot prints its own table and the canvas.
+this one. As of 2026-10-15, `main` includes Network 1.2.2, Line 1.2.2, Sankey 1.1.2,
+Dumbbell 1.1.2, Lattice Scatter 1.1.2, and Glossary Pivot 0.20.4 (0.17.0
+pushed 2026-09-29, commit `b7247e5`; 0.18.0 pushed 2026-09-29, commit
+`1f4367a`; 0.19.0 pushed, commit `d9d9fa4`; 0.20.0 through 0.20.4 are this
+commit). WSU Report Print has been removed; Glossary Pivot prints its own
+table and the canvas.
 
 This file's own history below predates that sync — entries before 2026-09-27
 were written while local `main` was ahead of `origin/main` by design (see
@@ -21,6 +22,65 @@ or Glossary Pivot. Headings below that say "Unreleased" mean "no git tag".
 The 1.x commits they describe are on `main`.
 
 Glossary Pivot versions on its own line, not on the 1.x tags.
+
+## 2026-10-15 — WSU Glossary Pivot 0.20.4 — safe rule matching and source-count ratios
+
+Installed in OAC Dev. Not uploaded to production.
+
+- When configured total rules cannot be matched because measure identity is missing or incomplete, totals are blank with an author note. They no longer silently sum. A missing column id cannot borrow another column's identity. The no-rule default and identified, unlisted measures still sum.
+- Explicit total rules use the original counts before Show as % of Total. A display share cannot replace a ratio's numerator or denominator. An explicit rule takes precedence over an automatic share total.
+- Separate parameter-change payloads retain other parameters' cached values. Clearing one parameter replaces its cached selection and allows its own default, without changing another header.
+
+This is still an interim guard for COUNT DISTINCT: aggregated counts cannot identify overlapping students. Multi-cell distinct totals and ratios depending on them remain blank. No entity-key bucket, server-total query, selector, CASE evaluator, population names, or Build 2 panel was added.
+
+## 2026-10-15 — WSU Glossary Pivot 0.20.3 — distinct rule on a one-measure pivot
+
+A pivot with one measure and no measure-label layer now applies
+`Headcount = distinct` when the cell's column id or its display name
+matches. Two counts of 2 stay blank at a total, not 4. One cell stays
+that cell. A layout that does not identify the measure still sums.
+
+## 2026-10-15 — WSU Glossary Pivot 0.20.2 — header default when a parameter has no value
+
+A display header may use the host form `@parameter("Name")('text')`.
+That text is the painted label when the parameter has no current value,
+which is how an All / no-selection control behaves. A selected value still
+replaces the default. The saved template is unchanged. A template with no
+default still keeps the original field name and shows the missing-value
+note. The default is not used when parameter values cannot be read.
+
+## 2026-10-15 — WSU Glossary Pivot 0.20.1 — parameter refresh and label text
+
+`parameterValuesChanged` is subscribed with topic `**`. The previous
+subscription passed a view-specific string, which the host treats as a
+topic filter, so a parameter change never reached the table. The event's
+own value list is kept when a later `getParameterValues` read does not
+come back filled. Label text now follows the host: formatted value, then
+display value, then the raw value, with the alias first when aliases are
+on.
+
+The distinct-count blank is labeled interim in the on-screen note and in
+the plugin spec. It is not a calculated overlap total.
+
+## 2026-10-15 — WSU Glossary Pivot 0.20.0 — parameter display headers, distinct totals
+
+Display headers can name a workbook parameter independently per field. The
+saved setting stays the template. `@parameter("View By Selector")` paints
+that parameter's current text; `% @parameter("View By Selector")` paints
+`% ` plus that text. The workbook still owns the measure and the parameter.
+The plugin reads the text through the host `getParameterValues` event. It
+does not evaluate a CASE or any other calculation. A missing, malformed, or
+unreadable reference keeps the original field name. Glossary lookup stays on
+that original field, so a new heading does not borrow another population's
+definition.
+
+`NAME = distinct` (also `count distinct`) keeps a total that is exactly one
+aggregated cell and leaves a total blank when the scope covers more than one
+count. Adding those counts is wrong when the populations overlap, and the
+pivot's data layout has no entity ids from which to recount. A `ratio` or
+`weighted` total that uses a distinct measure is blank on the same multi-cell
+scopes. Other measures still sum unless a rule says otherwise. This does not
+produce the overlapping distinct total of 3 from the cells 2 and 2.
 
 ## 2026-09-30 — WSU Glossary Pivot 0.19.0 — gray glossary hover, % of total
 

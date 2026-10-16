@@ -13,7 +13,7 @@ WSU Glossary Pivot development without re-deriving design decisions.
 - **Short name**: WSU Glossary Pivot
 - **Category**: WSU
 - **Root id**: `com-wsu-glossary-pivot`
-- **Version constant**: `GlossaryPivotViz.VERSION = "0.19.0"` (see `CHANGELOG.md`)
+- **Version constant**: `GlossaryPivotViz.VERSION = "0.20.4"` (see `CHANGELOG.md`; on `main`, installed in OAC Dev, not a git tag)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-glossary-pivot.zip`
 
@@ -388,7 +388,7 @@ null; it does not, it is simply opaque.
 ### Header
 | Key | Default | Values |
 |-----|---------|--------|
-| `headerLabels` | `""` | `NAME: Display text; ...` |
+| `headerLabels` | `""` | `NAME: template; ...` |
 | `hiddenColumns` | `""` | `NAME; NAME; ...` |
 | `headerColor` | `""` | hex for the field-name band (corner and measure names). Empty keeps `#f0f2f4` |
 | `headerDataColor` | `""` | hex for column headers whose text is a member value (Fall 2024). Empty keeps the same gray |
@@ -398,6 +398,49 @@ qualified id, and the display name already printed on the table. `Term` and
 `STRM` are enough when that is what the header shows. Semicolons separate
 entries. A colon in a rename separates the name from the new title; the new
 title may contain further colons.
+
+A template is either ordinary text or text containing
+`@parameter("Parameter Name")`. An optional default matches the host form
+`@parameter("Parameter Name")('text')`. Each field has its own template.
+Literal characters before and after the reference stay, including a leading
+`% `. The saved setting keeps the template; the painted header, tooltip
+heading, grand-total column label, Print PDF, and Print Canvas use the
+current parameter text. The original field id and display name stay in
+place for formatting, totals, glossary lookup, and marking. A heading that
+reads "Minority" still looks up the description of `measure_selected`, not
+a separate Minority definition.
+
+When the parameter has a current value, that value is the label and the
+default is unused. When it has no current value, the default is the label
+and no note is shown. A control whose visible choice is "All" and whose
+stored choices do not include All is this no-current-value case.
+
+If the reference is malformed, a reference without a default has no current
+value, the host does not return parameter text, or the same key matches
+more than one field, that header keeps its original name and a short note
+appears above the table. A default is not used when the host cannot be
+read. A backslash immediately before `@parameter("` keeps the reference
+as text.
+
+Workbook setup: the parameter already exists and the calculated measures
+already follow it. The plugin does not add a selector and does not calculate
+the measure. Example, stored exactly like this:
+
+```
+measure_selected:@parameter("View By Selector");pct_measure_selected:% @parameter("View By Selector");
+```
+
+With the parameter set to Minority, First Gen, or WA State, those two headers
+paint `Minority` and `% Minority`, `First Gen` and `% First Gen`, or
+`WA State` and `% WA State`. Those names are examples. One dynamic column,
+more than two, a different parameter, and a mix with static labels
+(`Headcount:Students`) use the same rule.
+
+Parameter text is read through the host `getParameterValues` event and
+refreshed on `parameterValuesChanged` (topic `**`). Since 0.20.4, a change
+payload for one parameter preserves cached values for the other parameters;
+an explicit empty value replaces that parameter's old selection and uses
+its own default. The plugin does not set parameters or evaluate CASE.
 
 What hide does:
 
@@ -438,7 +481,7 @@ nothing.
 | `showRowSubtotals` | `"off"` | on / off — a subtotal under each outer row group. Does nothing with fewer than 2 Row fields |
 | `showGrandTotalColumn` | `"off"` | on / off — a column on the right, one total per measure, summing that row. Does nothing when the Columns edge has no layer |
 | `rowGroupCollapse` | `"off"` | on / off — collapse toggle on the outer row group. Does nothing with fewer than 2 Row fields |
-| `totalRules` | `""` | `NAME = rule; ...` — rule is `sum`, `avg`, `min`, `max`, `none`, `weighted(W)`, or `ratio(N, D[, scale])`. Unlisted measures sum |
+| `totalRules` | `""` | `NAME = rule; ...` — rule is `sum`, `avg`, `min`, `max`, `none`, `distinct`, `weighted(W)`, or `ratio(N, D[, scale])`. Unlisted measures sum |
 
 The three total switches are independent. All three can be on. The
 right-hand column is labeled **Grand Total Column** because it is a column;
@@ -453,10 +496,10 @@ broken; see CHANGELOG.md's 0.16.2 entry, which corrects an 0.16.1 claim
 that calculated measures shared one bucket here.
 
 Each total is computed from the raw numbers in the cells it covers, by that
-measure's rule. Blank cells are skipped, not treated as zero. The plugin
-does not know the measure's server-side aggregation and cannot ask OAC for
-a server total (a custom visualization receives only the cells in its
-buckets), so the default rule is sum, which is wrong for an average, a
+measure's rule. Blank cells are skipped, not treated as zero. This plugin's
+current query does not request entity ids or source totals at each scope.
+It does not infer the measure's server-side aggregation, so the default
+rule is sum, which is wrong for an average, a
 ratio, or a GPA. Name the rule for those measures:
 
 - `weighted(W)` — sum(value × W) / sum(W) over the covered cells, pairing
@@ -470,6 +513,35 @@ ratio, or a GPA. Name the rule for those measures:
 - `avg` — the mean of the covered cells (the native report-based average).
   `min`, `max`, `none` (blank) are also accepted. Rule words and measure
   names are case-insensitive; names match like hide and rename.
+- `distinct` — also `count distinct` or `countDistinct`. A scope that is
+  exactly one non-blank aggregated cell keeps that cell: OAC already
+  computed the distinct count for that group. A scope that covers more
+  than one count is blank. Those counts are not added, averaged, or
+  reduced to the count of distinct numbers. The data layout has no
+  student or entity ids, so Group A = 2 and Group B = 2 cannot be turned
+  into the overlapping total 3. A `ratio` or `weighted` rule whose
+  referenced measure is `distinct` is blank on the same multi-cell scope.
+  This blank is an interim limitation. The custom-viz data layout does not
+  include entity ids or source totals at the subtotal and grand-total
+  grains, and the native grid's subtotal flags are a different data source.
+  A correct overlap total needs one of those. Until that path exists, the
+  plugin refuses the wrong sum instead of inventing a count.
+  A pivot with one measure and no measure-label layer uses that measure's
+  column id (`getDataMetadata` `DATA_COLUMN_ID`, else `DATA_MEASURE_ID`)
+  and, when the column-info map has one, its display name. `Headcount =
+  distinct` then blanks a multi-cell total the same way. Columns that
+  disagree, or a layout that does not identify the measure, cannot safely
+  match the rule. Since 0.20.4, totals for unidentified measures are blank
+  whenever total rules are configured, with an author note. An opaque id
+  without a display name also stays blank if no configured rule matches
+  the id. No rule is assigned merely because it is the only rule entered.
+  Without configured total rules the existing sum default remains.
+  A one-row ratio still uses that row's numerator and denominator.
+  "Show as % of Total" is a separate display transformation. A blank
+  multi-cell distinct total shows a note above the table. Unlisted
+  measures still sum. A grand total across terms is not interpreted as
+  unique students or as student-term headcount; that meaning stays in the
+  workbook measure.
 
 A referenced measure must be in the query; it can be hidden with Header:
 Hidden Columns. A rule naming a measure that is not on the pivot leaves the
@@ -479,14 +551,23 @@ Column (across a measure's columns). Checked against the data team's IPEDS
 2026 Spring screenshot: weighted(Headcount) gives 86.29 for % Full-Time
 and 54.37 for % Female, matching the native pivot.
 
+Since 0.20.4, all explicit total rules read the original source values,
+before any Show as % of Total transformation. A numerator or denominator
+displayed as a share therefore still supplies its original counts to a
+ratio. An explicit total rule takes precedence over a share column's
+automatic share total. Per-measure formatting remains independent: a
+`ratio(N, D, 100)` result needs `NAME:number:2` to display `27.04`;
+Percent format would multiply that result by 100 again.
+
 Under Auto format a total has no OAC string of its own, so it copies the
 look of its column's first formatted cell: prefix (`$`), suffix (`%`),
 whether OAC multiplied by 100, decimals, and thousands grouping. With no
 sample it prints the number with grouping and float noise trimmed. An
 explicit format (Number, Percent, ...) applies as it does to cells.
 
-A collapsed group is one summary row using the same sum. It does not also
-draw a subtotal.
+A collapsed group is one summary row using the same total rule. A
+`distinct` measure is blank there when the group covers more than one
+count. It does not also draw a subtotal.
 
 ### Style and tooltip
 | Key | Default | Values |
@@ -566,7 +647,9 @@ see the share. A share column's total is Σ its original numbers over the
 block ÷ Σ the totals of the (group, column) pairs the block touches — 100%
 for the grand total, a group's share of the column for a subtotal when
 shares are by column, 100% per group when grouped by that field. Totals:
-Measure Rules do not apply to a share column. Intended use (data team,
+an explicit Measure Rule takes precedence and reads the original source
+values. With no explicit rule, the share total described above applies.
+Intended use (data team,
 2026-09-30): a calculated-field copy of a measure next to the original, so
 the count and the share keep separate formats. The native pivot's "Display
 as: Percent Of" is not readable by a plugin; this is computed on the rows
@@ -669,13 +752,13 @@ same as Oracle's own samples (`TextToggleGadgetInfo`, `createGadgetInfo`).
 | `decimalPlacesGadget` | Format: Decimal Places | switcher |
 | `measureFormatOverridesGadget` | Format: Per-Measure Override (id:format:decimals; ...) | text |
 | `percentOfTotalGadget` | Values: Show as % of Total (name[: by field]; ...) | text |
-| `headerLabelsGadget` | Header: Display Label (id: label; ...) | text |
+| `headerLabelsGadget` | Header: Display Label (id: text, @parameter("Name"), or @parameter("Name")('default'); ...) | text |
 | `hiddenColumnsGadget` | Header: Hidden Columns (id; id; ...) | text |
 | `rowGroupCollapseGadget` | Rows: Group Collapse (2+ Row layers) | toggle (was labeled "Totals: Row Group Collapse" before 0.19.0; id unchanged) |
 | `showGrandTotalRowGadget` | Totals: Grand Total Row | toggle |
 | `showRowSubtotalsGadget` | Totals: Row Subtotals (2+ Row layers) | toggle |
 | `showGrandTotalColumnGadget` | Totals: Grand Total Column | toggle |
-| `totalRulesGadget` | Totals: Measure Rules (name = sum \| avg \| weighted(W) \| ratio(N, D) \| none; ...) | text |
+| `totalRulesGadget` | Totals: Measure Rules (name = sum \| avg \| distinct \| weighted(W) \| ratio(N, D) \| none; ...) | text |
 | `rowHeaderAlignGadget` / `rowHeaderVAlignGadget` | Layout: Row Header Align / Vertical | switcher |
 | `colHeaderAlignGadget` / `colHeaderVAlignGadget` | Layout: Column Header Align / Vertical | switcher |
 | `valueAlignGadget` / `valueVAlignGadget` | Layout: Value Align / Vertical | switcher |

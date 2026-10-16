@@ -266,6 +266,27 @@
  *   - Tooltip: Indicator — an always-visible cue on headers that have a
  *     description: a small corner triangle (default, Excel-comment style,
  *     no width), a faint (i) icon, or none. Screen only.
+ *
+ * v0.20.0 — display-header parameter text, and distinct-count totals that
+ *   refuse to sum overlapping counts. @parameter("Name") in a header
+ *   template is the parameter's current text only. The workbook still owns
+ *   the measure. A distinct total is the one aggregated cell when the scope
+ *   is that cell, and blank when the scope covers more than one count.
+ *   Blanking a multi-cell distinct total is interim: the layout has no
+ *   entity ids from which to recount an overlap.
+ * v0.20.1 — parameterValuesChanged is subscribed on topic "**", and label
+ *   text follows the host's formatted-then-display fallback.
+ * v0.20.2 — a header may use the host's optional default,
+ *   @parameter("Name")('text'). That text is the label when the parameter
+ *   has no current value. A selected value still replaces it.
+ * v0.20.3 — a pivot with one measure and no measure-label layer still
+ *   applies a total rule when the cell's column id, or its display name
+ *   from the column-info map, matches. A multi-cell distinct total stays
+ *   blank. An unidentified measure keeps the sum.
+ * v0.20.4 — unidentified measures cannot silently bypass configured total
+ *   rules. Rule calculations use original counts before share formatting,
+ *   and an explicit rule takes precedence over the share total. Independent
+ *   parameter-change payloads retain the other parameters' cached values.
  ******************************************************************************/
 
 define(['jquery',
@@ -281,6 +302,7 @@ define(['jquery',
         'obitech-appservices/logger',
         'ojL10n!com-wsu-glossary-pivot/nls/messages',
         'obitech-reportservices/data',
+        'obitech-appservices/datalayout',
         'skin!css!com-wsu-glossary-pivot/glossaryPivotVizstyles'],
         function($,
                  jsx,
@@ -294,7 +316,8 @@ define(['jquery',
                  euidef,
                  logger,
                  messages,
-                 data) {
+                 data,
+                 datalayout) {
    "use strict";
 
    var MODULE_NAME = 'com-wsu-glossary-pivot/glossaryPivotViz';
@@ -306,11 +329,14 @@ define(['jquery',
    jsx.assertObject(dataviz.SettingsNS, MODULE_NAME + " dataviz.SettingsNS");
    jsx.assertObject(dataviz.DataContextProperty, MODULE_NAME + " dataviz.DataContextProperty");
    jsx.assertObject(data.LayerMetadata, MODULE_NAME + " data.LayerMetadata");
+   jsx.assertObject(datalayout.DataMetadata, MODULE_NAME + " datalayout.DataMetadata");
    var SETTINGS_CHART = dataviz.SettingsNS.CHART;
    var DCP_DATA_LAYOUT = dataviz.DataContextProperty.DATA_LAYOUT;
    var PHYS_DATA = datamodelshapes.Physical.DATA;
    var PHYS_ROW = datamodelshapes.Physical.ROW;
    var PHYS_COLUMN = datamodelshapes.Physical.COLUMN;
+   var DM_MEASURE_ID = datalayout.DataMetadata.DATA_MEASURE_ID;
+   var DM_COLUMN_ID = datalayout.DataMetadata.DATA_COLUMN_ID;
 
    // User-facing strings come from nls/root/messages.js (ojL10n bundle); the
    // English text here is the fallback when a key is missing from the bundle.
@@ -346,7 +372,7 @@ define(['jquery',
       PRINT_MIXED_ORIENTATION: L("GLOSSARYPIVOT_LBL_PRINT_MIXED_ORIENTATION", "Tables use different page orientations; Print Canvas uses the orientation of the table whose button you clicked.")
    };
 
-   GlossaryPivotViz.VERSION = "0.19.0";
+   GlossaryPivotViz.VERSION = "0.20.4";
 
    /**
     * @constructor
@@ -355,6 +381,7 @@ define(['jquery',
    function GlossaryPivotViz(sID, sDisplayName, sOrigin, sVersion) {
       GlossaryPivotViz.baseConstructor.call(this, sID, sDisplayName, sOrigin, sVersion);
       this._glossary = null;
+      this._columnInfoMap = null;
       this._mapMissingLogged = false;
       this._markedRows = Object.create(null);   // rowIndex -> true, applied from local clicks or incoming marks
       this._collapsedGroups = Object.create(null);   // outer row-group's starting DataLayout row index -> true, session-only (not saved to Config)
@@ -789,11 +816,264 @@ define(['jquery',
       return out;
    }
 
-   function resolveHeaderLabel(map, id, name, fallback) {
-      if (!map) return fallback;
+   /* Host display-header syntax, from Oracle Analytics parameterdefinitions:
+      prefix @parameter(" and suffix "), plus the host token's optional
+      ('default') argument. Text only. A backslash before @parameter("
+      keeps the reference as characters, matching the host escape. The
+      default is label text for a parameter with no current value. This
+      does not evaluate a CASE or any other calculation. */
+   var PARAM_VALUE_EVENT = "getParameterValues";
+   var PARAM_CHANGED_EVENT = "parameterValuesChanged";
+
+   /* The characters after @parameter("Name"). A following ('text') or
+      ("text") is the host default. A "(" that does not close is malformed. */
+   function readParameterDefault(text, index) {
+      var i = index;
+      while (i < text.length && (text.charAt(i) === " " || text.charAt(i) === "\t")) i++;
+      if (i >= text.length || text.charAt(i) !== "(") return { present: false, malformed: false, end: index };
+      i++;
+      while (i < text.length && (text.charAt(i) === " " || text.charAt(i) === "\t")) i++;
+      if (i >= text.length) return { present: true, malformed: true, end: index };
+      var quote = text.charAt(i);
+      var value = "";
+      var closed = false;
+      if (quote === "'" || quote === '"') {
+         i++;
+         while (i < text.length) {
+            var ch = text.charAt(i);
+            if (ch === "\\" && i + 1 < text.length) {
+               value += text.charAt(i + 1);
+               i += 2;
+               continue;
+            }
+            if (ch === quote) { i++; closed = true; break; }
+            value += ch;
+            i++;
+         }
+         if (!closed) return { present: true, malformed: true, end: index };
+      } else {
+         var start = i;
+         while (i < text.length && text.charAt(i) !== ")" && text.charAt(i) !== ",") i++;
+         value = text.slice(start, i).replace(/^\s+|\s+$/g, "");
+      }
+      while (i < text.length && (text.charAt(i) === " " || text.charAt(i) === "\t")) i++;
+      if (i >= text.length || text.charAt(i) !== ")") return { present: true, malformed: true, end: index };
+      return { present: true, malformed: false, end: i + 1, text: value };
+   }
+
+   function parameterRefs(template) {
+      var text = String(template == null ? "" : template);
+      var re = /@parameter\(\s*"([^"\\]*(?:\\[\s\S][^"\\]*)*)"\s*\)/g;
+      var refs = [];
+      var spans = [];
+      var malformed = false;
+      var m;
+      while ((m = re.exec(text))) {
+         var end = m.index + m[0].length;
+         var fallback = readParameterDefault(text, end);
+         if (fallback.malformed) malformed = true;
+         else if (fallback.present) end = fallback.end;
+         spans.push([m.index, end]);
+         if (m.index > 0 && text.charAt(m.index - 1) === "\\") continue;
+         if (fallback.malformed) continue;
+         refs.push({
+            name: m[1].replace(/\\(.)/g, "$1"),
+            raw: text.slice(m.index, end),
+            index: m.index,
+            defaultText: fallback.present && fallback.text !== "" ? fallback.text : null
+         });
+      }
+      var scan = /@parameter\s*\(/gi;
+      while ((m = scan.exec(text))) {
+         var inside = false;
+         for (var i = 0; i < spans.length; i++) {
+            if (m.index >= spans[i][0] && m.index < spans[i][1]) inside = true;
+         }
+         if (!inside) malformed = true;
+      }
+      return { refs: refs, malformed: malformed };
+   }
+
+   /* Same choice as the host helper that turns one parameter value into
+      label text: the alias when aliases are on, otherwise the formatted
+      value, then the display value, then the raw value. */
+   function parameterDisplayText(info) {
+      if (!info || !info.aValues || !info.aValues.length) return "";
+      var alias = info.oParameterInfo && info.oParameterInfo.isAliasEnabled;
+      var parts = [];
+      for (var i = 0; i < info.aValues.length; i++) {
+         var v = info.aValues[i] || {};
+         var text = alias
+            ? (v.sDisplayValue || v.sFormattedValue)
+            : (v.sFormattedValue || v.sDisplayValue);
+         if (text == null || text === "") text = v.vValue;
+         if (text == null || text === "") continue;
+         parts.push(String(text));
+      }
+      return parts.join(", ");
+   }
+
+   function valuesFromParameterInfos(list) {
+      if (!list) return null;
+      var values = Object.create(null);
+      for (var j = 0; j < list.length; j++) {
+         var info = list[j];
+         if (!info || !info.sName) continue;
+         var text = parameterDisplayText(info);
+         var known = !!(info.oParameterInfo || (info.aValues && info.aValues.length));
+         values[exactKey(info.sName)] = { found: known && text !== "", text: text, known: known };
+      }
+      return { values: values, available: true };
+   }
+
+   function rememberParameterEvent(host, ev) {
+      if (!host) return;
+      var params = null;
+      try { params = ev && typeof ev.getParams === "function" ? ev.getParams() : null; }
+      catch (e) { params = null; }
+      var read = valuesFromParameterInfos(params && params.aParameterValueInfos);
+      if (read) {
+         var previous = host._parameterEventValues;
+         if (previous && previous.available) {
+            Object.keys(previous.values).forEach(function (key) {
+               if (!Object.prototype.hasOwnProperty.call(read.values, key)) {
+                  read.values[key] = previous.values[key];
+               }
+            });
+         }
+         host._parameterEventValues = read;
+      }
+   }
+
+   /* The same event the host uses to fill aParameterValueInfos
+      (report.js onGetParameterValues). A missing bus is not a resolved
+      empty string. */
+   function readHostParameterValues(host, names) {
+      var values = Object.create(null);
+      var result = { values: values, available: false };
+      if (!names || !names.length) { result.available = true; return result; }
+      if (!host || typeof host.dispatchClientEvent !== "function") return result;
+      var infos = [];
+      for (var i = 0; i < names.length; i++) infos.push({ sName: names[i], eContext: "text" });
+      var params = { aParameterInfos: infos, bSkipErrorLoggingForParametersNotLoaded: true };
+      var ev = null;
+      try { ev = host.dispatchClientEvent(PARAM_VALUE_EVENT, params); }
+      catch (e) { result.error = e && e.message ? String(e.message) : String(e); return result; }
+      var list = params.aParameterValueInfos;
+      if ((!list || !list.length) && ev && typeof ev.getParams === "function") {
+         try { list = ev.getParams().aParameterValueInfos; } catch (e2) { list = null; }
+      }
+      var read = valuesFromParameterInfos(list);
+      if (read) return read;
+      /* A parameterValuesChanged payload already carries the values the
+         report just read. Use it when this viz's own getParameterValues
+         dispatch does not come back filled. */
+      if (host._parameterEventValues && host._parameterEventValues.available) return host._parameterEventValues;
+      return result;
+   }
+
+   function headerLabelKey(map, id, name) {
+      if (!map) return null;
       var keys = nameKeys(id, name);
-      for (var i = 0; i < keys.length; i++) if (map[keys[i]]) return map[keys[i]];
-      return fallback;
+      for (var i = 0; i < keys.length; i++) if (map[keys[i]]) return keys[i];
+      return null;
+   }
+
+   function ambiguousHeaderKeys(map, fields) {
+      var counts = Object.create(null);
+      for (var i = 0; i < fields.length; i++) {
+         var key = headerLabelKey(map, fields[i].id, fields[i].name);
+         if (!key) continue;
+         counts[key] = (counts[key] || 0) + 1;
+      }
+      var bad = Object.create(null);
+      Object.keys(counts).forEach(function (k) { if (counts[k] > 1) bad[k] = counts[k]; });
+      return bad;
+   }
+
+   function applyHeaderTemplate(template, hostValues, fallback) {
+      var parsed = parameterRefs(template);
+      if (!parsed.refs.length && !parsed.malformed) {
+         return { text: String(template).replace(/\\@parameter/g, "@parameter"), status: "static" };
+      }
+      if (parsed.malformed) return { text: fallback, status: "malformed" };
+      if (!hostValues || !hostValues.available) {
+         return {
+            text: fallback,
+            status: "unavailable",
+            names: parsed.refs.map(function (r) { return r.name; })
+         };
+      }
+      var missing = [];
+      var i;
+      for (i = 0; i < parsed.refs.length; i++) {
+         var hit = hostValues.values[exactKey(parsed.refs[i].name)];
+         var hasDefault = parsed.refs[i].defaultText != null && parsed.refs[i].defaultText !== "";
+         if ((!hit || !hit.found) && !hasDefault) missing.push(parsed.refs[i].name);
+      }
+      if (missing.length) return { text: fallback, status: "missing", missing: missing };
+      var text = "";
+      var cursor = 0;
+      var src = String(template);
+      for (i = 0; i < parsed.refs.length; i++) {
+         var ref = parsed.refs[i];
+         var known = hostValues.values[exactKey(ref.name)];
+         var piece = known && known.found ? known.text : ref.defaultText;
+         text += src.slice(cursor, ref.index) + piece;
+         cursor = ref.index + ref.raw.length;
+      }
+      return { text: (text + src.slice(cursor)).replace(/\\@parameter/g, "@parameter"), status: "resolved" };
+   }
+
+   function prepareHeaderParameters(host, map, fields) {
+      var ambiguous = ambiguousHeaderKeys(map, fields || []);
+      var names = [];
+      var seen = Object.create(null);
+      Object.keys(map || {}).forEach(function (key) {
+         if (ambiguous[key]) return;
+         var parsed = parameterRefs(map[key]);
+         for (var i = 0; i < parsed.refs.length; i++) {
+            var n = parsed.refs[i].name;
+            if (!seen[exactKey(n)]) { seen[exactKey(n)] = true; names.push(n); }
+         }
+      });
+      return {
+         ambiguous: ambiguous,
+         host: readHostParameterValues(host, names),
+         noted: Object.create(null),
+         notes: []
+      };
+   }
+
+   function noteHeader(prepared, id, text) {
+      if (!prepared || !prepared.noted || prepared.noted[id]) return;
+      prepared.noted[id] = true;
+      if (!prepared.notes) prepared.notes = [];
+      prepared.notes.push(text);
+   }
+
+   function resolveHeaderLabel(map, id, name, fallback, prepared) {
+      if (!map) return fallback;
+      var key = headerLabelKey(map, id, name);
+      if (!key) return fallback;
+      var who = name || id || key;
+      if (prepared && prepared.ambiguous && prepared.ambiguous[key]) {
+         noteHeader(prepared, "ambiguous:" + key,
+            "Display label \"" + key + "\" matches more than one field, so those headers keep their original names.");
+         return fallback;
+      }
+      var applied = applyHeaderTemplate(map[key], prepared && prepared.host, fallback);
+      if (applied.status === "malformed") {
+         noteHeader(prepared, "malformed:" + key,
+            "Display label for " + who + " has a malformed @parameter(...) reference, so the original name is shown.");
+      } else if (applied.status === "missing") {
+         noteHeader(prepared, "missing:" + key,
+            "Workbook parameter \"" + applied.missing.join(", ") + "\" has no current value, so " + who + " keeps its original name.");
+      } else if (applied.status === "unavailable") {
+         noteHeader(prepared, "unavailable",
+            "Workbook parameter values could not be read, so parameter display labels keep the original field names.");
+      }
+      return applied.text;
    }
 
    /* A calculated measure's raw id is real, not null — confirmed live with
@@ -829,6 +1109,9 @@ define(['jquery',
                        average — the data team's "rare case")
         min / max
         none           blank total
+        distinct       a distinct count. One aggregated cell is already that
+                       scope's count. Two or more cells are not added: the
+                       layout has no entity ids, so overlap cannot be removed.
         weighted(W)    sum(value × W) / sum(W). With W the rate's denominator
                        this equals sum(numerator) / sum(denominator) and keeps
                        the column's own scale (89.14 or 0.8914).
@@ -836,8 +1119,8 @@ define(['jquery',
                        (ratio(Full-Time, Headcount, 100)).
       W, N and D are other measures on the same pivot, matched like hide and
       rename. They can be hidden. The plugin only ever sees the rows on the
-      canvas — there is no server-side total to ask OAC for — so a measure
-      that is not in the query cannot be referenced; its total is blank
+      canvas; this query does not request source totals or entity ids. A
+      measure that is not in the query cannot be referenced; its total is blank
       rather than a wrong sum.
       ========================================================================= */
    function parseTotalRules(str, rejected) {
@@ -855,6 +1138,7 @@ define(['jquery',
          else if (/^min$/i.test(body)) rule = { kind: "min" };
          else if (/^max$/i.test(body)) rule = { kind: "max" };
          else if (/^(none|blank|off)$/i.test(body)) rule = { kind: "none" };
+        else if (/^(distinct|countdistinct|count\s+distinct)$/i.test(body)) rule = { kind: "distinct" };
          else if ((m = /^weighted\s*\((.+)\)$/i.exec(body)) && m[1].trim()) {
             rule = { kind: "weighted", a: m[1].trim() };
          } else if ((m = /^ratio\s*\((.+)\)$/i.exec(body))) {
@@ -926,6 +1210,21 @@ define(['jquery',
    function aggregateCells(rStart, rEnd, cols, rule, ctx) {
       var kind = rule ? rule.kind : "sum";
       if (kind === "none") return null;
+      function refKind(refName) {
+         if (!ctx || typeof ctx.rule !== "function" || refName == null) return null;
+         try { return ctx.rule(refName); } catch (e) { return null; }
+      }
+      /* Several distinct counts cannot be added. One cell is already the
+         count OAC computed for that scope. */
+      var many = rEnd !== rStart || !cols || cols.length !== 1;
+      if (kind === "distinct") {
+         if (many) return null;
+         return ctx.num(rStart, cols[0]);
+      }
+      if ((kind === "weighted" || kind === "ratio") && many &&
+          (refKind(rule.a) === "distinct" || (kind === "ratio" && refKind(rule.b) === "distinct"))) {
+         return null;
+      }
       var total = 0, count = 0, best = null, sw = 0, sn = 0, sd = 0, anyN = false, anyD = false;
       var i, r, cc, v, w;
       var refA = [], refB = [];
@@ -1160,7 +1459,51 @@ define(['jquery',
     *
     * @returns {{idByCol: Array, nameById: Object}}
     */
-   function computeMeasureIdByCol(dl, LM, nColLayers, nCols) {
+   /* Column id of the measure in a data cell. DATA_COLUMN_ID, then
+      DATA_MEASURE_ID. Absent on a layout that does not expose metadata. */
+   function cellMeasureId(dl, row, col) {
+      if (!dl || typeof dl.getDataMetadata !== "function") return null;
+      var id = null;
+      try { id = dl.getDataMetadata(row, col, DM_COLUMN_ID); } catch (e) { id = null; }
+      if (id == null || id === "") {
+         try { id = dl.getDataMetadata(row, col, DM_MEASURE_ID); } catch (e2) { id = null; }
+      }
+      if (id == null || id === "") return null;
+      return String(id);
+   }
+
+   /* Display name for a column id, from the same column-info map the
+      glossary reads. The data cell's metadata carries the id only. */
+   function displayNameFromColumnInfo(infoMap, id) {
+      if (!infoMap || id == null) return null;
+      var info = null;
+      try { info = infoMap[id]; } catch (e) { info = null; }
+      if (!info || typeof info !== "object") return null;
+      var meta = null;
+      try { meta = info._info; } catch (e2) { meta = null; }
+      var fields = [info.displayName, info.name, info.caption];
+      if (meta && typeof meta === "object") fields.push(meta.displayName, meta.caption, meta.name);
+      for (var i = 0; i < fields.length; i++) {
+         if (typeof fields[i] === "string" && fields[i].trim()) return fields[i].trim();
+      }
+      return null;
+   }
+
+   /* One measure, no measure-label layer: every data column is that measure
+      when the cell ids agree. Mixed or missing ids stay unidentified. */
+   function unnamedMeasure(dl, nCols, infoMap) {
+      var id = null;
+      for (var c = 0; c < nCols; c++) {
+         var next = cellMeasureId(dl, 0, c);
+         if (next == null) return null;
+         if (id == null) id = next;
+         else if (id !== next) return null;
+      }
+      if (id == null) return null;
+      return { id: id, name: displayNameFromColumnInfo(infoMap, id) };
+   }
+
+   function computeMeasureIdByCol(dl, LM, nColLayers, nCols, infoMap) {
       var idByCol = new Array(nCols);
       var nameById = Object.create(null);
       var mLayer = -1;
@@ -1170,19 +1513,27 @@ define(['jquery',
          if (!isM) { try { isM = tailName(dl.getLayerMetadata(PHYS_COLUMN, cl, LM.LAYER_ID)) === MEASURE_LAYER_ID; } catch (e) {} }
          if (isM) { mLayer = cl; break; }
       }
-      for (var c = 0; c < nCols; c++) {
-         if (mLayer === -1) { idByCol[c] = "__single__"; continue; }
+      if (mLayer === -1) {
+         var single = unnamedMeasure(dl, nCols, infoMap);
+         for (var c = 0; c < nCols; c++) {
+            if (!single) { idByCol[c] = "__single__"; continue; }
+            idByCol[c] = single.id;
+            if (!(single.id in nameById)) nameById[single.id] = single.name || single.id;
+         }
+         return { idByCol: idByCol, nameById: nameById, hasMeasureLabels: false };
+      }
+      for (var c2 = 0; c2 < nCols; c2++) {
          var id = null;
-         try { id = dl.getValue(PHYS_COLUMN, mLayer, c, true); } catch (e) {}
+         try { id = dl.getValue(PHYS_COLUMN, mLayer, c2, true); } catch (e) {}
          var name = null;
-         try { name = dl.getValue(PHYS_COLUMN, mLayer, c, false); } catch (e) {}
+         try { name = dl.getValue(PHYS_COLUMN, mLayer, c2, false); } catch (e) {}
          var idStr = id != null ? String(id) : (name != null && name !== "" ? String(name) : "__single__");
-         idByCol[c] = idStr;
+         idByCol[c2] = idStr;
          if (!(idStr in nameById)) {
             nameById[idStr] = name == null ? idStr : String(name);
          }
       }
-      return { idByCol: idByCol, nameById: nameById };
+      return { idByCol: idByCol, nameById: nameById, hasMeasureLabels: true };
    }
 
    /** Ordered, de-duplicated column-index buckets, one per distinct measure id. */
@@ -1579,24 +1930,26 @@ define(['jquery',
 
       /* Live source: a synchronous, cheap map read on EVERY render, because
          OAC fills the column-info map as columns are added. Runs before the
-         table build so first paint already shows live text. Skipped entirely
-         when the viewer turned descriptions off. */
+         table build so first paint already shows live text. Also the display
+         name for a one-measure total rule, so it is read when descriptions
+         are off. The missing-map warning stays tied to descriptions. */
       var infoMap = null;
+      try {
+         infoMap = readColumnInfoMap(oTransientRenderingContext, this);
+      } catch (e) {
+         _logger.warning("column-info map read failed: " + (e && e.message ? e.message : e));
+      }
+      this._columnInfoMap = infoMap;
       if (this.Config.showDescriptions !== "off" || this.Config.debugLogMetadata === "on") {
-         try {
-            infoMap = readColumnInfoMap(oTransientRenderingContext, this);
-            if (infoMap && this.Config.showDescriptions !== "off") {
-               this._glossary.mergeLive(descriptionsFromColumnInfoMap(infoMap));
-            } else if (!infoMap && !this._mapMissingLogged) {
-               /* Loud, once: a future OAC build renaming the path must not
-                  silently drop every tooltip on this pivot — live text and
-                  workbook overrides both come from this one map, and there
-                  is no bundled tier left to fall back to since v0.16.0. */
-               this._mapMissingLogged = true;
-               _logger.warning("column-info map not found on the rendering context — no glossary tooltips will show");
-            }
-         } catch (e) {
-            _logger.warning("column-info map read failed: " + (e && e.message ? e.message : e));
+         if (infoMap && this.Config.showDescriptions !== "off") {
+            this._glossary.mergeLive(descriptionsFromColumnInfoMap(infoMap));
+         } else if (!infoMap && !this._mapMissingLogged) {
+            /* Loud, once: a future OAC build renaming the path must not
+               silently drop every tooltip on this pivot — live text and
+               workbook overrides both come from this one map, and there
+               is no bundled tier left to fall back to since v0.16.0. */
+            this._mapMissingLogged = true;
+            _logger.warning("column-info map not found on the rendering context — no glossary tooltips will show");
          }
       }
 
@@ -2469,8 +2822,12 @@ define(['jquery',
                   (showPdf ? "<button type='button' class='gp-printbtn'>" + escapeHtml(LBL.PRINT) + "</button>" : "") +
                "</div>";
       }
+      var note = "";
+      if (this._authorNotes && this._authorNotes.length) {
+         note = "<div class='gp-authornote' role='status'>" + escapeHtml(this._authorNotes.join(" ")) + "</div>";
+      }
       $c.html(
-         "<div class='gp-shell'>" + bar +
+         "<div class='gp-shell'>" + bar + note +
             "<div class='gp-wrap'>" + html + "</div>" +
          "</div>"
       );
@@ -2574,6 +2931,7 @@ define(['jquery',
           nCols      = dl.getEdgeExtent(COL)  || 0;
 
       if (!nRows && !nCols) {
+         this._authorNotes = [];
          return "<div class='gp-empty'>" + escapeHtml(LBL.EMPTY_STATE) + "</div>";
       }
 
@@ -2582,7 +2940,7 @@ define(['jquery',
       var totalRules = parseTotalRules(this.Config.totalRules, rejected);
       var widthMap = parseColumnWidths(this.Config.columnWidths, rejected);
       var defaultValueWidth = parsePx(this.Config.columnWidth);
-      var measureInfo = computeMeasureIdByCol(dl, LM, nColLayers, nCols);
+      var measureInfo = computeMeasureIdByCol(dl, LM, nColLayers, nCols, this._columnInfoMap);
       var measureIdByCol = measureInfo.idByCol;
       var measureNameById = measureInfo.nameById;
       var wantRowSubtotals = this.Config.showRowSubtotals === "on" && nRowLayers > 1;
@@ -2595,6 +2953,24 @@ define(['jquery',
       var sortState = usableSort(this._sortState, nRowLayers, nCols, nColLayers);
       var hiddenSet = parseHiddenColumns(this.Config.hiddenColumns);
       var headerLabelMap = parseHeaderLabels(this.Config.headerLabels);
+      var labelFields = [];
+      function pushLabelField(id, fieldName) { labelFields.push({ id: id, name: fieldName }); }
+      for (var lfi = 0; lfi < nRowLayers; lfi++) {
+         var lfId = null, lfName = null;
+         try { lfId = dl.getLayerMetadata(ROW, lfi, LM.LAYER_ID); } catch (e) {}
+         try { lfName = dl.getLayerMetadata(ROW, lfi, LM.LAYER_DISPLAY_NAME); } catch (e) {}
+         pushLabelField(lfId, lfName);
+      }
+      for (lfi = 0; lfi < nColLayers; lfi++) {
+         lfId = null; lfName = null;
+         try { lfId = dl.getLayerMetadata(COL, lfi, LM.LAYER_ID); } catch (e) {}
+         try { lfName = dl.getLayerMetadata(COL, lfi, LM.LAYER_DISPLAY_NAME); } catch (e) {}
+         pushLabelField(lfId, lfName);
+      }
+      Object.keys(measureNameById).forEach(function (mid) {
+         pushLabelField(mid, measureNameById[mid]);
+      });
+      var headerParams = prepareHeaderParameters(this, headerLabelMap, labelFields);
 
       /* A hidden field stays in the layout. Rows: the header column is not
          drawn, and grouping/sort still use its values so two groups that
@@ -2699,7 +3075,17 @@ define(['jquery',
          return found;
       }
       var aggCtx = {
-         num: num,
+         /* Rules use source values, even when a referenced measure is
+            displayed with Show as % of Total. That display transformation
+            must not change a numerator or denominator's aggregation. */
+         num: function (r, cc) {
+            if (cc == null || cc < 0 || cc >= nCols) return null;
+            var row = bufferRows[r];
+            if (row && row.orig && Object.prototype.hasOwnProperty.call(row.orig, cc)) {
+               return row.orig[cc];
+            }
+            return num(r, cc);
+         },
          sibling: function (cc, ref) {
             var mid = measureIdFor(ref);
             if (mid == null) return null;
@@ -2710,6 +3096,12 @@ define(['jquery',
       function ruleFor(mId) {
          return mId === "__single__" ? null : lookupByName(totalRules, mId, measureNameById[mId]);
       }
+      aggCtx.rule = function (ref) {
+         var mid = measureIdFor(ref);
+         var rule = mid == null ? null : ruleFor(mid);
+         return rule ? rule.kind : null;
+      };
+      var distinctTotalsBlanked = false;
 
       /* Show as % of Total: each listed measure's cells become their share
          of the column total, or of their group's total ("by FIELD" = that
@@ -2780,7 +3172,7 @@ define(['jquery',
       /* A share column's total is the block's own numbers over the totals
          of the groups it touches: 100% for a grand total, a group's share
          of the column for a subtotal when shares are by column. Totals:
-         Measure Rules do not apply to a share column. */
+         An explicit Measure Rule takes precedence and reads source values. */
       function shareTotal(rStart, rEnd, cols) {
          var sv = 0, sd = 0, any = false, seen = Object.create(null);
          for (var r = rStart; r <= rEnd; r++) {
@@ -2823,8 +3215,26 @@ define(['jquery',
          return formatLike(val, sampleSpec(cc));
       }
       function totalFor(rStart, rEnd, cols, mId) {
-         if (shareMeasure[mId]) return shareTotal(rStart, rEnd, cols);
-         return aggregateCells(rStart, rEnd, cols, ruleFor(mId), aggCtx);
+         var rule = ruleFor(mId);
+         /* Without measure identity an explicit rule cannot be matched.
+            Falling back to sum could turn a requested distinct count into
+            2 + 2 = 4. Do not infer identity from the author's rule text. */
+         if (String(self.Config.totalRules || "").trim() &&
+             (mId === "__single__" || (!rule && !measureInfo.hasMeasureLabels && measureNameById[mId] === mId &&
+               !displayNameFromColumnInfo(self._columnInfoMap, mId)))) {
+            noteHeader(headerParams, "unidentified-total",
+               "Totals are blank because Oracle did not identify the measure, so the configured total rules cannot be matched. Show measure labels or restore measure metadata.");
+            return null;
+         }
+         var many = rEnd !== rStart || !cols || cols.length !== 1;
+         if (rule && rule.kind === "distinct" && many) distinctTotalsBlanked = true;
+         if (rule && many && (rule.kind === "ratio" || rule.kind === "weighted")) {
+            var aKind = aggCtx.rule(rule.a);
+            var bKind = rule.kind === "ratio" ? aggCtx.rule(rule.b) : null;
+            if (aKind === "distinct" || bKind === "distinct") distinctTotalsBlanked = true;
+         }
+         if (shareMeasure[mId] && !rule) return shareTotal(rStart, rEnd, cols);
+         return aggregateCells(rStart, rEnd, cols, rule, aggCtx);
       }
 
       if (wantCellColor) colorRanges = computeMeasureRanges(num, nRows, nCols, measureIdByCol, colHidden);
@@ -3016,7 +3426,7 @@ define(['jquery',
                   var rName = dl.getLayerMetadata(ROW, rl, LM.LAYER_DISPLAY_NAME);
                   var rId   = dl.getLayerMetadata(ROW, rl, LM.LAYER_ID);
                   var rTxt  = rName == null ? "" : String(rName);
-                  var rShown = resolveHeaderLabel(headerLabelMap, rId, rTxt, rTxt);
+                  var rShown = resolveHeaderLabel(headerLabelMap, rId, rTxt, rTxt, headerParams);
                   out.push(headerCell("th", rShown, rTxt, rId, 1, "colspan", "gp-corner", null, "row:" + rl, self.Config.headerColor, rShown));
                }
             }
@@ -3054,11 +3464,11 @@ define(['jquery',
                   var paintHex = self.Config.headerDataColor;
                   var tipTitle = layerName == null ? "" : String(layerName);
                   if (isMeasureLayer) {
-                     shown = resolveHeaderLabel(headerLabelMap, colId, shown, shown);
+                     shown = resolveHeaderLabel(headerLabelMap, colId, shown, shown, headerParams);
                      paintHex = self.Config.headerColor;
                      tipTitle = shown;
                   } else if (layerName) {
-                     tipTitle = resolveHeaderLabel(headerLabelMap, colId, tipTitle, tipTitle);
+                     tipTitle = resolveHeaderLabel(headerLabelMap, colId, tipTitle, tipTitle, headerParams);
                   }
 
                   /* A header that spans several visible data columns has no
@@ -3087,7 +3497,7 @@ define(['jquery',
          if (wantTotalCol && hi === 0) {
             buckets.order.forEach(function (bid) {
                var measureName = measureNameById[bid] || bid;
-               var shownName = resolveHeaderLabel(headerLabelMap, bid === "__single__" ? null : bid, measureName, measureName);
+               var shownName = resolveHeaderLabel(headerLabelMap, bid === "__single__" ? null : bid, measureName, measureName, headerParams);
                var lbl = buckets.order.length > 1 && bid !== "__single__" ? shownName + " " + LBL.TOTAL : LBL.TOTAL;
                var rs = nHeaderRows > 1 ? " rowspan='" + nHeaderRows + "'" : "";
                var totalPaint = headerPaint(self.Config.headerColor);
@@ -3130,9 +3540,9 @@ define(['jquery',
       /* A collapsed outer group renders as ONE row standing in for all of its
          hidden detail rows — the label cell spans every Row layer (there is
          no single per-inner-layer value to show once the detail is hidden),
-         and the value cells are the same SUM-of-displayed-values used for
-         totals (see the v0.5/v0.7 header notes on why that is a display
-         convenience, not a re-aggregation). Deliberately does NOT also emit
+         and the value cells use the same total rule as a subtotal. A distinct
+         count that covers more than one cell stays blank (interim: the
+         layout cannot recount an overlap). Deliberately does NOT also emit
          a "Label Total" subtotal row for this group — this row already is
          one. */
       function collapsedGroupRowHtml(labelText, rStart, rEnd, groupKey) {
@@ -3301,7 +3711,13 @@ define(['jquery',
       }
       out.push("</tbody></table>");
 
-      this._warnConfig(rejected, Object.keys(missingRefs));
+      if (distinctTotalsBlanked && headerParams) {
+         noteHeader(headerParams, "distinct",
+            "Interim: distinct-count totals that cover more than one count are blank. The pivot only receives aggregated counts, so overlapping populations cannot be recounted yet, and those counts are not added.");
+      }
+      var authorNotes = headerParams && headerParams.notes ? headerParams.notes.slice() : [];
+      this._authorNotes = authorNotes;
+      this._warnConfig(rejected, Object.keys(missingRefs), authorNotes);
       return out.join("");
    };
 
@@ -3309,12 +3725,13 @@ define(['jquery',
       measure that is not on this pivot, used to vanish without a trace.
       Logged once per distinct message (not per render) — setting text only,
       never cell values. */
-   GlossaryPivotViz.prototype._warnConfig = function (rejected, missingRefs) {
+   GlossaryPivotViz.prototype._warnConfig = function (rejected, missingRefs, notes) {
       var parts = [];
       if (rejected && rejected.length) parts.push("ignored setting entries: " + rejected.join(" | "));
       if (missingRefs && missingRefs.length) {
          parts.push("total rules name measures not on this pivot (add them to Values; they may be hidden): " + missingRefs.join(", "));
       }
+      if (notes && notes.length) parts.push(notes.join(" | "));
       var msg = parts.join("; ");
       if (msg && msg !== this._lastConfigWarning) _logger.warning(msg);
       this._lastConfigWarning = msg;
@@ -3685,7 +4102,8 @@ define(['jquery',
       addText(pGen, factory, "percentOfTotalGadget",
          "Values: Show as % of Total (name[: by field]; ...)", C.percentOfTotal, nx());
       // Header
-      addText(pGen, factory, "headerLabelsGadget", "Header: Display Label (id: label; ...)", C.headerLabels, nx());
+      addText(pGen, factory, "headerLabelsGadget",
+         "Header: Display Label (id: text, @parameter(\"Name\"), or @parameter(\"Name\")('default'); ...)", C.headerLabels, nx());
       addText(pGen, factory, "hiddenColumnsGadget", "Header: Hidden Columns (id; id; ...)", C.hiddenColumns, nx());
       // Rows (was "Totals: Row Group Collapse" -- a collapse is not a total)
       addToggle(pGen, "rowGroupCollapseGadget", "Rows: Group Collapse (2+ Row layers)", C.rowGroupCollapse, nx());
@@ -3694,7 +4112,7 @@ define(['jquery',
       addToggle(pGen, "showRowSubtotalsGadget", "Totals: Row Subtotals (2+ Row layers)", C.showRowSubtotals, nx());
       addToggle(pGen, "showGrandTotalColumnGadget", "Totals: Grand Total Column", C.showGrandTotalColumn, nx());
       addText(pGen, factory, "totalRulesGadget",
-         "Totals: Measure Rules (name = sum | avg | weighted(W) | ratio(N, D) | none; ...)", C.totalRules, nx());
+         "Totals: Measure Rules (name = sum | avg | distinct | weighted(W) | ratio(N, D) | none; ...)", C.totalRules, nx());
       // Layout
       addSwitcher(pGen, "rowHeaderAlignGadget", "Layout: Row Header Align", C.rowHeaderAlign, hOpts, nx());
       addSwitcher(pGen, "rowHeaderVAlignGadget", "Layout: Row Header Vertical", C.rowHeaderVAlign, vOpts, nx());
@@ -3879,11 +4297,27 @@ define(['jquery',
     */
    GlossaryPivotViz.prototype._doInitializeComponent = function () {
       GlossaryPivotViz.superClass._doInitializeComponent.call(this);
+      var self = this;
       try {
          this.subscribeToEvent(events.types.INTERACTION_HIGHLIGHT, this.onHighlight,
             this.getViewName() + "." + events.types.INTERACTION_HIGHLIGHT);
       } catch (e) {
          _logger.warning("Could not subscribe to INTERACTION_HIGHLIGHT: " + (e && e.message ? e.message : e));
+      }
+      /* parameterValuesChanged is published for every listener ("**"), the
+         same subscription the host filter and rich-text visualizations use.
+         A view-specific third argument is a topic filter, not a listener id,
+         and would never match this event. */
+      this._watchHeaderParameters = true;
+      try {
+         this.subscribeToEvent(PARAM_CHANGED_EVENT, function (ev) {
+            if (!self._watchHeaderParameters) return;
+            if (!self.Config || String(self.Config.headerLabels || "").indexOf("@parameter") < 0) return;
+            rememberParameterEvent(self, ev);
+            self._rerenderTable();
+         }, "**");
+      } catch (e2) {
+         _logger.warning("Could not subscribe to parameter value changes: " + (e2 && e2.message ? e2.message : e2));
       }
       this._registerPrintCanvas();
    };
@@ -3899,6 +4333,7 @@ define(['jquery',
     * instance's window.__wsuPrintCanvas registry entry.
     */
    GlossaryPivotViz.prototype._doStopComponent = function () {
+      this._watchHeaderParameters = false;
       if (activePrintJob && activePrintJob.owner === this) cleanupPrintJob(activePrintJob);
       else if (this._printFrame && this._printFrame.parentNode) this._printFrame.parentNode.removeChild(this._printFrame);
       this._printFrame = null;
@@ -3935,8 +4370,14 @@ define(['jquery',
       _openGlossaryPrint: openGlossaryPrint,
       _computeMeasureIdByCol: computeMeasureIdByCol,
       _resolveFormat: resolveFormat,
+      _parseHeaderLabels: parseHeaderLabels,
       _parseTotalRules: parseTotalRules,
       _aggregateCells: aggregateCells,
+      _applyHeaderTemplate: applyHeaderTemplate,
+      _readHostParameterValues: readHostParameterValues,
+      _prepareHeaderParameters: prepareHeaderParameters,
+      _ambiguousHeaderKeys: ambiguousHeaderKeys,
+      _parameterRefs: parameterRefs,
       _inferAutoFormat: inferAutoFormat,
       _formatLike: formatLike,
       _parseColumnWidths: parseColumnWidths,

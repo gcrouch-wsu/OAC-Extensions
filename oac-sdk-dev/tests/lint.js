@@ -38,6 +38,7 @@ var ALLOWED_MODULES = [
   "obitech-application/gadgets",
   "obitech-application/extendable-ui-definitions",
   "obitech-appservices/logger",
+  "obitech-appservices/datalayout",       // DataMetadata; present in OAD 26.01 application-analytics.js
   "obitech-viz/genericDataModelHandler",
   // Established by Oracle's May 2026 samples (oac_design.md 6.33); present in 26.01.
   "require",                            // for requirejs.toUrl() when lazy-loading ES modules
