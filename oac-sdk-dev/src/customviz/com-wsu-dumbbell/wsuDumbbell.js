@@ -215,7 +215,7 @@ define(['jquery',
       this.clearZoomState = function() { zoomState = null; };
    }
 
-   WsuDumbbellViz.VERSION = "1.1.2";
+   WsuDumbbellViz.VERSION = "1.1.3";
    jsx.extend(WsuDumbbellViz, dataviz.DataVisualization);
 
    function str(value) {

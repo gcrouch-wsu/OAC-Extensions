@@ -295,6 +295,9 @@
  * v0.20.6 — ratio(N, D) accepts level(A, B) as N or D, so a distinct share
  *   totals as the college source total over the term source total rather
  *   than a sum of row shares.
+ * v0.20.7 — Header: Hide Measure Row drops the header row that repeats the
+ *   one visible measure's name; its glossary moves to the leaf headers.
+ *   New icon, and the shared WSU category in the visualization picker.
  ******************************************************************************/
 
 define(['jquery',
@@ -380,7 +383,7 @@ define(['jquery',
       PRINT_MIXED_ORIENTATION: L("GLOSSARYPIVOT_LBL_PRINT_MIXED_ORIENTATION", "Tables use different page orientations; Print Canvas uses the orientation of the table whose button you clicked.")
    };
 
-   GlossaryPivotViz.VERSION = "0.20.6";
+   GlossaryPivotViz.VERSION = "0.20.7";
 
    /**
     * @constructor
@@ -412,6 +415,7 @@ define(['jquery',
          // glossary id. Empty hex means the stylesheet color.
          headerLabels: "",                 // "COLUMN_ID: Display text; COLUMN_ID: Display text; ..."
          hiddenColumns: "",                // "STRM; REPORTING_SEQUENCE; ..."
+         hideMeasureRow: "off",            // on | off — drop the column header row that repeats the one visible measure's name
          headerColor: "",                  // hex for field-name headers (corner, measure names)
          headerDataColor: "",              // hex for column headers that show a member value
          printOrientation: "landscape",    // landscape | portrait
@@ -3113,6 +3117,28 @@ define(['jquery',
             columnListed(hiddenSet, hMid, measureNameById[hMid]);
       }
 
+      /* Header: Hide Measure Row (0.20.7). With one visible measure, the
+         row repeating its name under every column adds nothing. It stays
+         when two measures are visible (their columns could not be told
+         apart) and when it is the only column header (nothing would label
+         the values). The measure's glossary moves to the leaf headers. */
+      var soleMeasureId = null;
+      if (this.Config.hideMeasureRow === "on") {
+         var visMeasures = Object.create(null), nVisMeasures = 0, oneMid = null, measureLayer = -1;
+         for (hc = 0; hc < nCols; hc++) {
+            if (colHidden[hc] || visMeasures[measureIdByCol[hc]]) continue;
+            visMeasures[measureIdByCol[hc]] = true;
+            nVisMeasures++;
+            oneMid = measureIdByCol[hc];
+         }
+         for (cli = 0; cli < nColLayers; cli++) if (colLayerIsMeasure[cli]) measureLayer = cli;
+         if (nVisMeasures === 1 && oneMid !== "__single__" && measureLayer >= 0 && nHeaderRows > 1) {
+            headerLayerIdx = headerLayerIdx.filter(function (l) { return l !== measureLayer; });
+            nHeaderRows = headerLayerIdx.length;
+            soleMeasureId = oneMid;
+         }
+      }
+
       /* Every DataLayout row read once, in delivery order (indexed by the
          layout row). Totals, the heat map, and the body all read from it
          instead of calling getValue again per total. */
@@ -3560,6 +3586,14 @@ define(['jquery',
                      shown = resolveHeaderLabel(headerLabelMap, colId, shown, shown, headerParams);
                      paintHex = self.Config.headerColor;
                      tipTitle = shown;
+                  } else if (soleMeasureId != null && lastHeaderRow) {
+                     /* The hidden measure row's description lives here now:
+                        each leaf is one column of that measure. */
+                     var soleName = measureNameById[soleMeasureId];
+                     soleName = soleName == null ? "" : String(soleName);
+                     lookup = soleName;
+                     colId = soleMeasureId;
+                     tipTitle = resolveHeaderLabel(headerLabelMap, soleMeasureId, soleName, soleName, headerParams);
                   } else if (!describeData) {
                      colId = null;
                      tipTitle = "";
@@ -4201,6 +4235,7 @@ define(['jquery',
       addText(pGen, factory, "headerLabelsGadget",
          "Header: Display Label (id: text, @parameter(\"Name\"), or @parameter(\"Name\")('default'); ...)", C.headerLabels, nx());
       addText(pGen, factory, "hiddenColumnsGadget", "Header: Hidden Columns (id; id; ...)", C.hiddenColumns, nx());
+      addToggle(pGen, "hideMeasureRowGadget", "Header: Hide Measure Row (one measure)", C.hideMeasureRow, nx());
       // Rows (was "Totals: Row Group Collapse" -- a collapse is not a total)
       addToggle(pGen, "rowGroupCollapseGadget", "Rows: Group Collapse (2+ Row layers)", C.rowGroupCollapse, nx());
       // Totals
@@ -4271,6 +4306,7 @@ define(['jquery',
          percentOfTotalGadget: "percentOfTotal",
          headerLabelsGadget: "headerLabels",
          hiddenColumnsGadget: "hiddenColumns",
+         hideMeasureRowGadget: "hideMeasureRow",
          showGrandTotalRowGadget: "showGrandTotalRow",
          showRowSubtotalsGadget: "showRowSubtotals",
          showGrandTotalColumnGadget: "showGrandTotalColumn",
@@ -4312,6 +4348,7 @@ define(['jquery',
       var TOGGLE_GADGETS = {
          showGrandTotalRowGadget: 1, showRowSubtotalsGadget: 1, showGrandTotalColumnGadget: 1,
          rowGroupCollapseGadget: 1, cellColorGadget: 1, showDescriptionsGadget: 1,
+         hideMeasureRowGadget: 1,
          glossaryDataHeadersGadget: 1,
          showSourceBadgesGadget: 1,
          printFollowThemeGadget: 1, debugLogMetadataGadget: 1

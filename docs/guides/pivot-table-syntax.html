@@ -16,7 +16,7 @@
 <p class="eyebrow">WSU Glossary Pivot · Author reference</p>
 <h1>Properties and calculation syntax</h1>
 <p class="intro">Use this guide when building a Glossary Pivot workbook. Find the property, copy its syntax, and check that the calculation uses the population you intend.</p>
-<div class="meta"><span>Extension reference: 0.20.6</span><span>Guide revision: 2026-10-20</span><span>Live distinct-total example verified: 2026-10-20</span></div>
+<div class="meta"><span>Extension reference: 0.20.7</span><span>Guide revision: 2026-10-20</span><span>Live distinct-total example verified: 2026-10-20</span></div>
 </header>
 <div class="shell">
 <nav aria-label="Guide sections">
@@ -79,6 +79,7 @@
 <tr><th scope="row">Values: Show as % of Total</th><td>Convert named measures to shares of the sums of queried cells.</td><td>Blank. <code>NAME[: by ROW_FIELD]; ...</code></td></tr>
 <tr><th scope="row">Header: Display Label</th><td>Change a field title; optionally use parameter text. Member values stay unchanged.</td><td>Blank. <code>NAME:label; ...</code></td></tr>
 <tr><th scope="row">Header: Hidden Columns</th><td>Hide a field or measure while retaining it in the query. Hiding a grouping field does not remove its grouping.</td><td>Blank. <code>NAME; NAME; ...</code></td></tr>
+<tr><th scope="row">Header: Hide Measure Row (one measure)</th><td>Drop the header row that repeats the measure name under every column, like the standard pivot. Applies only when exactly one measure is visible and another column header row remains. The measure's description moves to the remaining column headers, such as 2013 Fall, which still sort.</td><td>Off. Since 0.20.7.</td></tr>
 <tr><th scope="row">Rows: Group Collapse (2+ Row layers)</th><td>Collapse an outer row group into a summary using its total rules.</td><td>Off. Needs at least two Rows fields.</td></tr>
 <tr><th scope="row">Totals: Grand Total Row</th><td>Show a total below the table for each measure/column combination.</td><td>Off.</td></tr>
 <tr><th scope="row">Totals: Row Subtotals (2+ Row layers)</th><td>Show a subtotal below each outer row group.</td><td>Off. Needs at least two Rows fields.</td></tr>
@@ -312,9 +313,10 @@ Rate: #981e32: 100%</code></pre>
 <h2>11. Updates and verification</h2>
 <p><strong>Keep this file current when the extension changes.</strong> Update property names, accepted syntax, defaults, examples, and limitations together. Record the extension version and verification date at the top. Do not label a requested feature as available until it has been implemented and checked.</p>
 <div class="table-wrap"><table><thead><tr><th scope="col">Evidence</th><th scope="col">What has been established</th></tr></thead><tbody>
-<tr><th scope="row">Current source and specification</th><td>All 41 custom controls covered against version 0.20.6, including the defaults in section 3. Rate, weighted-average, <code>level</code>, and <code>ratio(level(…))</code> arithmetic checked in the regression suite. Numerical teaching examples use synthetic values.</td></tr>
+<tr><th scope="row">Current source and specification</th><td>All 42 custom controls covered against version 0.20.7, including the defaults in section 3. Rate, weighted-average, <code>level</code>, and <code>ratio(level(…))</code> arithmetic checked in the regression suite. Numerical teaching examples use synthetic values.</td></tr>
 <tr><th scope="row">Live workbook, 2026-10-20: subtotals (0.20.6)</th><td>“Data Checking – adding subtotal” canvas, College × IPEDS Ethnic Origin Desc rows, Term columns, with subtotals and grand total, using the section 7 rules. All 12 college subtotals and the grand total matched the standard pivot for 2013 Fall. All 14 college subtotals and both grand-total columns matched for 2013 Fall + 2014 Fall. The two-term filter was a temporary test and was not saved.</td></tr>
 <tr><th scope="row">Live workbook, 2026-10-20: College rows only (0.20.4)</th><td>The older ratio setup, compared with the standard pivot: 26 populated numeric cells matched for one term; 54 for two terms; 12 for a two-college, two-term filtered selection.</td></tr>
+<tr><th scope="row">Live workbook, 2026-10-20: Hide Measure Row (0.20.7)</th><td>Checked on the tenant by the guide maintainer: with the switch on and one visible measure, the repeated measure header row is gone, as on the standard pivot.</td></tr>
 <tr><th scope="row">Live workbook, 2026-10-20: tooltips (0.20.5)</th><td>With Glossary on Data Headers off, Term headers such as 2013 Fall showed no glossary marker or tooltip. Measure headers and the College header kept theirs.</td></tr>
 <tr><th scope="row">Still outside the live checks</th><td>Collapsed groups, a Grand Total Column with distinct counts, other demographic fields, arbitrary source measures, source row limits, and print output with this calculation setup.</td></tr>
 </tbody></table></div>
@@ -328,7 +330,7 @@ Rate: #981e32: 100%</code></pre>
 <footer>
 <p><strong>Sources for maintaining this guide:</strong> <a href="../plugins/project_spec_wsu_glossary_pivot.md">Glossary Pivot specification</a>; <a href="../../oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/glossaryPivotViz.js">renderer and property parsers</a>; <a href="../../oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/extensions/oracle.bi.tech.plugin.visualizationDatamodelHandler/com-wsu-glossary-pivot.visualizationDatamodelHandler.json">grammar manifest</a>.</p>
 <p>Oracle documents the general <code>AGGREGATE(measure BY column)</code> form in <a href="https://docs.oracle.com/en/cloud/paas/analytics-cloud/acubi/aggregate-functions.html">Aggregate Functions</a>. The empty-BY formula and the workbook recipe above are supported here by the recorded live workbook check, not by an assumption that every source will behave identically.</p>
-<p>Revision history: 2026-10-20 — initial properties reference and distinct-total recipe. Same day — <code>level</code> totals and the data-header glossary switch. Same day — 0.20.6 <code>ratio(level(…))</code>; section 7 rewritten around the verified subtotal setup, with Selected Distinct HC as the percentage denominator.</p>
+<p>Revision history: 2026-10-20 — initial properties reference and distinct-total recipe. Same day — <code>level</code> totals and the data-header glossary switch. Same day — 0.20.6 <code>ratio(level(…))</code>; section 7 rewritten around the verified subtotal setup, with Selected Distinct HC as the percentage denominator. Same day — 0.20.7 Hide Measure Row.</p>
 </footer>
 </section>
 </main>

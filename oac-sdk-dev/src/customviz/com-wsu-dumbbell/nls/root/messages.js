@@ -1,7 +1,7 @@
 define({
     "WSUDUMBBELL_DISPLAY_NAME": "WSU Dumbbell",
     "WSUDUMBBELL_SHORT_DISPLAY_NAME": "WSU Dumbbell",
-    "WSUDUMBBELL_CATEGORY": "WSU",
+    "WSU_CATEGORY": "WSU",
     "WSUDUMBBELL_MEASURES": "Value(s)",
     "WSUDUMBBELL_ENTITY": "Category (X-Axis)",
     "WSUDUMBBELL_ITEM": "Pair role",

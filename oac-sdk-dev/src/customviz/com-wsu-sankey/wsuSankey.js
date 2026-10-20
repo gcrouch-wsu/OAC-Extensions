@@ -227,7 +227,7 @@ define(['jquery',
     };
   }
 
-  WsuSankeyViz.VERSION = "1.1.2";
+  WsuSankeyViz.VERSION = "1.1.3";
   jsx.extend(WsuSankeyViz, dataviz.DataVisualization);
 
   WsuSankeyViz.prototype._saveSettings = function() {

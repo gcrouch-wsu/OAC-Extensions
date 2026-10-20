@@ -325,7 +325,7 @@ define(['jquery',
     };
   }
 
-  WsuNetworkViz.VERSION = "1.2.2";
+  WsuNetworkViz.VERSION = "1.2.3";
   jsx.extend(WsuNetworkViz, dataviz.DataVisualization);
 
   WsuNetworkViz.prototype._saveSettings = function() {

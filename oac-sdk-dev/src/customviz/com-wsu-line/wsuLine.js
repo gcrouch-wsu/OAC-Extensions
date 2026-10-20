@@ -226,7 +226,7 @@ define(['jquery',
       this.setLegendActiveSeries = function(s) { legendActiveSeries = s; };
    }
 
-   WsuLineViz.VERSION = "1.2.2";
+   WsuLineViz.VERSION = "1.2.3";
    jsx.extend(WsuLineViz, dataviz.DataVisualization);
 
    function str(value) {

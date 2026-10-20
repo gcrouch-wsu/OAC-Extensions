@@ -251,7 +251,7 @@ define(['jquery',
     };
   }
 
-  WsuLatticeScatterViz.VERSION = "1.1.2";
+  WsuLatticeScatterViz.VERSION = "1.1.3";
   jsx.extend(WsuLatticeScatterViz, dataviz.DataVisualization);
 
   WsuLatticeScatterViz.prototype._saveSettings = function() {

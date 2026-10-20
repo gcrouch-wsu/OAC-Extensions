@@ -19,9 +19,9 @@
    "properties": {
      "displayName": { "key" : "WSULATTICE_DISPLAY_NAME", "default" : "WSU Lattice Scatter" },
      "shortDisplayName": { "key" : "WSULATTICE_SHORT_DISPLAY_NAME", "default" : "WSU Lattice Scatter" },
-     "category": {"key":"WSULATTICE_CATEGORY", "default":"WSU"},
+     "category": {"key":"WSU_CATEGORY", "default":"WSU"},
      "customSettings":{},
-     "categoryOrder": 540,
+     "categoryOrder": 600,
      "icon": "wsuLatticeScatterIcon",
      "dataModelHandler" : "com-wsu-lattice-scatter.visualizationDatamodelHandler",
      "dataModelGovernor": { "dm1": { "rows": 50000, "columns": 120 } },

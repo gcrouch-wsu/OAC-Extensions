@@ -4,8 +4,8 @@ Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 `docs/plugins/`. Those constants are the versions in this folder and are the
 source of truth — check them directly (`grep VERSION` in the plugin's own
 `.js` file) rather than trusting a number restated in prose here, including
-this one. As of 2026-10-15, `main` includes Network 1.2.2, Line 1.2.2, Sankey 1.1.2,
-Dumbbell 1.1.2, Lattice Scatter 1.1.2, and Glossary Pivot 0.20.6 (commit `94f5141`; 0.20.4 is commit `8da91ec`;
+this one. As of 2026-10-20, `main` has Network 1.2.3, Line 1.2.3, Sankey 1.1.3,
+Dumbbell 1.1.3, Lattice Scatter 1.1.3, and Glossary Pivot 0.20.7 (0.20.6 is commit `94f5141`; 0.20.4 is commit `8da91ec`;
 0.17.0 pushed 2026-09-29, commit `b7247e5`; 0.18.0 pushed 2026-09-29, commit
 `1f4367a`; 0.19.0 pushed, commit `d9d9fa4`). WSU Report Print has been removed; Glossary Pivot prints its own
 table and the canvas.
@@ -21,6 +21,14 @@ or Glossary Pivot. Headings below that say "Unreleased" mean "no git tag".
 The 1.x commits they describe are on `main`.
 
 Glossary Pivot versions on its own line, not on the 1.x tags.
+
+## 2026-10-20 — WSU picker row and icons (all six plugins); Glossary Pivot 0.20.7 — Hide Measure Row
+
+Installed in OAC Dev and verified there on 2026-10-20: the WSU picker row, the icons, and Hide Measure Row. Uploads took a while to reach every browser; see the README warning. Versions: Network 1.2.3, Line 1.2.3, Sankey 1.1.3, Dumbbell 1.1.3, Lattice Scatter 1.1.3, Glossary Pivot 0.20.7.
+
+- All six manifests use one category key, `WSU_CATEGORY` ("WSU"), and `categoryOrder` 600. Before this, each plugin had its own key and order (500–560), so the Edit-mode visualization dropdown put Glossary Pivot in the generic custom row and gave each of the others a row of its own. Viz type ids are unchanged, so saved workbooks are unaffected.
+- New 24 px icons: a small picture of each chart (pivot grid, line, dumbbell, small multiples, sankey bands, node graph) in gray inside a crimson outline, replacing the shared cougar logo. Sources are in `docs/icons/*.svg`.
+- Glossary Pivot: **Header: Hide Measure Row (one measure)**, default off. On drops the column header row that repeats the measure name ("Unique Headcount" under every term), matching the standard pivot. It applies only when exactly one measure is visible and another column header row remains. The measure's glossary moves to the remaining leaf headers, which still click-to-sort.
 
 ## 2026-10-20 — WSU Glossary Pivot 0.20.6 — level() inside ratio()
 

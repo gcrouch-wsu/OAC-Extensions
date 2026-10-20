@@ -31,3 +31,6 @@ __pycache__/
 # data/ = real institutional extracts; dev/ = internal planning docs and notes.
 /data/
 /dev/
+
+# Local planning note for the WSU visualization picker (future fix).
+/icon.md

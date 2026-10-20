@@ -18,9 +18,9 @@
    "properties": {
      "displayName": { "key" : "WSUSANKEY_DISPLAY_NAME", "default" : "WSU Sankey" },
      "shortDisplayName": { "key" : "WSUSANKEY_SHORT_DISPLAY_NAME", "default" : "WSU Sankey" },
-     "category": {"key":"WSUSANKEY_CATEGORY", "default":"WSU"},
+     "category": {"key":"WSU_CATEGORY", "default":"WSU"},
      "customSettings":{},
-     "categoryOrder": 550,
+     "categoryOrder": 600,
      "icon": "wsuSankeyIcon",
      "dataModelHandler" : "com-wsu-sankey.visualizationDatamodelHandler",
      "dataModelGovernor": { "dm1": { "rows": 50000, "columns": 120 } },

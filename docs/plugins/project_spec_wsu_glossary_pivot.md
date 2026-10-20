@@ -13,7 +13,7 @@ WSU Glossary Pivot development without re-deriving design decisions.
 - **Short name**: WSU Glossary Pivot
 - **Category**: WSU
 - **Root id**: `com-wsu-glossary-pivot`
-- **Version constant**: `GlossaryPivotViz.VERSION = "0.20.6"` (see `CHANGELOG.md`; commit `94f5141`, installed in OAC Dev)
+- **Version constant**: `GlossaryPivotViz.VERSION = "0.20.7"` (see `CHANGELOG.md`; installed and verified in OAC Dev)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-glossary-pivot.zip`
 
@@ -390,6 +390,7 @@ null; it does not, it is simply opaque.
 |-----|---------|--------|
 | `headerLabels` | `""` | `NAME: template; ...` |
 | `hiddenColumns` | `""` | `NAME; NAME; ...` |
+| `hideMeasureRow` | `"off"` | on / off — since 0.20.7. On drops the column header row that repeats the measure name, but only when exactly one measure is visible and another column header row remains. That measure's glossary moves to the remaining leaf headers (2013 Fall), which still click-to-sort |
 | `headerColor` | `""` | hex for the field-name band (corner and measure names). Empty keeps `#f0f2f4` |
 | `headerDataColor` | `""` | hex for column headers whose text is a member value (Fall 2024). Empty keeps the same gray |
 
@@ -767,6 +768,7 @@ same as Oracle's own samples (`TextToggleGadgetInfo`, `createGadgetInfo`).
 | `percentOfTotalGadget` | Values: Show as % of Total (name[: by field]; ...) | text |
 | `headerLabelsGadget` | Header: Display Label (id: text, @parameter("Name"), or @parameter("Name")('default'); ...) | text |
 | `hiddenColumnsGadget` | Header: Hidden Columns (id; id; ...) | text |
+| `hideMeasureRowGadget` | Header: Hide Measure Row (one measure) | toggle (0.20.7) |
 | `rowGroupCollapseGadget` | Rows: Group Collapse (2+ Row layers) | toggle (was labeled "Totals: Row Group Collapse" before 0.19.0; id unchanged) |
 | `showGrandTotalRowGadget` | Totals: Grand Total Row | toggle |
 | `showRowSubtotalsGadget` | Totals: Row Subtotals (2+ Row layers) | toggle |

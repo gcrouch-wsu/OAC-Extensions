@@ -1,7 +1,7 @@
 define({
     "WSUSANKEY_DISPLAY_NAME": "WSU Sankey",
     "WSUSANKEY_SHORT_DISPLAY_NAME": "WSU Sankey",
-    "WSUSANKEY_CATEGORY": "WSU",
+    "WSU_CATEGORY": "WSU",
     "WSUSANKEY_START": "Start Node",
     "WSUSANKEY_END": "End Node",
     "WSUSANKEY_INTERMEDIATE": "Intermediate Nodes",

@@ -13,7 +13,7 @@ development or fork it without re-deriving design decisions.
 - **Short name**: WSU Line
 - **Category**: WSU
 - **Root id**: `com-wsu-line`
-- **Version constant**: `WsuLineViz.VERSION = "1.2.2"` (see `CHANGELOG.md`)
+- **Version constant**: `WsuLineViz.VERSION = "1.2.3"` (see `CHANGELOG.md`)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-line/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-line.zip`
 

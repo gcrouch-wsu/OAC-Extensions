@@ -1,7 +1,7 @@
 define({
   "WSUNETWORK_DISPLAY_NAME": "WSU Network",
   "WSUNETWORK_SHORT_DISPLAY_NAME": "WSU Network",
-  "WSUNETWORK_CATEGORY": "WSU",
+  "WSU_CATEGORY": "WSU",
   "WSUNETWORK_ROW": "Source, Destination",
   "WSUNETWORK_MEASURES": "Edge Weight, Node Size",
   "WSUNETWORK_COLOR": "Node Group / Color",

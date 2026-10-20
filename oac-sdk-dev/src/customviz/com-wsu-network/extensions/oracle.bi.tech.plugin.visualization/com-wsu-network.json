@@ -18,9 +18,9 @@
   "properties": {
     "displayName": { "key": "WSUNETWORK_DISPLAY_NAME", "default": "WSU Network" },
     "shortDisplayName": { "key": "WSUNETWORK_SHORT_DISPLAY_NAME", "default": "WSU Network" },
-    "category": { "key": "WSUNETWORK_CATEGORY", "default": "WSU" },
+    "category": { "key": "WSU_CATEGORY", "default": "WSU" },
     "customSettings": {},
-    "categoryOrder": 560,
+    "categoryOrder": 600,
     "icon": "wsuNetworkIcon",
     "dataModelHandler": "com-wsu-network.visualizationDatamodelHandler",
     "dataModelGovernor": { "dm1": { "rows": 70000, "columns": 120 } },

@@ -19,9 +19,9 @@
    "properties": {
      "displayName": { "key" : "WSUDUMBBELL_DISPLAY_NAME", "default" : "WSU Dumbbell" },
      "shortDisplayName": { "key" : "WSUDUMBBELL_SHORT_DISPLAY_NAME", "default" : "WSU Dumbbell" },
-     "category": {"key":"WSUDUMBBELL_CATEGORY", "default":"WSU"},
+     "category": {"key":"WSU_CATEGORY", "default":"WSU"},
      "customSettings":{},
-     "categoryOrder": 530,
+     "categoryOrder": 600,
      "icon": "wsuDumbbellIcon",
     "dataModelHandler" : "com-wsu-dumbbell.visualizationDatamodelHandler",
     "dataModelGovernor": { "dm1": { "rows": 10000, "columns": 100 } },

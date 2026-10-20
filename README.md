@@ -12,12 +12,12 @@ data, because that is what they were built to explain.
 
 | Extension | Root id | Version | What it does |
 |---|---|---|---|
-| **WSU Network** | `com-wsu-network` | 1.2.2 | Directed, weighted transition graph (vis-network). Repeat self-loops, expanded repeat stages, terminal "no further step" routing, edge-type legend, large-graph stabilization. |
-| **WSU Sankey** | `com-wsu-sankey` | 1.1.2 | Explicit-stage Sankey: Start → up to five Intermediate → End buckets. Incomplete-path routing and highlight, threshold / Top-N noise control, click-to-focus upstream/downstream. |
-| **WSU Line** | `com-wsu-line` | 1.2.2 | Multi-series line with a shared-X tooltip table (sortable, with vs-average / rank / year-over-year deltas), drag-to-zoom, header attribute chips, parameter-driven value labels. |
-| **WSU Dumbbell** | `com-wsu-dumbbell` | 1.1.2 | Paired before/after comparison from wide (two measures) or long (role column) data. In-chart sort/filter strips, group aggregation, small multiples. |
-| **WSU Lattice Scatter** | `com-wsu-lattice-scatter` | 1.1.2 | Course × term lattice with grade-letter or grade-point markers per student row. |
-| **WSU Glossary Pivot** | `com-wsu-glossary-pivot` | 0.20.6 | Pivot table with a glossary tooltip on headers. Rows, columns, and values; click-to-sort; totals with per-measure rules (sum, average, weighted, ratio, distinct, level); alignment, word-safe wrapping, and column/table widths; per-column data bars; show a measure as % of total; hide a field without dropping it from the query; rename a field, including a per-field `@parameter("Name")` or `@parameter("Name")('default')` display header. Number format groups thousands. Print PDF prints this table. Print Canvas prints every Glossary Pivot on the active canvas tab. Versioned on its own line, not with the 1.x plugins. |
+| **WSU Network** | `com-wsu-network` | 1.2.3 | Directed, weighted transition graph (vis-network). Repeat self-loops, expanded repeat stages, terminal "no further step" routing, edge-type legend, large-graph stabilization. |
+| **WSU Sankey** | `com-wsu-sankey` | 1.1.3 | Explicit-stage Sankey: Start → up to five Intermediate → End buckets. Incomplete-path routing and highlight, threshold / Top-N noise control, click-to-focus upstream/downstream. |
+| **WSU Line** | `com-wsu-line` | 1.2.3 | Multi-series line with a shared-X tooltip table (sortable, with vs-average / rank / year-over-year deltas), drag-to-zoom, header attribute chips, parameter-driven value labels. |
+| **WSU Dumbbell** | `com-wsu-dumbbell` | 1.1.3 | Paired before/after comparison from wide (two measures) or long (role column) data. In-chart sort/filter strips, group aggregation, small multiples. |
+| **WSU Lattice Scatter** | `com-wsu-lattice-scatter` | 1.1.3 | Course × term lattice with grade-letter or grade-point markers per student row. |
+| **WSU Glossary Pivot** | `com-wsu-glossary-pivot` | 0.20.7 | Pivot table with a glossary tooltip on headers. Rows, columns, and values; click-to-sort; totals with per-measure rules (sum, average, weighted, ratio, distinct, level); alignment, word-safe wrapping, and column/table widths; per-column data bars; show a measure as % of total; hide a field without dropping it from the query; rename a field, including a per-field `@parameter("Name")` or `@parameter("Name")('default')` display header. Number format groups thousands. Print PDF prints this table. Print Canvas prints every Glossary Pivot on the active canvas tab. Versioned on its own line, not with the 1.x plugins. |
 
 Source for each lives in `oac-sdk-dev/src/customviz/<root id>/`. Each has a
 reference spec in `docs/plugins/`.
@@ -29,6 +29,37 @@ want from the [Releases](../../releases) page, then:
 
 - **OAC:** Navigator → Console → Extensions → **Upload Extension** → choose the
   zip. Requires the BI Service Administrator role. Users reload their browser.
+
+> [!WARNING]
+> **On OAC, an upload does not reach everyone right away, and sometimes not at all.**
+>
+> Observed on the WSU dev tenant (2026-09 and 2026-10), more than once:
+>
+> - **Some browsers keep the old version or lose the extension.** One browser
+>   showed the new version while others showed **"Unable to display visualization"**
+>   or *"The extension … has been removed."* A refresh (F5) did not fix it. In the
+>   failing browsers the extension was **missing from Console → Extensions**.
+>   That list comes from the OAC server, so this is not browser cache.
+> - **Re-uploading the same zip fixed it** in Edge and Firefox. At other times it
+>   cleared up on its own after a while.
+> - **The likely cause is OAC's server instances.** Our guess, which Oracle has
+>   not confirmed, is that the tenant runs on several servers and an upload does
+>   not reach all of them at once. Each browser session stays on one server, so
+>   browsers can disagree.
+>
+> **After every upload:**
+>
+> 1. Open **Console → Extensions** in a **second browser** or a **private
+>    window**, and confirm every uploaded extension is listed.
+> 2. Open a workbook that uses each one, in more than one browser.
+> 3. If an extension is missing or any browser shows "Unable to display
+>    visualization", **upload the same zip again** and recheck. Wait a few
+>    minutes before deciding it failed.
+> 4. When uploading several extensions, check **each** one. On 2026-10-20 one
+>    of six landed while the other five stayed on their September versions.
+>
+> This is an Oracle platform problem worth raising with Oracle support. Until
+> it is fixed, plan production uploads for when users are out, and check them.
 - **OAD:** hamburger menu → Console → Extensions → **Upload Extension** →
   choose the zip → **restart OAD** (the extension registry is cached).
 
@@ -178,10 +209,12 @@ Everything known to need doing is on the
 items labeled [`needs OAC access`](../../issues?q=is%3Aopen+label%3A%22needs+OAC+access%22)
 are for people who can test on a live Oracle Analytics instance.
 
-**Versions in this folder** are the version column above. Network 1.2.2,
-Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, and Lattice Scatter 1.1.2 have been
-on `origin/main` since commit `2b42ee5` (2026-09-27). Glossary Pivot 0.20.4
-is commit `8da91ec`; 0.20.5 and 0.20.6 are commit `94f5141` on `origin/main`.
+**Versions in this folder** are the version column above. Network 1.2.3,
+Line 1.2.3, Sankey 1.1.3, Dumbbell 1.1.3, Lattice Scatter 1.1.3, and
+Glossary Pivot 0.20.7 share one "WSU" category and new icons; see
+`CHANGELOG.md` for their commit. Before that, Network 1.2.2, Line 1.2.2,
+Sankey 1.1.2, Dumbbell 1.1.2, and Lattice Scatter 1.1.2 were commit `2b42ee5`
+(2026-09-27), and Glossary Pivot 0.20.6 was commit `94f5141`.
 The newest git tag is **v1.1.1**, which is behind `main`: that tag
 is Network 1.1.1, Line 1.1.0, Sankey 1.0.1, Dumbbell 1.0.1, Lattice Scatter
 1.0.1, and it has no Glossary Pivot. Tag v1.1.0 is superseded. Do not deploy

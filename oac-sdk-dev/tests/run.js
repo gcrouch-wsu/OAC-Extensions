@@ -1630,6 +1630,33 @@ suite("WSU Glossary Pivot", function() {
     assert.strictEqual(first(rows[2]), "100");
   });
 
+  test("Hide Measure Row drops the repeated measure header only for one visible measure", function () {
+    function build(cfg) {
+      var viz = H.instance(mod, null, Object.assign({ showDescriptions: "on" }, cfg));
+      viz._glossary = mod._buildGlossary();
+      viz._glossary.mergeLive({
+        TERM: { text: "The term.", origin: "live" },
+        N: { text: "Students selected.", origin: "live" }
+      });
+      var html = viz._buildTable(scopedRatioLayout());
+      var thead = html.slice(html.indexOf("<thead>"), html.indexOf("</thead>"));
+      return { thead: thead, rows: thead.split("<tr>").length - 1 };
+    }
+    var one = { hiddenColumns: "Headcount; Selected Percentage" };
+    var off = build(one);
+    assert.strictEqual(off.rows, 2, "default keeps the measure row");
+    assert.ok(off.thead.indexOf(">Selected Count<") >= 0);
+    var on = build(Object.assign({ hideMeasureRow: "on" }, one));
+    assert.strictEqual(on.rows, 1, "one header row: College | Fall | Spring");
+    assert.strictEqual(on.thead.indexOf(">Selected Count<"), -1);
+    assert.ok(on.thead.indexOf(">Fall<") >= 0 && on.thead.indexOf(">College<") >= 0);
+    assert.ok(on.thead.indexOf("data-gp-key='N'") >= 0, "the measure description moves to the term headers");
+    assert.strictEqual(on.thead.indexOf("data-gp-key='TERM'"), -1);
+    assert.ok(on.thead.indexOf("data-gp-sort='col:0:0'") >= 0, "term headers still sort");
+    var two = build({ hideMeasureRow: "on", hiddenColumns: "Selected Percentage" });
+    assert.strictEqual(two.rows, 2, "two visible measures keep their row");
+  });
+
   test("data values in column headers omit the glossary unless the switch is on", function () {
     function build(cfg) {
       var viz = H.instance(mod, null, Object.assign({ showDescriptions: "on" }, cfg));

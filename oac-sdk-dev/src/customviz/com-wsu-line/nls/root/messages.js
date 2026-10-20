@@ -1,7 +1,7 @@
 define({
     "WSULINE_DISPLAY_NAME": "WSU Line",
     "WSULINE_SHORT_DISPLAY_NAME": "WSU Line",
-    "WSULINE_CATEGORY": "WSU",
+    "WSU_CATEGORY": "WSU",
     "WSULINE_MEASURE": "Value (Y-Axis)",
     "WSULINE_X": "Category (X-Axis)",
     "WSULINE_SERIES": "Series / Color",

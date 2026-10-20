@@ -11,12 +11,12 @@ Six Oracle Analytics custom visualization plugins, each a folder under
 
 | Plugin | Version | Where that version is |
 |---|---|---|
-| WSU Network | 1.2.2 | `main` |
-| WSU Line | 1.2.2 | `main` |
-| WSU Sankey | 1.1.2 | `main` |
-| WSU Dumbbell | 1.1.2 | `main` |
-| WSU Lattice Scatter | 1.1.2 | `main` |
-| WSU Glossary Pivot | 0.20.6 | `main` (`94f5141`); installed in OAC Dev |
+| WSU Network | 1.2.3 | `main`; installed in OAC Dev |
+| WSU Line | 1.2.3 | `main`; installed in OAC Dev |
+| WSU Sankey | 1.1.3 | `main`; installed in OAC Dev |
+| WSU Dumbbell | 1.1.3 | `main`; installed in OAC Dev |
+| WSU Lattice Scatter | 1.1.3 | `main`; installed in OAC Dev |
+| WSU Glossary Pivot | 0.20.7 | `main`; installed in OAC Dev |
 
 Glossary Pivot versions on its own line. Spec:
 `docs/plugins/project_spec_wsu_glossary_pivot.md`. The newest git tag is
@@ -54,6 +54,23 @@ explains the build/install cycle. A source edit is not in
   manifests, run `node tests/run.js` from `oac-sdk-dev/` (add a test for the
   defect you fixed), then `./build-sdk.ps1`. Host behavior can only be
   confirmed in OAD/OAC; say so if you could not.
+
+## WARNING: OAC extension uploads are slow and inconsistent
+
+An upload can take a long time to reach every browser, or not arrive at all.
+After uploading, one browser had the new version while Edge and Firefox showed
+"Unable to display visualization", and the extension was missing from their
+Console → Extensions list, which comes from the server. F5 did not help.
+Re-uploading the same zip fixed it. The likely cause is that OAC runs several
+server instances and an upload does not reach all of them; this is our
+inference, not confirmed by Oracle. On 2026-10-20, of six zips uploaded, only
+Glossary Pivot was live in Chrome; the other five still served their September
+builds.
+
+**Do not report an upload as done until you have verified it.** Check the
+served version, `fetch(require.s.contexts._.nameToUrl("<root>/<module>"))`
+and read `VERSION`, and the Extensions list in more than one browser or
+session. The full procedure is in README "Install a pre-built extension".
 
 ## Production host is Oracle Analytics Cloud
 

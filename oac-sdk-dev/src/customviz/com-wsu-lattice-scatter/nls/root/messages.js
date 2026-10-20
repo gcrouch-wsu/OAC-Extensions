@@ -1,7 +1,7 @@
 define({
     "WSULATTICE_DISPLAY_NAME": "WSU Lattice Scatter",
     "WSULATTICE_SHORT_DISPLAY_NAME": "WSU Lattice Scatter",
-    "WSULATTICE_CATEGORY": "WSU",
+    "WSU_CATEGORY": "WSU",
     "WSULATTICE_TERM": "Term (X Axis)",
     "WSULATTICE_COURSE": "Subject Catalog Number",
     "WSULATTICE_MEASURE": "Class Grade Points",
