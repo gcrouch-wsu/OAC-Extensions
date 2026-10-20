@@ -181,7 +181,7 @@ are for people who can test on a live Oracle Analytics instance.
 **Versions in this folder** are the version column above. Network 1.2.2,
 Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, and Lattice Scatter 1.1.2 have been
 on `origin/main` since commit `2b42ee5` (2026-09-27). Glossary Pivot 0.20.4
-is commit `8da91ec` on `origin/main`. Version 0.20.6 is the working tree.
+is commit `8da91ec`; 0.20.5 and 0.20.6 are commit `94f5141` on `origin/main`.
 The newest git tag is **v1.1.1**, which is behind `main`: that tag
 is Network 1.1.1, Line 1.1.0, Sankey 1.0.1, Dumbbell 1.0.1, Lattice Scatter
 1.0.1, and it has no Glossary Pivot. Tag v1.1.0 is superseded. Do not deploy

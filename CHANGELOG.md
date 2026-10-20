@@ -5,7 +5,7 @@ Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 source of truth — check them directly (`grep VERSION` in the plugin's own
 `.js` file) rather than trusting a number restated in prose here, including
 this one. As of 2026-10-15, `main` includes Network 1.2.2, Line 1.2.2, Sankey 1.1.2,
-Dumbbell 1.1.2, Lattice Scatter 1.1.2, and Glossary Pivot 0.20.6 in the working tree (0.20.4 is commit `8da91ec`;
+Dumbbell 1.1.2, Lattice Scatter 1.1.2, and Glossary Pivot 0.20.6 (commit `94f5141`; 0.20.4 is commit `8da91ec`;
 0.17.0 pushed 2026-09-29, commit `b7247e5`; 0.18.0 pushed 2026-09-29, commit
 `1f4367a`; 0.19.0 pushed, commit `d9d9fa4`). WSU Report Print has been removed; Glossary Pivot prints its own
 table and the canvas.
@@ -24,7 +24,7 @@ Glossary Pivot versions on its own line, not on the 1.x tags.
 
 ## 2026-10-20 — WSU Glossary Pivot 0.20.6 — level() inside ratio()
 
-Installed in OAC Dev. Not yet committed.
+Installed in OAC Dev. Commit `94f5141`.
 
 - `ratio(N, D)` accepts `level(A, B)` as N or D. That operand is the source total chosen for the scope, as the `level` rule chooses it, not a sum of cells. `% = ratio(level(College HC, Term HC), level(Term HC))` gives 307 / 4,163 = 7.4% on the Agri subtotal and 100% on the grand total. The workbook still has to supply the Term-and-College and Term distinct counts, and they can be hidden.
 - Arguments split on top-level commas only, so `level(A, B)` inside `ratio()` parses. An empty `level()` rejects the rule. A missing level measure blanks the total.
@@ -35,7 +35,7 @@ Installed in OAC Dev and verified there on 2026-10-20. That canvas now uses hidd
 
 ## 2026-10-20 — WSU Glossary Pivot 0.20.5 — scoped source totals and data-header glossary
 
-Installed in OAC Dev. Not yet committed.
+Installed in OAC Dev. Commit `94f5141`.
 
 - `NAME = level(Narrow, Wide)` uses the first listed measure that is the same number on every cell in that total. A college subtotal can use a Term-and-College source total, and the grand total can use the Term source total. The workbook still has to supply those aggregates. A missing listed measure blanks the total.
 - Tooltip: Glossary on Data Headers defaults to off. Column headers that show a data value, such as 2013 Fall, do not repeat the field description. Measure headers and row-field names still do. Turn the switch on to restore the repeated description.

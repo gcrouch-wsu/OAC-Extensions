@@ -13,7 +13,7 @@ WSU Glossary Pivot development without re-deriving design decisions.
 - **Short name**: WSU Glossary Pivot
 - **Category**: WSU
 - **Root id**: `com-wsu-glossary-pivot`
-- **Version constant**: `GlossaryPivotViz.VERSION = "0.20.6"` (see `CHANGELOG.md`; working tree, installed build on `main` is 0.20.4)
+- **Version constant**: `GlossaryPivotViz.VERSION = "0.20.6"` (see `CHANGELOG.md`; commit `94f5141`, installed in OAC Dev)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-glossary-pivot.zip`
 
