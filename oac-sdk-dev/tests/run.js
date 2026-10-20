@@ -1522,6 +1522,134 @@ suite("WSU Glossary Pivot", function() {
     assert.strictEqual(rules.PCT.kind, "ratio");
   });
 
+  function levelLayout() {
+    var n = [2, 5, 3], college = [7, 7, 3], term = [10, 10, 10];
+    var ids = ["H", "C", "T"], names = ["Headcount", "College Level", "Term Level"];
+    return {
+      getLayerCount: function (edge) { return edge === "row" ? 2 : (edge === "column" ? 1 : 0); },
+      getEdgeExtent: function (edge) { return edge === "row" ? 3 : (edge === "column" ? 3 : 0); },
+      getLayerMetadata: function (edge, layer, key) {
+        if (edge === "column") return key === "isMeasureLabels" ? true : (key === "id" ? "DM!MEASURE_DIMENSION" : "Measures");
+        if (key === "isMeasureLabels") return false;
+        if (key === "id") return layer ? "ETH" : "COLLEGE";
+        return layer ? "Ethnicity" : "College";
+      },
+      getValue: function (edge, a, b, raw) {
+        if (edge === "row") return a ? ["e1", "e2", "e1"][b] : ["Agri", "Agri", "Eng"][b];
+        if (edge === "column") return raw ? ids[b] : names[b];
+        if (edge === "data") {
+          var value = b === 0 ? n[a] : (b === 1 ? college[a] : term[a]);
+          return raw ? value : String(value);
+        }
+        return null;
+      },
+      getItemEndSlice: function (edge, layer, index) {
+        return edge === "row" && layer === 0 && index < 2 ? 1 : index;
+      }
+    };
+  }
+
+  test("level() uses the college total on a subtotal and the term total on the grand total", function () {
+    var rules = mod._parseTotalRules("Headcount = level(College Level, Term Level); Blank = level()");
+    assert.strictEqual(rules.HEADCOUNT.kind, "level");
+    assert.strictEqual(rules.HEADCOUNT.args.join("|"), "College Level|Term Level");
+    assert.strictEqual(rules.BLANK, undefined);
+    var ctx = {
+      num: function (r, cc) { return [[2, 7, 10], [5, 7, 10], [3, 3, 10]][r][cc]; },
+      sibling: function (cc, ref) { return ref === "College Level" ? 1 : (ref === "Term Level" ? 2 : null); }
+    };
+    var rule = { kind: "level", args: ["College Level", "Term Level"] };
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], rule, ctx), 7, "ethnicity rows in one college");
+    assert.strictEqual(mod._aggregateCells(0, 2, [0], rule, ctx), 10, "colleges differ, so the term total is used");
+    assert.strictEqual(mod._aggregateCells(0, 2, [0], { kind: "level", args: ["College Level"] }, ctx), null);
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], { kind: "level", args: ["Missing", "Term Level"] }, ctx), null, "a missing measure does not skip ahead");
+    var viz = H.instance(mod, null, {
+      showDescriptions: "off", showGrandTotalRow: "on", showRowSubtotals: "on",
+      hiddenColumns: "College Level; Term Level",
+      totalRules: "Headcount = level(College Level, Term Level)"
+    });
+    viz._glossary = mod._buildGlossary();
+    var html = viz._buildTable(levelLayout());
+    var rows = html.split("<tr class='gp-total-row'>").slice(1);
+    function first(row) {
+      var m = /<td class='gp-val gp-total-val(?: gp-grand-total-val)?'>([^<]*)<\/td>/.exec(row);
+      return m ? m[1] : "";
+    }
+    assert.strictEqual(first(rows[0]), "7");
+    assert.strictEqual(first(rows[1]), "3");
+    assert.strictEqual(first(rows[2]), "10");
+  });
+
+  test("ratio() takes level() operands for a distinct share on a subtotal", function () {
+    var rules = mod._parseTotalRules(
+      "Pct = ratio(level(College Level, Term Level), Term Level); " +
+      "Scaled = ratio(level(College Level, Term Level), level(Term Level), 100); " +
+      "Plain = ratio(Headcount, Term Level); Bad = ratio(level(), Term Level)");
+    assert.strictEqual(rules.PCT.kind, "ratio");
+    assert.strictEqual(rules.PCT.a.level.join("|"), "College Level|Term Level");
+    assert.strictEqual(rules.PCT.b, "Term Level");
+    assert.strictEqual(rules.SCALED.b.level.join("|"), "Term Level");
+    assert.strictEqual(rules.SCALED.scale, 100);
+    assert.strictEqual(rules.PLAIN.a, "Headcount");
+    assert.strictEqual(rules.BAD, undefined);
+    // cols: 0 Headcount, 1 College Level, 2 Term Level
+    var ctx = {
+      num: function (r, cc) { return [[2, 7, 10], [5, 7, 10], [3, 3, 10]][r][cc]; },
+      sibling: function (cc, ref) { return ref === "College Level" ? 1 : (ref === "Term Level" ? 2 : null); },
+      rule: function () { return null; }
+    };
+    // Level numerator over a level denominator: one college, then the grand total.
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], rules.SCALED, ctx), 70);
+    assert.strictEqual(mod._aggregateCells(0, 2, [0], rules.SCALED, ctx), 100);
+    // A level numerator over a plain denominator still sums the denominator.
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], rules.PCT, ctx), 7 / 20);
+    // A missing level measure blanks the ratio.
+    assert.strictEqual(mod._aggregateCells(0, 1, [0],
+      { kind: "ratio", a: { level: ["Missing"] }, b: "Term Level", scale: 1 }, ctx), null);
+    // Distinct guard still sees a plain operand; a level operand is not "distinct".
+    var dctx = Object.assign({}, ctx, { rule: function (ref) { return ref === "Term Level" ? "distinct" : null; } });
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], rules.PCT, dctx), null);
+    assert.strictEqual(mod._aggregateCells(0, 1, [0], rules.SCALED, dctx), 70);
+  });
+
+  test("ratio(level()) renders the college share on subtotals and 100% on the grand total", function () {
+    var viz = H.instance(mod, null, {
+      showDescriptions: "off", showGrandTotalRow: "on", showRowSubtotals: "on",
+      hiddenColumns: "College Level; Term Level",
+      totalRules: "Headcount = ratio(level(College Level, Term Level), level(Term Level), 100)"
+    });
+    viz._glossary = mod._buildGlossary();
+    var html = viz._buildTable(levelLayout());
+    var rows = html.split("<tr class='gp-total-row'>").slice(1);
+    function first(row) {
+      var m = /<td class='gp-val gp-total-val(?: gp-grand-total-val)?'>([^<]*)<\/td>/.exec(row);
+      return m ? m[1] : "";
+    }
+    assert.strictEqual(first(rows[0]), "70");
+    assert.strictEqual(first(rows[1]), "30");
+    assert.strictEqual(first(rows[2]), "100");
+  });
+
+  test("data values in column headers omit the glossary unless the switch is on", function () {
+    function build(cfg) {
+      var viz = H.instance(mod, null, Object.assign({ showDescriptions: "on" }, cfg));
+      viz._glossary = mod._buildGlossary();
+      viz._glossary.mergeLive({
+        TERM: { text: "This is the short description of the term.", origin: "live" },
+        COLLEGE: { text: "The college.", origin: "live" },
+        N: { text: "Students enrolled.", origin: "live" }
+      });
+      return viz._buildTable(scopedRatioLayout());
+    }
+    var off = build({});
+    assert.strictEqual(off.indexOf("data-gp-key='TERM'"), -1, "2013 Fall does not describe Term");
+    assert.ok(off.indexOf(">Fall<") >= 0);
+    assert.ok(off.indexOf("data-gp-key='N'") >= 0, "the Values header still describes the measure");
+    assert.ok(off.indexOf("data-gp-key='COLLEGE'") >= 0, "the row-field name still has a glossary");
+    var on = build({ glossaryDataHeaders: "on" });
+    assert.ok(on.indexOf("data-gp-key='TERM'") >= 0);
+  });
+
   function selectorHost(text) {
     return function (type, params) {
       assert.strictEqual(type, "getParameterValues");

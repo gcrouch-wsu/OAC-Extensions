@@ -5,10 +5,9 @@ Each plugin carries its own version in `<Viz>.VERSION` and in its spec under
 source of truth — check them directly (`grep VERSION` in the plugin's own
 `.js` file) rather than trusting a number restated in prose here, including
 this one. As of 2026-10-15, `main` includes Network 1.2.2, Line 1.2.2, Sankey 1.1.2,
-Dumbbell 1.1.2, Lattice Scatter 1.1.2, and Glossary Pivot 0.20.4 (0.17.0
-pushed 2026-09-29, commit `b7247e5`; 0.18.0 pushed 2026-09-29, commit
-`1f4367a`; 0.19.0 pushed, commit `d9d9fa4`; 0.20.0 through 0.20.4 are this
-commit). WSU Report Print has been removed; Glossary Pivot prints its own
+Dumbbell 1.1.2, Lattice Scatter 1.1.2, and Glossary Pivot 0.20.6 in the working tree (0.20.4 is commit `8da91ec`;
+0.17.0 pushed 2026-09-29, commit `b7247e5`; 0.18.0 pushed 2026-09-29, commit
+`1f4367a`; 0.19.0 pushed, commit `d9d9fa4`). WSU Report Print has been removed; Glossary Pivot prints its own
 table and the canvas.
 
 This file's own history below predates that sync — entries before 2026-09-27
@@ -22,6 +21,24 @@ or Glossary Pivot. Headings below that say "Unreleased" mean "no git tag".
 The 1.x commits they describe are on `main`.
 
 Glossary Pivot versions on its own line, not on the 1.x tags.
+
+## 2026-10-20 — WSU Glossary Pivot 0.20.6 — level() inside ratio()
+
+Installed in OAC Dev. Not yet committed.
+
+- `ratio(N, D)` accepts `level(A, B)` as N or D. That operand is the source total chosen for the scope, as the `level` rule chooses it, not a sum of cells. `% = ratio(level(College HC, Term HC), level(Term HC))` gives 307 / 4,163 = 7.4% on the Agri subtotal and 100% on the grand total. The workbook still has to supply the Term-and-College and Term distinct counts, and they can be hidden.
+- Arguments split on top-level commas only, so `level(A, B)` inside `ratio()` parses. An empty `level()` rejects the rule. A missing level measure blanks the total.
+
+Found on the "Data Checking - adding subtotal" canvas: the existing rules there (`ratio(Unique Headcount, College Share of Distinct Term Headcount)`) reduce to the term total on every scope, so each college subtotal read 4,163 / 100.0% against the regular pivot's 307 / 7.4%.
+
+Installed in OAC Dev and verified there on 2026-10-20. That canvas now uses hidden `College Distinct HC`, `Term Distinct HC`, and `Selected Distinct HC` (`AGGREGATE(Unique Headcount BY )`) with `Unique Headcount = level(College Distinct HC, Term Distinct HC)` and `% = ratio(level(College Distinct HC, Term Distinct HC), level(Selected Distinct HC))`. Every college subtotal and the grand total matched the standard pivot for 2013 Fall, and for 2013 Fall + 2014 Fall. A term-total denominator would only match with one term selected. `docs/guides/pivot-table-syntax.html` (renamed from `.HTML`) section 7 documents this setup.
+
+## 2026-10-20 — WSU Glossary Pivot 0.20.5 — scoped source totals and data-header glossary
+
+Installed in OAC Dev. Not yet committed.
+
+- `NAME = level(Narrow, Wide)` uses the first listed measure that is the same number on every cell in that total. A college subtotal can use a Term-and-College source total, and the grand total can use the Term source total. The workbook still has to supply those aggregates. A missing listed measure blanks the total.
+- Tooltip: Glossary on Data Headers defaults to off. Column headers that show a data value, such as 2013 Fall, do not repeat the field description. Measure headers and row-field names still do. Turn the switch on to restore the repeated description.
 
 ## 2026-10-15 — WSU Glossary Pivot 0.20.4 — safe rule matching and source-count ratios
 

@@ -16,7 +16,7 @@ Six Oracle Analytics custom visualization plugins, each a folder under
 | WSU Sankey | 1.1.2 | `main` |
 | WSU Dumbbell | 1.1.2 | `main` |
 | WSU Lattice Scatter | 1.1.2 | `main` |
-| WSU Glossary Pivot | 0.20.4 | `main` |
+| WSU Glossary Pivot | 0.20.6 | working tree; `origin/main` is 0.20.4 (`8da91ec`) |
 
 Glossary Pivot versions on its own line. Spec:
 `docs/plugins/project_spec_wsu_glossary_pivot.md`. The newest git tag is
@@ -30,6 +30,7 @@ explains the build/install cycle. A source edit is not in
 |---|---|
 | How OAC plugins work; host constraints; shared patterns | `docs/oac_design.md` |
 | One plugin's buckets, config keys, defaults, panel | `docs/plugins/project_spec_wsu_<plugin>.md` |
+| Glossary Pivot author-facing properties and calculation examples | `docs/guides/pivot-table-syntax.html` |
 | What changed, what is unverified | `CHANGELOG.md` (incl. "Known gaps") |
 | Synthetic test data + how to review the Network plugin | `examples/`, `docs/guides/instructions_math.md` |
 | Past reasoning (not current guidance) | `docs/history/` |
@@ -40,6 +41,7 @@ explains the build/install cycle. A source edit is not in
 - Never commit real student data or internal institutional exports
   (`SECURITY.md`). Only synthetic data belongs in `examples/`.
 - Keep changes scoped to one plugin unless the task says otherwise.
+- Keep `docs/guides/pivot-table-syntax.html` current when changing Glossary Pivot property labels, syntax, defaults, calculation behavior, or supported total scopes. Update its version/date and distinguish source checks from live workbook verification.
 - The spec in `docs/plugins/` is the contract. If you change behavior, change
   the spec in the same commit; if you change a default, note it in
   `CHANGELOG.md` because saved workbooks may be affected.

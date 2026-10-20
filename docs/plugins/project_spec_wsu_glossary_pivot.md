@@ -13,7 +13,7 @@ WSU Glossary Pivot development without re-deriving design decisions.
 - **Short name**: WSU Glossary Pivot
 - **Category**: WSU
 - **Root id**: `com-wsu-glossary-pivot`
-- **Version constant**: `GlossaryPivotViz.VERSION = "0.20.4"` (see `CHANGELOG.md`; on `main`, installed in OAC Dev, not a git tag)
+- **Version constant**: `GlossaryPivotViz.VERSION = "0.20.6"` (see `CHANGELOG.md`; working tree, installed build on `main` is 0.20.4)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-glossary-pivot.zip`
 
@@ -481,7 +481,7 @@ nothing.
 | `showRowSubtotals` | `"off"` | on / off — a subtotal under each outer row group. Does nothing with fewer than 2 Row fields |
 | `showGrandTotalColumn` | `"off"` | on / off — a column on the right, one total per measure, summing that row. Does nothing when the Columns edge has no layer |
 | `rowGroupCollapse` | `"off"` | on / off — collapse toggle on the outer row group. Does nothing with fewer than 2 Row fields |
-| `totalRules` | `""` | `NAME = rule; ...` — rule is `sum`, `avg`, `min`, `max`, `none`, `distinct`, `weighted(W)`, or `ratio(N, D[, scale])`. Unlisted measures sum |
+| `totalRules` | `""` | `NAME = rule; ...` — rule is `sum`, `avg`, `min`, `max`, `none`, `distinct`, `level(A, B, ...)`, `weighted(W)`, or `ratio(N, D[, scale])`. Unlisted measures sum |
 
 The three total switches are independent. All three can be on. The
 right-hand column is labeled **Grand Total Column** because it is a column;
@@ -509,7 +509,13 @@ ratio, or a GPA. Name the rule for those measures:
   denominator on the pivot. Example: `% Full-Time = weighted(Headcount)`.
 - `ratio(N, D)` — sum(N) / sum(D), times an optional third argument
   (`ratio(Full-Time, Headcount, 100)` for a column shown as 89.14). The
-  rate's own cells are not used.
+  rate's own cells are not used. Since 0.20.6, N or D may be
+  `level(A, B, ...)`: that operand is the scope's source total, chosen as
+  for the `level` rule, instead of a sum. A distinct share totals as
+  `% = ratio(level(College HC, Term HC), level(Term HC))`: the college
+  source total over the term source total on a college subtotal, and
+  100% on the grand total. Summing row shares cannot give that, because
+  students counted in two colleges overlap.
 - `avg` — the mean of the covered cells (the native report-based average).
   `min`, `max`, `none` (blank) are also accepted. Rule words and measure
   names are case-insensitive; names match like hide and rename.
@@ -547,7 +553,13 @@ A referenced measure must be in the query; it can be hidden with Header:
 Hidden Columns. A rule naming a measure that is not on the pivot leaves the
 total blank (never a wrong sum) and logs a warning. The same rule drives
 the grand total row, subtotals, collapsed-group rows, and the Grand Total
-Column (across a measure's columns). Checked against the data team's IPEDS
+Column (across a measure's columns). Since 0.20.5, `level(A, B, ...)`
+picks among those scopes. List the narrower source total first. The total
+uses the first listed measure that is one repeated number on every nonblank
+cell in that scope. A college subtotal can therefore read a Term-and-College
+aggregate while the grand total, where those college values differ, reads
+the Term aggregate. A listed measure that is not on the pivot blanks the
+total. When no listed measure is constant, the total is blank. Checked against the data team's IPEDS
 2026 Spring screenshot: weighted(Headcount) gives 86.29 for % Full-Time
 and 54.37 for % Female, matching the native pivot.
 
@@ -578,6 +590,7 @@ count. It does not also draw a subtotal.
 | `hoverColor` | `"#5e6a71"` | hex for the glossary header hover/focus fill; text color is picked for contrast; empty or invalid falls back to the gray |
 | `dataBars` | `""` | `NAME: #hex; NAME: #hex: 100%` — in-cell bar before the number on listed measures |
 | `showDescriptions` | `"on"` | on / off |
+| `glossaryDataHeaders` | `"off"` | on / off — since 0.20.5. Off withholds glossary tooltips from column headers that show a data value. Measure headers and row-field names are unchanged |
 | `showSourceBadges` | `"off"` | on / off — Live and Workbook override chips |
 | `showHeaderUnderline` | `"off"` | legacy since 0.19.0 — read only to migrate `on` into `tooltipIndicator: "underline"` |
 | `tooltipIndicator` | `"corner"` | corner / underline / icon / none — always-visible cue on headers that have a description. Corner: CSS triangle in the header's text color, no width. Icon: faint (i) after the label. Screen only |
@@ -758,7 +771,7 @@ same as Oracle's own samples (`TextToggleGadgetInfo`, `createGadgetInfo`).
 | `showGrandTotalRowGadget` | Totals: Grand Total Row | toggle |
 | `showRowSubtotalsGadget` | Totals: Row Subtotals (2+ Row layers) | toggle |
 | `showGrandTotalColumnGadget` | Totals: Grand Total Column | toggle |
-| `totalRulesGadget` | Totals: Measure Rules (name = sum \| avg \| distinct \| weighted(W) \| ratio(N, D) \| none; ...) | text |
+| `totalRulesGadget` | Totals: Measure Rules (name = sum \| avg \| distinct \| level(A, B) \| weighted(W) \| ratio(N, D) \| none; ...) | text |
 | `rowHeaderAlignGadget` / `rowHeaderVAlignGadget` | Layout: Row Header Align / Vertical | switcher |
 | `colHeaderAlignGadget` / `colHeaderVAlignGadget` | Layout: Column Header Align / Vertical | switcher |
 | `valueAlignGadget` / `valueVAlignGadget` | Layout: Value Align / Vertical | switcher |
@@ -775,6 +788,7 @@ same as Oracle's own samples (`TextToggleGadgetInfo`, `createGadgetInfo`).
 | `cellColorLowGadget` | Style: Cell Color Low (hex) | text |
 | `cellColorHighGadget` | Style: Cell Color High (hex) | text |
 | `showDescriptionsGadget` | Tooltip: Glossary Descriptions | toggle |
+| `glossaryDataHeadersGadget` | Tooltip: Glossary on Data Headers | toggle |
 | `tooltipIndicatorGadget` | Tooltip: Indicator (Corner mark / Underline / Info icon / None) | switcher |
 | `tooltipAlignGadget` | Tooltip: Text Align | switcher |
 | `showSourceBadgesGadget` | Tooltip: Source Badges (Live / Workbook) | toggle |

@@ -17,7 +17,7 @@ data, because that is what they were built to explain.
 | **WSU Line** | `com-wsu-line` | 1.2.2 | Multi-series line with a shared-X tooltip table (sortable, with vs-average / rank / year-over-year deltas), drag-to-zoom, header attribute chips, parameter-driven value labels. |
 | **WSU Dumbbell** | `com-wsu-dumbbell` | 1.1.2 | Paired before/after comparison from wide (two measures) or long (role column) data. In-chart sort/filter strips, group aggregation, small multiples. |
 | **WSU Lattice Scatter** | `com-wsu-lattice-scatter` | 1.1.2 | Course × term lattice with grade-letter or grade-point markers per student row. |
-| **WSU Glossary Pivot** | `com-wsu-glossary-pivot` | 0.20.4 | Pivot table with a glossary tooltip on headers. Rows, columns, and values; click-to-sort; totals with per-measure rules (sum, average, weighted, ratio, distinct); alignment, word-safe wrapping, and column/table widths; per-column data bars; show a measure as % of total; hide a field without dropping it from the query; rename a field, including a per-field `@parameter("Name")` or `@parameter("Name")('default')` display header. Number format groups thousands. Print PDF prints this table. Print Canvas prints every Glossary Pivot on the active canvas tab. Versioned on its own line, not with the 1.x plugins. |
+| **WSU Glossary Pivot** | `com-wsu-glossary-pivot` | 0.20.6 | Pivot table with a glossary tooltip on headers. Rows, columns, and values; click-to-sort; totals with per-measure rules (sum, average, weighted, ratio, distinct, level); alignment, word-safe wrapping, and column/table widths; per-column data bars; show a measure as % of total; hide a field without dropping it from the query; rename a field, including a per-field `@parameter("Name")` or `@parameter("Name")('default')` display header. Number format groups thousands. Print PDF prints this table. Print Canvas prints every Glossary Pivot on the active canvas tab. Versioned on its own line, not with the 1.x plugins. |
 
 Source for each lives in `oac-sdk-dev/src/customviz/<root id>/`. Each has a
 reference spec in `docs/plugins/`.
@@ -153,6 +153,7 @@ exactly, or the plugin uploads but never appears. `docs/oac_design.md` §3 and
 |---|---|
 | `docs/oac_design.md` | Understand how OAC custom viz plugins work, what the host does and doesn't allow, and the patterns these plugins share. Start here before writing code. |
 | `docs/plugins/project_spec_wsu_*.md` | Look up one plugin's buckets, config keys, defaults, precedence rules, and property panel. |
+| [Glossary Pivot properties and calculation syntax](docs/guides/pivot-table-syntax.html) | Copy workbook property syntax, choose calculation rules, and review the scoped distinct-headcount recipe. Keep this guide current as Glossary Pivot develops. |
 | `docs/guides/instructions_math.md` | Review the Network plugin against the synthetic dataset, step by step. |
 | `CHANGELOG.md` | See what changed per plugin. Open work is on the [issue tracker](../../issues). |
 | `docs/proposals/` | Read design work for a plugin that has **not** been built (Math Pathway Diagnostics). |
@@ -180,7 +181,7 @@ are for people who can test on a live Oracle Analytics instance.
 **Versions in this folder** are the version column above. Network 1.2.2,
 Line 1.2.2, Sankey 1.1.2, Dumbbell 1.1.2, and Lattice Scatter 1.1.2 have been
 on `origin/main` since commit `2b42ee5` (2026-09-27). Glossary Pivot 0.20.4
-is on `main` as of 2026-10-15 (0.19.0 was `d9d9fa4`).
+is commit `8da91ec` on `origin/main`. Version 0.20.6 is the working tree.
 The newest git tag is **v1.1.1**, which is behind `main`: that tag
 is Network 1.1.1, Line 1.1.0, Sankey 1.0.1, Dumbbell 1.0.1, Lattice Scatter
 1.0.1, and it has no Glossary Pivot. Tag v1.1.0 is superseded. Do not deploy

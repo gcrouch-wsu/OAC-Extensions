@@ -287,6 +287,14 @@
  *   rules. Rule calculations use original counts before share formatting,
  *   and an explicit rule takes precedence over the share total. Independent
  *   parameter-change payloads retain the other parameters' cached values.
+ * v0.20.5 — level(A, B) uses the first listed source total that is the same
+ *   on every cell in that total, so a college subtotal can use the college
+ *   total and the grand total can use the term total. Data values in column
+ *   headers do not show a glossary unless Tooltip: Glossary on Data Headers
+ *   is on. Measure headers and row-field names still do.
+ * v0.20.6 — ratio(N, D) accepts level(A, B) as N or D, so a distinct share
+ *   totals as the college source total over the term source total rather
+ *   than a sum of row shares.
  ******************************************************************************/
 
 define(['jquery',
@@ -372,7 +380,7 @@ define(['jquery',
       PRINT_MIXED_ORIENTATION: L("GLOSSARYPIVOT_LBL_PRINT_MIXED_ORIENTATION", "Tables use different page orientations; Print Canvas uses the orientation of the table whose button you clicked.")
    };
 
-   GlossaryPivotViz.VERSION = "0.20.4";
+   GlossaryPivotViz.VERSION = "0.20.6";
 
    /**
     * @constructor
@@ -447,6 +455,7 @@ define(['jquery',
          dataBars: "",                      // "NAME: #hex; NAME: #hex: 100%" — in-cell bar before the number
          // Tooltip
          showDescriptions: "on",            // on | off — glossary hover tooltips on headers
+         glossaryDataHeaders: "off",        // on | off — also describe column headers that show a data value (2013 Fall). Off keeps the glossary on measure headers and row-field names.
          showSourceBadges: "off",           // on | off — Live and Workbook override chips
          showHeaderUnderline: "off",        // legacy (read-only since 0.19.0) — "on" migrates to tooltipIndicator "underline"
          tooltipAlign: "left",              // left | center | right — text inside the tooltip, not the bubble's position
@@ -1112,17 +1121,47 @@ define(['jquery',
         distinct       a distinct count. One aggregated cell is already that
                        scope's count. Two or more cells are not added: the
                        layout has no entity ids, so overlap cannot be removed.
+        level(A, B)    the first listed measure that is one repeated number
+                       across this total. List the narrow source total first.
         weighted(W)    sum(value × W) / sum(W). With W the rate's denominator
                        this equals sum(numerator) / sum(denominator) and keeps
                        the column's own scale (89.14 or 0.8914).
         ratio(N, D)    sum(N) / sum(D), optionally × a third argument
-                       (ratio(Full-Time, Headcount, 100)).
+                       (ratio(Full-Time, Headcount, 100)). N or D may be
+                       level(A, B), which takes that operand from the source
+                       total instead of the sum: ratio(level(College HC,
+                       Term HC), Term HC) is 307 / 4,163 on a college total.
       W, N and D are other measures on the same pivot, matched like hide and
       rename. They can be hidden. The plugin only ever sees the rows on the
       canvas; this query does not request source totals or entity ids. A
       measure that is not in the query cannot be referenced; its total is blank
       rather than a wrong sum.
       ========================================================================= */
+   /* Top-level comma split, so ratio(level(A, B), C) has two arguments. */
+   function splitTopLevel(s) {
+      var parts = [], depth = 0, start = 0;
+      for (var i = 0; i < s.length; i++) {
+         var ch = s.charAt(i);
+         if (ch === "(") depth++;
+         else if (ch === ")") depth--;
+         else if (ch === "," && depth === 0) {
+            parts.push(s.slice(start, i).trim());
+            start = i + 1;
+         }
+      }
+      parts.push(s.slice(start).trim());
+      return parts;
+   }
+
+   /* A ratio operand: a measure name, or level(A, B) as { level: [A, B] }.
+      Null when level() lists nothing. */
+   function parseRatioOperand(s) {
+      var m = /^level\s*\((.*)\)$/i.exec(s);
+      if (!m) return s;
+      var args = m[1].split(",").map(function (a) { return a.trim(); }).filter(Boolean);
+      return args.length ? { level: args } : null;
+   }
+
    function parseTotalRules(str, rejected) {
       var out = Object.create(null);
       if (!str) return out;
@@ -1139,14 +1178,20 @@ define(['jquery',
          else if (/^max$/i.test(body)) rule = { kind: "max" };
          else if (/^(none|blank|off)$/i.test(body)) rule = { kind: "none" };
         else if (/^(distinct|countdistinct|count\s+distinct)$/i.test(body)) rule = { kind: "distinct" };
+         else if ((m = /^level\s*\((.+)\)$/i.exec(body))) {
+            var levelArgs = m[1].split(",").map(function (a) { return a.trim(); }).filter(Boolean);
+            if (levelArgs.length) rule = { kind: "level", args: levelArgs };
+         }
          else if ((m = /^weighted\s*\((.+)\)$/i.exec(body)) && m[1].trim()) {
             rule = { kind: "weighted", a: m[1].trim() };
          } else if ((m = /^ratio\s*\((.+)\)$/i.exec(body))) {
-            var args = m[1].split(",").map(function (a) { return a.trim(); });
+            var args = splitTopLevel(m[1]);
             var scale = args.length === 3 ? Number(args[2]) : 1;
-            if ((args.length === 2 || args.length === 3) && args[0] && args[1] &&
+            var opA = args[0] ? parseRatioOperand(args[0]) : null;
+            var opB = args[1] ? parseRatioOperand(args[1]) : null;
+            if ((args.length === 2 || args.length === 3) && opA && opB &&
                 isFinite(scale) && scale !== 0) {
-               rule = { kind: "ratio", a: args[0], b: args[1], scale: scale };
+               rule = { kind: "ratio", a: opA, b: opB, scale: scale };
             }
          }
          if (!name || !rule) {
@@ -1207,11 +1252,43 @@ define(['jquery',
     * ctx.sibling(cc, ref) is the data column of measure `ref` under the
     * same Columns members as cc (undefined when that measure is absent).
     */
+   /* level(narrow, wide): the first listed measure whose values are all
+      the same number in this scope. A college subtotal sees one college
+      total repeated on every ethnicity row; the grand total does not, so
+      it continues to the term total. A listed measure that is not on the
+      pivot blanks the total rather than skipping to a wider one. */
+   function levelValue(rStart, rEnd, cols, args, ctx) {
+      var ai, i, r, v, refs, missing, same, any, mixed;
+      if (!args || !cols) return null;
+      for (ai = 0; ai < args.length; ai++) {
+         refs = [];
+         missing = false;
+         for (i = 0; i < cols.length; i++) {
+            refs[i] = ctx.sibling(cols[i], args[ai]);
+            if (refs[i] == null) { missing = true; break; }
+         }
+         if (missing) return null;
+         same = null;
+         any = false;
+         mixed = false;
+         for (r = rStart; r <= rEnd && !mixed; r++) {
+            for (i = 0; i < cols.length; i++) {
+               v = ctx.num(r, refs[i]);
+               if (v == null) continue;
+               if (!any) { same = v; any = true; }
+               else if (v !== same) mixed = true;
+            }
+         }
+         if (any && !mixed) return same;
+      }
+      return null;
+   }
+
    function aggregateCells(rStart, rEnd, cols, rule, ctx) {
       var kind = rule ? rule.kind : "sum";
       if (kind === "none") return null;
       function refKind(refName) {
-         if (!ctx || typeof ctx.rule !== "function" || refName == null) return null;
+         if (!ctx || typeof ctx.rule !== "function" || typeof refName !== "string") return null;
          try { return ctx.rule(refName); } catch (e) { return null; }
       }
       /* Several distinct counts cannot be added. One cell is already the
@@ -1221,6 +1298,7 @@ define(['jquery',
          if (many) return null;
          return ctx.num(rStart, cols[0]);
       }
+      if (kind === "level") return levelValue(rStart, rEnd, cols, rule.args, ctx);
       if ((kind === "weighted" || kind === "ratio") && many &&
           (refKind(rule.a) === "distinct" || (kind === "ratio" && refKind(rule.b) === "distinct"))) {
          return null;
@@ -1228,18 +1306,31 @@ define(['jquery',
       var total = 0, count = 0, best = null, sw = 0, sn = 0, sd = 0, anyN = false, anyD = false;
       var i, r, cc, v, w;
       var refA = [], refB = [];
+      /* A level() operand is one value for the whole scope, not a sum. */
+      var levelA = kind === "ratio" && rule.a && rule.a.level;
+      var levelB = kind === "ratio" && rule.b && rule.b.level;
+      if (levelA) {
+         sn = levelValue(rStart, rEnd, cols, rule.a.level, ctx);
+         if (sn == null) return null;
+         anyN = true;
+      }
+      if (levelB) {
+         sd = levelValue(rStart, rEnd, cols, rule.b.level, ctx);
+         if (sd == null) return null;
+         anyD = true;
+      }
       if (kind === "weighted" || kind === "ratio") {
          for (i = 0; i < cols.length; i++) {
-            refA[i] = ctx.sibling(cols[i], rule.a);
-            if (kind === "ratio") refB[i] = ctx.sibling(cols[i], rule.b);
-            if (refA[i] == null || (kind === "ratio" && refB[i] == null)) return null;
+            if (!levelA) refA[i] = ctx.sibling(cols[i], rule.a);
+            if (kind === "ratio" && !levelB) refB[i] = ctx.sibling(cols[i], rule.b);
+            if ((!levelA && refA[i] == null) || (kind === "ratio" && !levelB && refB[i] == null)) return null;
          }
       }
       for (r = rStart; r <= rEnd; r++) {
          for (i = 0; i < cols.length; i++) {
             cc = cols[i];
             if (kind === "ratio") {
-               var nv = ctx.num(r, refA[i]), dv = ctx.num(r, refB[i]);
+               var nv = levelA ? null : ctx.num(r, refA[i]), dv = levelB ? null : ctx.num(r, refB[i]);
                if (nv != null) { sn += nv; anyN = true; }
                if (dv != null) { sd += dv; anyD = true; }
                continue;
@@ -3097,6 +3188,7 @@ define(['jquery',
          return mId === "__single__" ? null : lookupByName(totalRules, mId, measureNameById[mId]);
       }
       aggCtx.rule = function (ref) {
+         if (typeof ref !== "string") return null;   // a level() operand
          var mid = measureIdFor(ref);
          var rule = mid == null ? null : ruleFor(mid);
          return rule ? rule.kind : null;
@@ -3459,7 +3551,8 @@ define(['jquery',
                      Categorical cells show a VALUE (Fall 2024) that belongs
                      to the layer's column — the override does not rename the
                      member, and the glossary looks up the layer. */
-                  var lookup = isMeasureLayer ? label : (layerName ? layerName : label);
+                  var describeData = self.Config.glossaryDataHeaders === "on";
+                  var lookup = isMeasureLayer ? label : (describeData && layerName ? layerName : (describeData ? label : ""));
                   var shown = label == null ? "" : String(label);
                   var paintHex = self.Config.headerDataColor;
                   var tipTitle = layerName == null ? "" : String(layerName);
@@ -3467,6 +3560,9 @@ define(['jquery',
                      shown = resolveHeaderLabel(headerLabelMap, colId, shown, shown, headerParams);
                      paintHex = self.Config.headerColor;
                      tipTitle = shown;
+                  } else if (!describeData) {
+                     colId = null;
+                     tipTitle = "";
                   } else if (layerName) {
                      tipTitle = resolveHeaderLabel(headerLabelMap, colId, tipTitle, tipTitle, headerParams);
                   }
@@ -4112,7 +4208,7 @@ define(['jquery',
       addToggle(pGen, "showRowSubtotalsGadget", "Totals: Row Subtotals (2+ Row layers)", C.showRowSubtotals, nx());
       addToggle(pGen, "showGrandTotalColumnGadget", "Totals: Grand Total Column", C.showGrandTotalColumn, nx());
       addText(pGen, factory, "totalRulesGadget",
-         "Totals: Measure Rules (name = sum | avg | distinct | weighted(W) | ratio(N, D) | none; ...)", C.totalRules, nx());
+         "Totals: Measure Rules (name = sum | avg | distinct | level(A, B) | weighted(W) | ratio(N, D) | none; ...)", C.totalRules, nx());
       // Layout
       addSwitcher(pGen, "rowHeaderAlignGadget", "Layout: Row Header Align", C.rowHeaderAlign, hOpts, nx());
       addSwitcher(pGen, "rowHeaderVAlignGadget", "Layout: Row Header Vertical", C.rowHeaderVAlign, vOpts, nx());
@@ -4139,6 +4235,7 @@ define(['jquery',
       addText(pGen, factory, "cellColorHighGadget", "Style: Cell Color High (hex)", C.cellColorHigh, nx());
       // Tooltip (Underline Headers is now the Indicator's "Underline" choice)
       addToggle(pGen, "showDescriptionsGadget", "Tooltip: Glossary Descriptions", C.showDescriptions, nx());
+      addToggle(pGen, "glossaryDataHeadersGadget", "Tooltip: Glossary on Data Headers", C.glossaryDataHeaders, nx());
       addSwitcher(pGen, "tooltipIndicatorGadget", "Tooltip: Indicator", C.tooltipIndicator,
          [{ value: "corner", label: "Corner mark" }, { value: "underline", label: "Underline" },
           { value: "icon", label: "Info icon" }, { value: "none", label: "None" }], nx());
@@ -4198,6 +4295,7 @@ define(['jquery',
          headerColorGadget: "headerColor",
          headerDataColorGadget: "headerDataColor",
          showDescriptionsGadget: "showDescriptions",
+         glossaryDataHeadersGadget: "glossaryDataHeaders",
          showSourceBadgesGadget: "showSourceBadges",
          tooltipIndicatorGadget: "tooltipIndicator",
          tooltipAlignGadget: "tooltipAlign",
@@ -4214,6 +4312,7 @@ define(['jquery',
       var TOGGLE_GADGETS = {
          showGrandTotalRowGadget: 1, showRowSubtotalsGadget: 1, showGrandTotalColumnGadget: 1,
          rowGroupCollapseGadget: 1, cellColorGadget: 1, showDescriptionsGadget: 1,
+         glossaryDataHeadersGadget: 1,
          showSourceBadgesGadget: 1,
          printFollowThemeGadget: 1, debugLogMetadataGadget: 1
       };

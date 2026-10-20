@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="WSU Glossary Pivot properties, calculation syntax, worked examples, and distinct-headcount totals.">
+<title>Glossary Pivot | Properties and calculation syntax</title>
+<style>
+:root{--crimson:#981e32;--ink:#24272b;--muted:#5c6269;--line:#d9dde1;--paper:#fff;--wash:#f5f6f7;--note:#eef4fa;--caution:#fff7e6;--radius:8px}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}a{color:#852034;text-underline-offset:3px}a:hover{color:#4e101c}a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid #216d9b;outline-offset:4px}header{border-top:8px solid var(--crimson);border-bottom:1px solid var(--line);padding:38px max(24px,calc((100vw - 1200px)/2)) 30px;background:var(--wash)}.eyebrow{margin:0 0 8px;color:var(--crimson);font-weight:700;letter-spacing:.07em;font-size:.8rem;text-transform:uppercase}h1{font-size:clamp(1.9rem,4vw,3rem);line-height:1.15;letter-spacing:-.035em;margin:0 0 15px;max-width:850px}.intro{max-width:850px;margin:0 0 18px;color:var(--muted);font-size:1.08rem}.meta{display:flex;gap:8px;flex-wrap:wrap}.meta span{border:1px solid var(--line);background:white;padding:3px 10px;border-radius:4px;font-size:.82rem}.shell{max-width:1248px;margin:auto;display:grid;grid-template-columns:235px minmax(0,1fr);gap:42px;padding:32px 24px 70px}nav{position:sticky;top:24px;align-self:start;font-size:.9rem}nav p{font-weight:700;margin:0 0 10px}nav a{display:block;padding:6px 0;text-decoration:none;color:var(--muted)}nav a:hover{text-decoration:underline;color:var(--crimson)}main{min-width:0}section{margin:0 0 46px}h2{font-size:1.6rem;line-height:1.25;letter-spacing:-.02em;margin:0 0 16px;padding-top:4px}h3{font-size:1.12rem;line-height:1.4;margin:28px 0 10px}p{margin:0 0 14px}ul,ol{padding-left:24px;margin:12px 0 18px}li{margin:6px 0}.note,.caution{padding:16px 18px;border-left:4px solid #3d6d91;background:var(--note);margin:18px 0;border-radius:0 var(--radius) var(--radius) 0}.caution{background:var(--caution);border-color:#a56b06}.note p:last-child,.caution p:last-child{margin:0}.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);margin:16px 0 22px}table{width:100%;border-collapse:collapse;font-size:.9rem}caption{text-align:left;font-weight:700;padding:12px;background:var(--wash)}th,td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid var(--line)}thead th{background:var(--wash);font-weight:650}tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}tbody th{font-weight:600;width:29%}code{font-family:Consolas,"SFMono-Regular",monospace;font-size:.88em;overflow-wrap:anywhere;background:#f0f1f3;border-radius:3px;padding:2px 4px}pre{position:relative;background:#f5f6f8;border:1px solid var(--line);border-left:3px solid var(--crimson);border-radius:4px;padding:18px;overflow:auto;margin:10px 0 14px;line-height:1.55;tab-size:2}pre code{font-size:.83rem;background:none;padding:0;overflow-wrap:normal;white-space:pre}.where{font-size:.83rem;color:var(--muted);margin:20px 0 4px}.where strong{color:var(--ink)}.copy{display:block;margin:-6px 0 20px auto;padding:5px 12px;color:var(--crimson);background:white;border:1px solid var(--line);border-radius:4px;font:inherit;font-size:.8rem;cursor:pointer}.small{font-size:.87rem;color:var(--muted)}details{border-top:1px solid var(--line);padding:12px 0}summary{font-weight:650;cursor:pointer}.rule{font-weight:650;color:var(--crimson)}.skip{position:absolute;left:12px;top:-80px;background:white;padding:10px;z-index:3}.skip:focus{top:12px}footer{border-top:1px solid var(--line);padding-top:20px;color:var(--muted);font-size:.85rem}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(max-width:820px){.shell{grid-template-columns:1fr;gap:24px}nav{position:static;border-bottom:1px solid var(--line);padding-bottom:20px;columns:2}nav p{column-span:all}header{padding:28px 24px}tbody th{width:35%}}@media(max-width:480px){nav{columns:1}th,td{padding:9px}.shell{padding:24px 16px}header{padding:24px 16px}}@media print{html{scroll-behavior:auto}body{font-size:10pt}header{padding:15px 0;background:white}.shell{display:block;padding:20px 0}nav,.copy,.skip{display:none}section{margin-bottom:24px}h2,h3,.where{break-after:avoid}pre,.note,.caution,tr{break-inside:avoid}pre code{white-space:pre-wrap;overflow-wrap:anywhere}.table-wrap{overflow:visible}a{color:inherit}details{display:block}details>summary{list-style:none}details>*{display:block!important}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to guide</a>
+<header>
+<p class="eyebrow">WSU Glossary Pivot · Author reference</p>
+<h1>Properties and calculation syntax</h1>
+<p class="intro">Use this guide when building a Glossary Pivot workbook. Find the property, copy its syntax, and check that the calculation uses the population you intend.</p>
+<div class="meta"><span>Extension reference: 0.20.6</span><span>Guide revision: 2026-10-20</span><span>Live distinct-total example verified: 2026-10-20</span></div>
+</header>
+<div class="shell">
+<nav aria-label="Guide sections">
+<p>On this page</p>
+<a href="#start">1. Where to enter settings</a>
+<a href="#syntax">2. Syntax at a glance</a>
+<a href="#properties">3. Properties page reference</a>
+<a href="#format">4. Number formats</a>
+<a href="#totals">5. Total calculations</a>
+<a href="#shares">6. Percentage of total</a>
+<a href="#distinct">7. Overlapping distinct counts</a>
+<a href="#labels">8. Labels and parameters</a>
+<a href="#appearance">9. Widths and data bars</a>
+<a href="#troubleshooting">10. Troubleshooting</a>
+<a href="#maintenance">11. Updates and verification</a>
+</nav>
+<main id="main">
+<section id="start">
+<h2>1. Where to enter settings</h2>
+<ol>
+<li>Open the workbook in <strong>Edit</strong> mode and select the <strong>WSU Glossary Pivot</strong>.</li>
+<li>Use <strong>Grammar</strong> to place fields in <strong>Rows</strong>, <strong>Columns</strong>, and <strong>Values</strong>. Put any helper measures in Values too.</li>
+<li>Open <strong>Properties → General</strong>. Scroll below the standard Oracle properties to find the extension controls, starting with <strong>Format:</strong>.</li>
+<li>Enter an example in the property named above it. Leave the field or press Tab to apply it. Compare the result before saving.</li>
+</ol>
+<div class="note"><p><strong>There are two places to calculate.</strong> Create a workbook calculation in Oracle's calculation editor to produce a measure for every data cell. Use <strong>Totals: Measure Rules</strong> to tell the extension how to summarize measures already in its query. A total rule does not create a calculated field or change the source measure.</p></div>
+<p>The standard Oracle pivot has its own <strong>Display as: Percent Of</strong> control. Glossary Pivot does not inherit that setting. Its <strong>Values: Show as % of Total</strong> property is a separate calculation.</p>
+</section>
+<section id="syntax">
+<h2>2. Syntax at a glance</h2>
+<div class="table-wrap"><table>
+<thead><tr><th scope="col">Property</th><th scope="col">Pattern</th><th scope="col">Example</th></tr></thead>
+<tbody>
+<tr><th scope="row">Format: Per-Measure Override</th><td><code>NAME:format:decimals</code></td><td><code>Headcount:number:0; Rate:percent:1</code></td></tr>
+<tr><th scope="row">Values: Show as % of Total</th><td><code>NAME</code> or <code>NAME: by ROW_FIELD</code></td><td><code>Headcount Share: by College</code></td></tr>
+<tr><th scope="row">Header: Display Label</th><td><code>NAME:label</code></td><td><code>Plan Owner Academic Group Desc:College</code></td></tr>
+<tr><th scope="row">Header: Hidden Columns</th><td><code>NAME; NAME</code></td><td><code>Weight; Reporting Sequence</code></td></tr>
+<tr><th scope="row">Totals: Measure Rules</th><td><code>NAME = rule</code></td><td><code>Rate = ratio(Selected Count, Headcount)</code></td></tr>
+<tr><th scope="row">Layout: Column Widths</th><td><code>NAME:pixel_width</code></td><td><code>College:260; Headcount:100</code></td></tr>
+<tr><th scope="row">Style: Data Bars</th><td><code>NAME: #hex[: 100%]</code></td><td><code>Rate: #981e32: 100%</code></td></tr>
+</tbody></table></div>
+<ul>
+<li>Use a <strong>semicolon</strong> between entries. A trailing semicolon is allowed.</li>
+<li>Use the measure or field's <strong>original name or stable ID</strong>. Matching ignores case. Changing a displayed label does not rename the measure for calculations.</li>
+<li>Spaces in a name are allowed. In extension properties, enter <code>Unique Headcount</code> without surrounding quotes. Oracle calculation formulas use their own quoted field references.</li>
+<li>Referenced measures must be in <strong>Values</strong>. Hide helper measures with <strong>Header: Hidden Columns</strong>; removing them from Values removes them from the query.</li>
+<li>These text boxes are small configuration languages. Do not enter Excel formulas, JavaScript, or arbitrary SQL in them. Names containing the syntax delimiters need special care; no general quoting/escaping syntax is provided.</li>
+</ul>
+</section>
+<section id="properties">
+<h2>3. Properties page reference</h2>
+<p>The labels below follow the current General panel. Defaults describe a new visualization; a saved workbook can retain different settings.</p>
+<div class="table-wrap"><table>
+<caption>Format, values, headers, rows, and totals</caption>
+<thead><tr><th scope="col">Property</th><th scope="col">What it controls</th><th scope="col">Default / choices</th></tr></thead>
+<tbody>
+<tr><th scope="row">Format: Number Format</th><td>Format for measures without an override.</td><td>Auto; Number; Percent (×100); Currency (USD); Compact (K/M/B).</td></tr>
+<tr><th scope="row">Format: Decimal Places</th><td>Decimals for extension-formatted numbers.</td><td>Auto, or 0–4.</td></tr>
+<tr><th scope="row">Format: Per-Measure Override</th><td>Set a separate format and decimal count for each named measure.</td><td>Blank. <code>NAME:format:decimals; ...</code></td></tr>
+<tr><th scope="row">Values: Show as % of Total</th><td>Convert named measures to shares of the sums of queried cells.</td><td>Blank. <code>NAME[: by ROW_FIELD]; ...</code></td></tr>
+<tr><th scope="row">Header: Display Label</th><td>Change a field title; optionally use parameter text. Member values stay unchanged.</td><td>Blank. <code>NAME:label; ...</code></td></tr>
+<tr><th scope="row">Header: Hidden Columns</th><td>Hide a field or measure while retaining it in the query. Hiding a grouping field does not remove its grouping.</td><td>Blank. <code>NAME; NAME; ...</code></td></tr>
+<tr><th scope="row">Rows: Group Collapse (2+ Row layers)</th><td>Collapse an outer row group into a summary using its total rules.</td><td>Off. Needs at least two Rows fields.</td></tr>
+<tr><th scope="row">Totals: Grand Total Row</th><td>Show a total below the table for each measure/column combination.</td><td>Off.</td></tr>
+<tr><th scope="row">Totals: Row Subtotals (2+ Row layers)</th><td>Show a subtotal below each outer row group.</td><td>Off. Needs at least two Rows fields.</td></tr>
+<tr><th scope="row">Totals: Grand Total Column</th><td>Show totals across the column members, separately for each measure.</td><td>Off. Requires a Columns layer.</td></tr>
+<tr><th scope="row">Totals: Measure Rules</th><td>Choose how each measure totals. Used for total rows, subtotal rows, collapsed groups, and total columns.</td><td>Blank. Unlisted measures normally sum.</td></tr>
+</tbody></table></div>
+<div class="table-wrap"><table>
+<caption>Layout</caption>
+<thead><tr><th scope="col">Property</th><th scope="col">What it controls</th><th scope="col">Default / choices</th></tr></thead>
+<tbody>
+<tr><th scope="row">Layout: Row Header Align</th><td>Horizontal alignment of row labels and corner titles.</td><td>Left; Center; Right.</td></tr>
+<tr><th scope="row">Layout: Row Header Vertical</th><td>Vertical alignment of row headers.</td><td>Middle; Top; Bottom.</td></tr>
+<tr><th scope="row">Layout: Column Header Align</th><td>Horizontal alignment of column headers.</td><td>Center; Left; Right.</td></tr>
+<tr><th scope="row">Layout: Column Header Vertical</th><td>Vertical alignment of column headers.</td><td>Middle; Top; Bottom.</td></tr>
+<tr><th scope="row">Layout: Value Align</th><td>Horizontal alignment of values and totals.</td><td>Right; Left; Center.</td></tr>
+<tr><th scope="row">Layout: Value Vertical</th><td>Vertical alignment of values and totals.</td><td>Middle; Top; Bottom.</td></tr>
+<tr><th scope="row">Layout: Wrap Text</th><td>Wrap at spaces while keeping words intact.</td><td>Off; Headers; Rows and values; All.</td></tr>
+<tr><th scope="row">Layout: Value Column Width</th><td>Width in pixels for value columns without a named override.</td><td>Blank = automatic. Accepts 20–4000.</td></tr>
+<tr><th scope="row">Layout: Column Widths</th><td>Named widths for measures or Rows fields; overrides the general value width.</td><td>Blank. <code>NAME: px; ...</code></td></tr>
+<tr><th scope="row">Layout: Table Width</th><td>How the table occupies its visualization tile.</td><td>Fill tile; Fit content; Fixed (px below).</td></tr>
+<tr><th scope="row">Layout: Fixed Table Width</th><td>Width used when Table Width is Fixed.</td><td>Blank. Accepts 20–4000 pixels; invalid/blank falls back to Fill tile.</td></tr>
+</tbody></table></div>
+<div class="table-wrap"><table>
+<caption>Style and glossary</caption>
+<thead><tr><th scope="col">Property</th><th scope="col">What it controls</th><th scope="col">Default / choices</th></tr></thead>
+<tbody>
+<tr><th scope="row">Style: Header Color</th><td>Background for field-name headers, including measure names.</td><td>Blank uses the stylesheet. Example: <code>#981e32</code>.</td></tr>
+<tr><th scope="row">Style: Header Data Color</th><td>Background for member headers such as “2013 Fall.”</td><td>Blank uses the stylesheet.</td></tr>
+<tr><th scope="row">Style: Glossary Hover Color</th><td>Background when a glossary header is hovered or focused.</td><td><code>#5e6a71</code>. Text contrast is chosen automatically.</td></tr>
+<tr><th scope="row">Style: Data Bars</th><td>Bars behind the values of named measures.</td><td>Blank. <code>NAME: #hex[: 100%]; ...</code></td></tr>
+<tr><th scope="row">Style: Cell Color (heat map)</th><td>Color numeric cells using each measure's own range.</td><td>Off. Hidden measure columns and total cells do not set the range.</td></tr>
+<tr><th scope="row">Style: Cell Color Low</th><td>Color at the low end of the range.</td><td><code>#eff6ff</code>.</td></tr>
+<tr><th scope="row">Style: Cell Color High</th><td>Color at the high end of the range.</td><td><code>#1e3a8a</code>.</td></tr>
+<tr><th scope="row">Tooltip: Glossary Descriptions</th><td>Enable descriptions on eligible headers. Workbook descriptions take precedence over live source descriptions.</td><td>On. A field with no description has no glossary tooltip.</td></tr>
+<tr><th scope="row">Tooltip: Glossary on Data Headers</th><td>Also show a field's description on column headers that display a data value, such as 2013 Fall.</td><td>Off. Measure headers and row-field names still show their own descriptions.</td></tr>
+<tr><th scope="row">Tooltip: Indicator</th><td>Visible cue that a header has a description.</td><td>Corner mark; Underline; Info icon; None. None hides the cue, not the tooltip.</td></tr>
+<tr><th scope="row">Tooltip: Text Align</th><td>Text alignment inside the glossary bubble.</td><td>Left; Center; Right.</td></tr>
+<tr><th scope="row">Tooltip: Source Badges (Live / Workbook)</th><td>Show where the description came from.</td><td>Off.</td></tr>
+</tbody></table></div>
+<div class="note"><p><strong>Data headers.</strong> With Glossary on Data Headers off, 2013 Fall does not show the Term description. Headcount still shows the measure description, and College or Ethnicity in the corner still show their field description when the field has one. Turn the switch on to repeat the field description on each data value.</p>
+<p>A measure header keeps its description even when Header: Display Label shortens it. A column renamed to <strong>%</strong> is still a Values header, so it shows the description of the measure behind it. To remove that tooltip, clear the measure's description.</p></div>
+<div class="table-wrap"><table>
+<caption>Print and diagnostics</caption>
+<thead><tr><th scope="col">Property</th><th scope="col">What it controls</th><th scope="col">Default / choices</th></tr></thead>
+<tbody>
+<tr><th scope="row">Print: Buttons</th><td>Show Print PDF for this table and/or Print Canvas for Glossary Pivots on the active canvas. Enable Print Canvas on one table per canvas.</td><td>None; Print PDF; Print Canvas; Both.</td></tr>
+<tr><th scope="row">Print: Page Orientation</th><td>Page direction for generated print content.</td><td>Landscape; Portrait.</td></tr>
+<tr><th scope="row">Print: Margins</th><td>Margins on each page.</td><td>Normal (0.5 in); Narrow (0.25 in); Wide (1 in).</td></tr>
+<tr><th scope="row">Print: Table Width</th><td>Fit to page margins or keep content width.</td><td>To margins; To content.</td></tr>
+<tr><th scope="row">Print: Canvas Page Breaks</th><td>Start each table on a new page or pack tables together.</td><td>One page per report; Minimize blank space.</td></tr>
+<tr><th scope="row">Print: Follow Theme</th><td>Use the host accent color for the print buttons.</td><td>On.</td></tr>
+<tr><th scope="row">Debug: Log Column Metadata (Console)</th><td>Log metadata IDs and description origins for diagnosis.</td><td>Off. Does not log cell values.</td></tr>
+</tbody></table></div>
+<p class="small">Oracle also supplies Title, Tooltip, Visibility, theme/style, Size and Position, and Filters controls. Those are host properties. Available controls and whether size fields are editable depend on the canvas layout and OAC version.</p>
+</section>
+<section id="format">
+<h2>4. Number formats</h2>
+<p class="where">Enter in <strong>Format: Per-Measure Override (id:format:decimals; ...)</strong></p>
+<pre data-syntax="format"><code>Headcount:number:0;
+Rate:percent:1;
+Average GPA:number:2;
+Amount:currency:2;
+Volume:compact:1</code></pre>
+<p>Use <code>auto</code>, <code>number</code>, <code>percent</code>, <code>currency</code>, or <code>compact</code>. Decimal places can be <code>auto</code> or <code>0</code> through <code>4</code>. A per-measure setting takes precedence over the table's Number Format and Decimal Places settings.</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Raw value</th><th scope="col">Format</th><th scope="col">Displayed result</th></tr></thead><tbody>
+<tr><td>0.375</td><td><code>Rate:percent:1</code></td><td>37.5%</td></tr>
+<tr><td>37.5</td><td><code>Rate:number:1</code></td><td>37.5</td></tr>
+<tr><td>37.5</td><td><code>Rate:percent:1</code></td><td>3750.0% — the value is multiplied by 100 again. Do not use this combination for a rate already scaled to 100.</td></tr>
+</tbody></table></div>
+<p><strong>Auto</strong> preserves OAC's formatted cell text. Explicit formats use the numeric value. A format changes presentation; it does not choose a denominator or fix an incorrect total.</p>
+</section>
+<section id="totals">
+<h2>5. Total calculations</h2>
+<p class="where">Enter in <strong>Totals: Measure Rules (name = sum | avg | distinct | level(A, B) | weighted(W) | ratio(N, D) | none; ...)</strong></p>
+<pre data-syntax="totals"><code>Amount = sum;
+Average Score = avg;
+Lowest Score = min;
+Highest Score = max;
+Rate = ratio(Selected Count, Headcount);
+Average GPA = weighted(Graded Credits);
+Do Not Total = none</code></pre>
+<div class="table-wrap"><table><thead><tr><th scope="col">Rule</th><th scope="col">Calculation</th><th scope="col">When to use it</th></tr></thead><tbody>
+<tr><th scope="row"><code>sum</code></th><td>Add the nonblank source cells.</td><td>Additive amounts or counts from disjoint populations.</td></tr>
+<tr><th scope="row"><code>avg</code></th><td>Arithmetic mean of the nonblank source cells.</td><td>Each displayed cell should have equal weight. It does not recover a student-level average from unequal groups.</td></tr>
+<tr><th scope="row"><code>min</code> / <code>max</code></th><td>Smallest / largest source cell.</td><td>Extremes of the values received by the visualization.</td></tr>
+<tr><th scope="row"><code>none</code></th><td>Leave the total blank.</td><td>The total has no useful or supported meaning.</td></tr>
+<tr><th scope="row"><code>weighted(W)</code></th><td>Σ(value × weight) ÷ Σ(weight).</td><td>Averages or rates when the correct weight is available in Values.</td></tr>
+<tr><th scope="row"><code>ratio(N, D[, scale])</code></th><td>Σ(numerator) ÷ Σ(denominator), multiplied by an optional scale (default 1). Since 0.20.6, N or D can be <code>level(A, B)</code>; that side uses the source total chosen for the scope instead of a sum.</td><td>A total rate from compatible numerator and denominator measures. Use a <code>level</code> side when the numerator or denominator is a distinct count (section 7).</td></tr>
+<tr><th scope="row"><code>distinct</code></th><td>Keep a single aggregated cell; leave a multi-cell total blank.</td><td>Prevent an unsupported sum of overlapping distinct counts. This rule does not deduplicate students.</td></tr>
+<tr><th scope="row"><code>level(A, B)</code></th><td>Use the first listed measure that is the same number on every cell in that total. A listed measure missing from Values blanks the total.</td><td>A college subtotal and the grand total need different source totals. List the narrower total first.</td></tr>
+</tbody></table></div>
+<p class="where">Source totals, including inside <code>ratio</code></p>
+<pre data-syntax="totals"><code>Unique Headcount = level(College Distinct HC, Term Distinct HC);
+Share = ratio(level(College Distinct HC, Term Distinct HC), level(Selected Distinct HC))</code></pre>
+<p>On a college subtotal, the first line shows the college's own distinct count. On the grand total it shows the term's distinct count. The second line divides that same number by the distinct count for the whole selection. Section 7 gives the full workbook setup.</p>
+<h3>A rate from numerator and denominator</h3>
+<p>Suppose two disjoint groups contain 10 of 20 and 90 of 100 selected students. Their percentages are 50% and 90%. The combined rate is <strong>100 ÷ 120 = 83.3%</strong>. Adding the percentages gives 140%; their simple average gives 70%. Neither is the combined rate.</p>
+<p class="where">Total rule, for a measure named <strong>Rate</strong></p>
+<pre data-syntax="totals"><code>Rate = ratio(Selected Count, Headcount)</code></pre>
+<p class="where">Format for a fraction such as <strong>0.8333</strong></p>
+<pre data-syntax="format"><code>Rate:percent:1</code></pre>
+<p>If detail Rate values are already on a 0–100 scale, keep the total on that scale:</p>
+<pre data-syntax="totals"><code>Rate = ratio(Selected Count, Headcount, 100)</code></pre>
+<pre data-syntax="format"><code>Rate:number:1</code></pre>
+<p class="small">The last format displays 83.3 without adding a percent sign. Prefer a 0–1 source rate with Percent format when you want 83.3%.</p>
+<h3>A weighted average</h3>
+<p>With GPAs 3.0 and 4.0 and corresponding graded credits 10 and 30, the weighted average is <strong>(3.0 × 10 + 4.0 × 30) ÷ 40 = 3.75</strong>. The unweighted average would be 3.50.</p>
+<pre data-syntax="totals"><code>Average GPA = weighted(Graded Credits)</code></pre>
+<pre data-syntax="hidden"><code>Graded Credits</code></pre>
+<p>Enter the second line in <strong>Header: Hidden Columns</strong> if the weight should stay out of view. Keep Graded Credits in Values. Its population and grain must match the GPA measure.</p>
+<div class="caution"><p><strong>Read this before using a total rule.</strong> Totals normally summarize source cells returned to this visualization. They do not rerun the source measure at a broader population automatically. A ratio of sums is valid only when its inputs can be combined that way. A referenced measure marked <code>distinct</code> causes a dependent ratio or weighted total to stay blank over multiple cells; a <code>level(...)</code> side of a ratio is not affected. Explicit rules read original values before the extension's percentage-of-total transformation.</p></div>
+<p>Blank cells are skipped. A zero divisor or missing referenced measure produces a blank result. Unlisted measures normally sum. With configured rules, measures whose identity cannot be resolved safely can also have blank totals.</p>
+</section>
+<section id="shares">
+<h2>6. Percentage of total</h2>
+<p>Use this when you want each cell's share of an <strong>additive sum</strong>. Create a calculated copy of a count first if the table should show both the count and its percentage.</p>
+<p class="where">Enter in <strong>Values: Show as % of Total (name[: by field]; ...)</strong></p>
+<pre data-syntax="shares"><code>Headcount Share</code></pre>
+<p>This divides each Headcount Share cell by the sum of that measure's cells in the same data column. Separate Term columns get separate denominators. This differs from the standard pivot's <strong>Percent Of All Values</strong> when several terms are selected.</p>
+<p class="where">Share within a row group</p>
+<pre data-syntax="shares"><code>Headcount Share: by College</code></pre>
+<p>For example, with College then Ethnicity in Rows, each ethnicity becomes a share of its college. <strong>College must be a Rows field.</strong> The group also includes any Rows fields above College. A Columns-only field is not a valid <code>by</code> grouping for this property.</p>
+<p>Measures shown as shares use percentage formatting automatically unless a per-measure override is supplied. An explicit total rule takes precedence over the automatic share total.</p>
+<div class="caution"><p><strong>Overlapping colleges:</strong> summing distinct college headcounts does not produce the overall distinct student population. This property uses a sum of cells; it cannot fix that overlap. Use a source-calculated denominator as described below.</p></div>
+</section>
+<section id="distinct">
+<h2>7. Overlapping distinct counts</h2>
+<p>A student with two plans in one college counts once in that college. A student with plans in two colleges counts once in each college and once in the overall population. College counts and percentages can therefore add to more than the overall total and 100%.</p>
+<div class="note"><p><strong>Verified workbook setup, not a general extension change.</strong> This setup was checked live on 2026-10-20 against the standard pivot. The layout was College then IPEDS Ethnic Origin Desc in Rows, Term in Columns, with row subtotals and a grand total. Every college subtotal and the grand total matched for one term (2013 Fall) and for two terms (2013 Fall and 2014 Fall). It uses the source's distinct aggregation. It does not reconstruct overlap from college counts.</p></div>
+<h3>Step 1. Add the source totals</h3>
+<p>These formulas go in <strong>Create Calculation → Expression</strong>, not in the properties text boxes. The source Unique Headcount measure must already count distinct students. The paths below are the ones the reviewed Census workbook uses for Unique Headcount and Term. For College, use the same field that is in Rows. Drag it from the data panel into the editor instead of typing it; typed names often fail validation.</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Calculation name</th><th scope="col">Expression</th><th scope="col">Value on each row</th></tr></thead><tbody>
+<tr><th scope="row">College Distinct HC</th><td><code>AGGREGATE(Unique Headcount BY Term, Plan Owner Academic Group Desc)</code></td><td>The college's distinct count for that term. Repeated on every ethnicity row in the college.</td></tr>
+<tr><th scope="row">Term Distinct HC</th><td><code>AGGREGATE(Unique Headcount BY Term)</code></td><td>The term's distinct count. The same on every row in the term.</td></tr>
+<tr><th scope="row">Selected Distinct HC</th><td><code>AGGREGATE(Unique Headcount BY )</code></td><td>The distinct count across everything the filters select. The same on every row.</td></tr>
+<tr><th scope="row">College Share of Distinct Selected Headcount</th><td><code>Unique Headcount / AGGREGATE(Unique Headcount BY )</code></td><td>The percentage shown in the table.</td></tr>
+</tbody></table></div>
+<p class="where">Full form of two of these, as saved in the Census workbook</p>
+<pre data-syntax="oracle"><code>AGGREGATE(
+  "Census"."New Student Enrolled"."Unique Headcount"
+  BY "Census"."New Student Enrolled"."Term"
+)
+
+"Census"."New Student Enrolled"."Unique Headcount"
+/
+AGGREGATE(
+  "Census"."New Student Enrolled"."Unique Headcount"
+  BY
+)</code></pre>
+<p>The empty <code>BY</code> list is intentional. It asks the source for the total across the filtered selection, without College or Term grouping. This matches the standard pivot's <strong>Percent Of All Values</strong> denominator. Validate it against your own source before reusing it.</p>
+<h3>Step 2. Bind the fields</h3>
+<div class="table-wrap"><table><thead><tr><th scope="col">Grammar bucket</th><th scope="col">Fields</th></tr></thead><tbody>
+<tr><th scope="row">Rows</th><td>Plan Owner Academic Group Desc, then the demographic field (for example IPEDS Ethnic Origin Desc)</td></tr>
+<tr><th scope="row">Columns</th><td>Term</td></tr>
+<tr><th scope="row">Values</th><td>Unique Headcount; College Share of Distinct Selected Headcount; College Distinct HC; Term Distinct HC; Selected Distinct HC</td></tr>
+</tbody></table></div>
+<p>To add a measure in the Grammar panel, drop it on the <strong>Values</strong> heading. Dropping it on an existing measure replaces that measure.</p>
+<h3>Step 3. Apply the total rules</h3>
+<p class="where">Enter in <strong>Totals: Measure Rules</strong></p>
+<pre data-syntax="totals"><code>Unique Headcount = level(College Distinct HC, Term Distinct HC);
+College Share of Distinct Selected Headcount = ratio(level(College Distinct HC, Term Distinct HC), level(Selected Distinct HC))</code></pre>
+<p>Result for 2013 Fall: the Agri Human &amp; Nat Res Sciences subtotal shows <strong>307 and 7.4%</strong>, and the grand total shows <strong>4,163 and 100.0%</strong>. With 2013 Fall and 2014 Fall selected, the grand total shows 4,163 / 48.3% and 4,457 / 51.7%, the same as the standard pivot.</p>
+<details><summary>Why these rules work</summary>
+<p>Let <code>C</code> be a college's distinct count, <code>D</code> the term's distinct count, and <code>G</code> the distinct count across the whole selection.</p>
+<pre><code>College subtotal: count = C,  percentage = C / G
+Grand total:      count = D,  percentage = D / G</code></pre>
+<p><code>level</code> uses College Distinct HC on a college subtotal because that number repeats on every row in the college. On the grand total the college numbers differ, so it moves on to Term Distinct HC. The ethnicity rows are never added together, so students counted in two colleges are not double counted. No total is hardcoded; the source still has to calculate C, D, and G correctly.</p>
+<p>Edge case: <code>level</code> recognises the college scope by the repeated number. If every college in view had exactly the same count, the grand total would use that number. With a single college in view, the college count is the term count, so the result is still right.</p>
+</details>
+<h3>Step 4. Set display properties</h3>
+<p class="where"><strong>Format: Per-Measure Override</strong></p>
+<pre data-syntax="format"><code>Unique Headcount:number:0;
+College Share of Distinct Selected Headcount:percent:1</code></pre>
+<p class="where"><strong>Header: Display Label</strong></p>
+<pre data-syntax="labels"><code>Plan Owner Academic Group Desc:College;
+College Share of Distinct Selected Headcount:%</code></pre>
+<p class="where"><strong>Header: Hidden Columns</strong></p>
+<pre data-syntax="hidden"><code>College Distinct HC; Term Distinct HC; Selected Distinct HC</code></pre>
+<p>Set <strong>Grand Total Row: On</strong>, <strong>Row Subtotals: On</strong>, <strong>Grand Total Column: Off</strong>, and <strong>Group Collapse: Off</strong>. Leave <strong>Values: Show as % of Total</strong> blank for these source-calculated measures.</p>
+<p class="small">The saved comparison workbook also keeps two older measures hidden, Unique Headcount as Percentage Format and College Share of Distinct Term Headcount. The rules above do not use them.</p>
+<div class="caution"><p><strong>Scope matters.</strong> These rules cover College and demographic rows with Term columns. A Grand Total Column does not deduplicate students across terms. Collapsed groups use the same rules but were not part of the live check. Recheck after Top N, measure filters, a changed grain, or a row limit. A zero or missing denominator gives a blank total.</p></div>
+<h3>College rows only, without subtotals</h3>
+<p>An older setup works when Rows has only College. It needs a helper, <strong>College Share of Distinct Term Headcount</strong> = <code>Unique Headcount / AGGREGATE(Unique Headcount BY Term)</code>, in Values and hidden, and these rules:</p>
+<pre data-syntax="totals"><code>Unique Headcount = ratio(Unique Headcount, College Share of Distinct Term Headcount);
+College Share of Distinct Selected Headcount = ratio(College Share of Distinct Selected Headcount, College Share of Distinct Term Headcount)</code></pre>
+<p>Algebraically these always return the term total (D and D / G), whatever rows they cover. That is right for the grand total, but every subtotal also shows the term total. <strong>Do not use them with Row Subtotals</strong>; use the <code>level</code> rules above.</p>
+<h3>If you cannot provide a source denominator</h3>
+<p class="where"><strong>Totals: Measure Rules</strong> — suppress an unsupported total</p>
+<pre data-syntax="totals"><code>Unique Headcount = distinct</code></pre>
+<p>This leaves multi-cell totals blank with an explanation. It prevents a misleading sum; it does not calculate a correct distinct total or repair a percentage denominator.</p>
+</section>
+<section id="labels">
+<h2>8. Labels and parameters</h2>
+<p class="where">Enter in <strong>Header: Display Label</strong></p>
+<pre data-syntax="labels"><code>Plan Owner Academic Group Desc:College;
+Selected Count:@parameter("View By Selector")('Minority');
+Selected Percentage:% @parameter("View By Selector")('Minority')</code></pre>
+<p>If the parameter is First Gen, the last two headers become <strong>First Gen</strong> and <strong>% First Gen</strong>. The default text is used when the parameter has no current value. The parameter and the calculations that respond to it must already exist; this setting only changes the labels.</p>
+<p>The original identity remains <code>Selected Percentage</code>. Continue using that original name in formatting and total rules, even when the displayed heading changes. A rename does not change member values or the identity used to retrieve glossary descriptions.</p>
+<p class="where">Enter in <strong>Header: Hidden Columns</strong></p>
+<pre data-syntax="hidden"><code>Reporting Sequence; Weight; Denominator</code></pre>
+<p>A hidden measure remains available to calculations. A hidden Rows or Columns field still divides the data into groups; hiding it does not combine those groups.</p>
+</section>
+<section id="appearance">
+<h2>9. Widths and data bars</h2>
+<p class="where">Enter in <strong>Layout: Column Widths</strong></p>
+<pre data-syntax="widths"><code>College:260; Headcount:100; Rate:90</code></pre>
+<p>Widths are pixels, accepted from 20 through 4000. Named widths override Value Column Width. With wrapping enabled, a column remains wide enough to keep its longest word intact.</p>
+<p class="where">Enter in <strong>Style: Data Bars</strong></p>
+<pre data-syntax="bars"><code>Headcount: #5b7c99;
+Rate: #981e32: 100%</code></pre>
+<p>The first bar scales to the measure's largest value in the pivot. The second uses a 100% reference: 1 for fraction-scale values, otherwise 100. The extension infers that scale from the observed range, so values above 1 or negative values can affect the inference. Check the bars against the source units. Bar lengths are capped at a full cell.</p>
+<p>Header colors and hover colors use a hex color such as <code>#981e32</code> or <code>#5e6a71</code>. Text contrast is chosen automatically.</p>
+</section>
+<section id="troubleshooting">
+<h2>10. Troubleshooting</h2>
+<div class="table-wrap"><table><thead><tr><th scope="col">Symptom</th><th scope="col">What to check</th></tr></thead><tbody>
+<tr><th scope="row">Every subtotal shows the grand total (for example 4,163 and 100%)</th><td>The rules use the older <code>ratio(…, College Share of Distinct Term Headcount)</code> setup, which always returns the term total. With Row Subtotals on, use the <code>level</code> rules in section 7.</td></tr>
+<tr><th scope="row">Subtotal percentages match for one term but not for two</th><td>The percentage denominator is the term total. Use <code>level(Selected Distinct HC)</code>, the distinct count across the whole selection, as the denominator.</td></tr>
+<tr><th scope="row">Percentages are too small</th><td>Inspect the denominator. Are overlapping college counts being summed? Use the source distinct denominator when the population overlaps.</td></tr>
+<tr><th scope="row">Two-term percentages differ from the standard pivot</th><td>Check Percent Of All Values versus a separate denominator for each column. Matching single-term results does not establish matching multi-term behavior.</td></tr>
+<tr><th scope="row">Percentage is 100 times too large</th><td>Percent format multiplies by 100. A source value or ratio already scaled to 100 should not be multiplied again.</td></tr>
+<tr><th scope="row">A total is blank</th><td>Check distinct restrictions, missing helper measures, zero denominators, measure identity, and the exact names in the rule. Adding a rule is not enough if its inputs are missing.</td></tr>
+<tr><th scope="row">A rule is ignored</th><td>Use the original field name or ID, not an alias created by Header: Display Label. Check semicolons, the equals sign, argument commas, and supported rule words.</td></tr>
+<tr><th scope="row">A renamed percentage header does not change its calculation</th><td>A label is only a label. Change the source measure or percentage/total settings to change the calculation.</td></tr>
+<tr><th scope="row">Hiding a field does not combine its groups</th><td>That is current behavior. Remove the field from Grammar only if changing the query grain is intended, then revalidate the totals.</td></tr>
+<tr><th scope="row">A Term description appears on “2013 Fall”</th><td>Turn Tooltip: Glossary on Data Headers off. Indicator: None only hides the marker.</td></tr>
+</tbody></table></div>
+</section>
+<section id="maintenance">
+<h2>11. Updates and verification</h2>
+<p><strong>Keep this file current when the extension changes.</strong> Update property names, accepted syntax, defaults, examples, and limitations together. Record the extension version and verification date at the top. Do not label a requested feature as available until it has been implemented and checked.</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Evidence</th><th scope="col">What has been established</th></tr></thead><tbody>
+<tr><th scope="row">Current source and specification</th><td>All 41 custom controls covered against version 0.20.6, including the defaults in section 3. Rate, weighted-average, <code>level</code>, and <code>ratio(level(…))</code> arithmetic checked in the regression suite. Numerical teaching examples use synthetic values.</td></tr>
+<tr><th scope="row">Live workbook, 2026-10-20: subtotals (0.20.6)</th><td>“Data Checking – adding subtotal” canvas, College × IPEDS Ethnic Origin Desc rows, Term columns, with subtotals and grand total, using the section 7 rules. All 12 college subtotals and the grand total matched the standard pivot for 2013 Fall. All 14 college subtotals and both grand-total columns matched for 2013 Fall + 2014 Fall. The two-term filter was a temporary test and was not saved.</td></tr>
+<tr><th scope="row">Live workbook, 2026-10-20: College rows only (0.20.4)</th><td>The older ratio setup, compared with the standard pivot: 26 populated numeric cells matched for one term; 54 for two terms; 12 for a two-college, two-term filtered selection.</td></tr>
+<tr><th scope="row">Live workbook, 2026-10-20: tooltips (0.20.5)</th><td>With Glossary on Data Headers off, Term headers such as 2013 Fall showed no glossary marker or tooltip. Measure headers and the College header kept theirs.</td></tr>
+<tr><th scope="row">Still outside the live checks</th><td>Collapsed groups, a Grand Total Column with distinct counts, other demographic fields, arbitrary source measures, source row limits, and print output with this calculation setup.</td></tr>
+</tbody></table></div>
+<ol>
+<li>Use the same source fields, filters, and denominator scope in both pivots.</li>
+<li>Compare every detail row and total, not just a selected percentage.</li>
+<li>Include overlapping populations and unequal denominators in the checks.</li>
+<li>Test one term, multiple terms, and a filtered subset. Check zero and missing inputs where applicable.</li>
+<li>Save, reopen, and verify the intended state. Record untested scopes.</li>
+</ol>
+<footer>
+<p><strong>Sources for maintaining this guide:</strong> <a href="../plugins/project_spec_wsu_glossary_pivot.md">Glossary Pivot specification</a>; <a href="../../oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/glossaryPivotViz.js">renderer and property parsers</a>; <a href="../../oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/extensions/oracle.bi.tech.plugin.visualizationDatamodelHandler/com-wsu-glossary-pivot.visualizationDatamodelHandler.json">grammar manifest</a>.</p>
+<p>Oracle documents the general <code>AGGREGATE(measure BY column)</code> form in <a href="https://docs.oracle.com/en/cloud/paas/analytics-cloud/acubi/aggregate-functions.html">Aggregate Functions</a>. The empty-BY formula and the workbook recipe above are supported here by the recorded live workbook check, not by an assumption that every source will behave identically.</p>
+<p>Revision history: 2026-10-20 — initial properties reference and distinct-total recipe. Same day — <code>level</code> totals and the data-header glossary switch. Same day — 0.20.6 <code>ratio(level(…))</code>; section 7 rewritten around the verified subtotal setup, with Selected Distinct HC as the percentage denominator.</p>
+</footer>
+</section>
+</main>
+</div>
+<p id="copy-status" class="sr-only" role="status" aria-live="polite"></p>
+<script>
+'use strict';
+document.querySelectorAll('pre[data-syntax]').forEach(function(block){
+  var button=document.createElement('button');
+  button.type='button';button.className='copy';button.textContent='Copy syntax';
+  button.setAttribute('aria-label','Copy '+block.dataset.syntax+' syntax');
+  button.addEventListener('click',async function(){
+    var text=block.querySelector('code').textContent;
+    try{
+      if(!navigator.clipboard)throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(text);
+      document.getElementById('copy-status').textContent='Syntax copied.';
+      button.textContent='Copied';
+    }catch(error){
+      var selection=window.getSelection(),range=document.createRange();
+      range.selectNodeContents(block.querySelector('code'));selection.removeAllRanges();selection.addRange(range);
+      document.getElementById('copy-status').textContent='Syntax selected. Press Control+C or Command+C to copy.';
+      button.textContent='Selected — press Ctrl+C / ⌘C';
+    }
+  });
+  block.insertAdjacentElement('afterend',button);
+});
+</script>
+</body>
+</html>
