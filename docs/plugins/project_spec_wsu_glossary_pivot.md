@@ -13,7 +13,7 @@ WSU Glossary Pivot development without re-deriving design decisions.
 - **Short name**: WSU Glossary Pivot
 - **Category**: WSU
 - **Root id**: `com-wsu-glossary-pivot`
-- **Version constant**: `GlossaryPivotViz.VERSION = "0.20.7"` (see `CHANGELOG.md`; installed and verified in OAC Dev)
+- **Version constant**: `GlossaryPivotViz.VERSION = "0.21.0"` (see `CHANGELOG.md`; user reports installed in OAC Dev; rounding controls exercised in Chrome 2026-11-09; served version string not independently read)
 - **Source**: `oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/`
 - **Build output**: `oac-sdk-dev/build/distributions/customviz_com-wsu-glossary-pivot.zip`
 
@@ -352,15 +352,57 @@ collapsed, which rows are marked) is not in this object.
 |-----|---------|--------|
 | `numberFormat` | `"auto"` | auto / number / percent / currency / compact |
 | `decimalPlaces` | `"auto"` | auto / "0" / "1" / "2" / "3" / "4" |
+| `roundingMethod` | `"nearest"` | nearest (exact halves away from zero) / half-even / ceiling (toward positive infinity) / floor (toward negative infinity). Display only; inherited by per-measure format overrides |
 | `measureFormatOverrides` | `""` | `MEASURE_ID:format:decimals; ...` |
 | `percentOfTotal` | `""` | `NAME; NAME: by FIELD` — show the measure as its share of the column total, or of each group of that Rows field |
 
-**Auto** shows the string OAC already produced for that cell. **Number**
+Since 0.21.0, **Auto** retains a recognizable OAC numeric style (precision,
+grouping, prefix/suffix, and percentage scale) but rounds from the raw cell
+value using `roundingMethod`. Explicit Decimal Places overrides the inferred
+precision. A nonnumeric or unrecognized style is left as OAC supplied it;
+use an explicit Number/Percent/Currency/Compact format for predictable
+rounding of unsupported host styles. A raw number with no formatted string
+can use explicit Decimal Places, otherwise its existing display is kept.
+**Number**
 prints the raw value with a thousands separator (`1,234` or `1,234.50` when
 a decimal count is chosen). **Currency** does the same and adds `$`
 (`$1,234.00`, sign before the dollar). **Percent** multiplies by 100 and
 appends `%`. **Compact** uses K / M / B. A non-numeric cell is left as OAC
 rendered it.
+
+### Display rounding (0.21.0)
+
+**Format: Rounding Method** is one saved visualization setting. Missing or
+invalid values use **Nearest (halves away from zero)**, including workbooks
+saved before this setting existed. Decimal Places remains Auto by default;
+the addition does not force two decimals on existing workbooks. At two
+decimal places, the nearest default gives 7.231 -> 7.23, 7.239 -> 7.24,
+7.245 -> 7.25, and -7.245 -> -7.25. Half-even gives 7.245 -> 7.24 and
+7.255 -> 7.26. Ceiling gives -7.231 -> -7.23; floor gives -7.231 -> -7.24.
+Values rounded to zero have no minus sign.
+
+Rounding applies after scaling into displayed units: a raw fraction 0.07245
+with Percent and 2 decimals displays 7.25%; Compact rounds in K/M/B units.
+The implementation rounds the Number's shortest decimal representation by
+decimal digit position, rather than multiplying a binary float and adding
+an epsilon. It treats 1.005 as an exact decimal tie but does not promote
+1.00499999999999 to a tie. Decimal power scaling introduces no additional
+binary multiplication error. Precision already lost in a source value or
+upstream arithmetic cannot be reconstructed.
+
+Only the rendered text changes. Total rules, shares, sorting, heat maps,
+and data bars continue to use their full-precision inputs. Each subtotal,
+collapsed group, grand total row/column and printed table rounds its own
+computed result, rather than adding rounded detail cells. Number with
+Auto decimal places keeps its available decimals (with the existing
+12-significant-digit noise cleanup) because no fixed rounding position was
+requested. Currency/Percent/Compact retain their existing Auto precisions.
+
+Compatibility change: explicit formats now honor decimal midpoint rules
+instead of `toFixed`'s binary representation artifacts. Recognizable Auto
+numeric text can change at a midpoint even if OAC supplied an already-rounded
+string, and explicit Decimal Places now applies to that Auto text. Screen
+and print use the same formatter. Other OAC text is preserved.
 
 The per-measure box wins over the two switches for the named measure. The
 token is matched against the measure's real id first — `CUM_GPA:currency:2`
@@ -764,6 +806,7 @@ same as Oracle's own samples (`TextToggleGadgetInfo`, `createGadgetInfo`).
 |-----------|-------|---------|
 | `numberFormatGadget` | Format: Number Format | switcher |
 | `decimalPlacesGadget` | Format: Decimal Places | switcher |
+| `roundingMethodGadget` | Format: Rounding Method (Nearest halves away from zero / Nearest half to even / Ceiling / Floor) | switcher (0.21.0) |
 | `measureFormatOverridesGadget` | Format: Per-Measure Override (id:format:decimals; ...) | text |
 | `percentOfTotalGadget` | Values: Show as % of Total (name[: by field]; ...) | text |
 | `headerLabelsGadget` | Header: Display Label (id: text, @parameter("Name"), or @parameter("Name")('default'); ...) | text |

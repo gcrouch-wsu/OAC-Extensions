@@ -565,6 +565,126 @@ suite("WSU Glossary Pivot", function() {
     assert.strictEqual(mod._formatValue(1234.5, { numberFormat: "currency", decimalPlaces: "101" }), "$1,234.50");
   });
 
+  test("decimal rounding distinguishes directions, midpoint ties, and values adjacent to a tie", function() {
+    function f(n, method, dp) {
+      return mod._formatValue(n, { numberFormat: "number", decimalPlaces: dp == null ? "2" : dp, roundingMethod: method });
+    }
+    assert.strictEqual(f(7.231), "7.23", "missing setting defaults to nearest");
+    assert.strictEqual(f(7.239, "nearest"), "7.24");
+    assert.strictEqual(f(7.245, "nearest"), "7.25");
+    assert.strictEqual(f(-7.245, "nearest"), "-7.25");
+    assert.strictEqual(f(7.245, "half-even"), "7.24");
+    assert.strictEqual(f(-7.245, "half-even"), "-7.24");
+    assert.strictEqual(f(7.255, "half-even"), "7.26");
+    assert.strictEqual(f(1.005, "nearest"), "1.01", "binary representation must not turn a decimal tie downward");
+    assert.strictEqual(f(1.00499999999999, "nearest"), "1.00", "no epsilon turns a below-tie value into a tie");
+    assert.strictEqual(f(1.00500000000001, "half-even"), "1.01");
+    assert.strictEqual(f(7.231, "ceiling"), "7.24");
+    assert.strictEqual(f(-7.231, "ceiling"), "-7.23");
+    assert.strictEqual(f(7.231, "floor"), "7.23");
+    assert.strictEqual(f(-7.231, "floor"), "-7.24");
+    assert.strictEqual(f(0.29, "ceiling"), "0.29", "an exact decimal hundredth stays exact");
+    assert.strictEqual(f(9.995, "nearest"), "10.00", "carry across the decimal point");
+    assert.strictEqual(f(2.5, "half-even", "0"), "2");
+    assert.strictEqual(f(-3.5, "half-even", "0"), "-4");
+    assert.strictEqual(f(-0.001, "nearest"), "0.00", "no negative zero");
+    assert.strictEqual(f(-0.001, "floor"), "-0.01");
+    assert.strictEqual(f(1e-7, "ceiling", "4"), "0.0001");
+    assert.strictEqual(f(-1e-7, "floor", "4"), "-0.0001");
+    assert.strictEqual(f(1e21, "nearest", "0"), "1,000,000,000,000,000,000,000");
+    assert.strictEqual(f(7.245, "invalid"), "7.25", "invalid settings fail to the documented default");
+  });
+
+  test("percentage, currency, compact, and inferred styles round signed values in displayed units", function() {
+    function f(n, format, method) {
+      return mod._formatValue(n, { numberFormat: format, decimalPlaces: "2", roundingMethod: method });
+    }
+    assert.strictEqual(f(0.07245, "percent", "nearest"), "7.25%", "scale decimal digits before rounding");
+    assert.strictEqual(f(0.07245, "percent", "half-even"), "7.24%");
+    assert.strictEqual(f(-0.07231, "percent", "floor"), "-7.24%");
+    assert.strictEqual(f(-7.231, "currency", "ceiling"), "-$7.23");
+    assert.strictEqual(f(-7.231, "currency", "floor"), "-$7.24");
+    assert.strictEqual(f(1007.245, "currency", "nearest"), "$1,007.25");
+    assert.strictEqual(f(7245, "compact", "half-even"), "7.24K");
+    assert.strictEqual(f(-7231, "compact", "floor"), "-7.24K");
+    assert.strictEqual(f(-0.001, "currency", "ceiling"), "$0.00");
+    assert.strictEqual(f("missing", "number", "floor"), "missing");
+    assert.strictEqual(f(null, "number", "floor"), null);
+    assert.strictEqual(mod._formatLike(-7.231, mod._inferAutoFormat(1, "$1.00"), "floor"), "-$7.24");
+    assert.strictEqual(mod._formatLike(0.07245, mod._inferAutoFormat(0.07, "7.00%"), "nearest"), "7.25%");
+    assert.strictEqual(mod._formatLike(7245, mod._inferAutoFormat(7000, "7.00K"), "half-even"), "7.24K");
+  });
+
+  test("saved rounding choices apply through per-measure format overrides and legacy defaults", function() {
+    var viz = H.instance(mod);
+    assert.strictEqual(viz.Config.roundingMethod, "nearest");
+    viz._savedConfig = { roundingMethod: "floor", numberFormat: "currency", decimalPlaces: "1" };
+    viz.loadConfig();
+    var fmt = mod._resolveFormat(viz.Config, mod._parseMeasureFormatOverrides("Amount:number:2"), "c1", "Amount");
+    assert.strictEqual(mod._formatValue(-7.231, fmt), "-7.24");
+    var old = H.instance(mod);
+    old._savedConfig = { numberFormat: "number", decimalPlaces: "2" };
+    old.loadConfig();
+    assert.strictEqual(mod._formatValue(7.245, mod._resolveFormat(old.Config, {}, "c1", "Amount")), "7.25");
+  });
+
+  function roundingLayout() {
+    var data = [[1.004, 2.004], [1.004, 2.004]];
+    return {
+      getLayerCount: function(edge) { return edge === "row" || edge === "column" ? 2 : 0; },
+      getEdgeExtent: function(edge) { return edge === "row" || edge === "column" ? 2 : 0; },
+      getLayerMetadata: function(edge, layer, key) {
+        if (edge === "row") return key === "id" ? (layer ? "ITEM" : "GROUP") : (layer ? "Item" : "Group");
+        if (key === "isMeasureLabels") return layer === 1;
+        if (key === "id") return layer ? "DM!MEASURE_DIMENSION" : "TERM";
+        return layer ? "Measures" : "Term";
+      },
+      getValue: function(edge, a, b, raw) {
+        if (edge === "row") return a ? (b ? "Second" : "First") : "Group A";
+        if (edge === "column") return a ? "Amount" : (b ? "Spring" : "Fall");
+        if (edge === "data") return raw ? data[a][b] : data[a][b].toFixed(2);
+      },
+      getItemEndSlice: function(edge, layer, index) { return edge === "row" && layer === 0 ? 1 : index; }
+    };
+  }
+
+  test("rounding is display-only across details, subtotals, collapsed groups, and printable totals", function() {
+    var viz = H.instance(mod, null, { numberFormat: "auto", roundingMethod: "floor", decimalPlaces: "2",
+      showDescriptions: "off", showGrandTotalRow: "on", showRowSubtotals: "on", showGrandTotalColumn: "on", rowGroupCollapse: "on" });
+    viz._glossary = mod._buildGlossary();
+    var html = viz._buildTable(roundingLayout());
+    assert.ok(html.indexOf(">1.00</td>") >= 0 && html.indexOf(">2.00</td>") >= 0, "rounded detail cells");
+    var total = html.slice(html.lastIndexOf("<tr class='gp-total-row'>"));
+    assert.ok(total.indexOf(">6.01</td>") >= 0, "6.016 rounds after summing; displayed cells would add to 6.00");
+    viz._collapsedGroups[0] = true;
+    var collapsed = viz._buildTable(roundingLayout());
+    assert.ok(collapsed.indexOf("gp-collapsed") >= 0 && collapsed.indexOf(">6.01</td>") >= 0);
+    var printed = mod._wrapPrintDocument("Rounding", "landscape", collapsed, "normal");
+    assert.ok(printed.indexOf(">6.01</td>") >= 0, "print content retains the same final rounding");
+    viz.Config.numberFormat = "number";
+    viz.Config.roundingMethod = "ceiling";
+    assert.ok(viz._buildTable(roundingLayout()).indexOf(">6.02</td>") >= 0);
+  });
+
+  test("Auto rounds source values instead of already-rounded host strings and preserves text", function() {
+    var layout = singleMeasureLayout([7.245, -7.231], "AMOUNT");
+    var getValue = layout.getValue;
+    layout.getValue = function(edge, a, b, raw) {
+      if (edge === "data" && !raw) return a ? "-7.23" : "7.24";
+      return getValue(edge, a, b, raw);
+    };
+    var viz = H.instance(mod, null, { showDescriptions: "off", roundingMethod: "nearest" });
+    viz._glossary = mod._buildGlossary();
+    assert.ok(viz._buildTable(layout).indexOf(">7.25</td>") >= 0);
+    viz.Config.roundingMethod = "floor";
+    assert.ok(viz._buildTable(layout).indexOf(">-7.24</td>") >= 0);
+    layout.getValue = function(edge, a, b, raw) {
+      if (edge === "data" && !raw) return "2026-11-09";
+      return getValue(edge, a, b, raw);
+    };
+    assert.ok(viz._buildTable(layout).indexOf(">2026-11-09</td>") >= 0, "unrecognized date-like formats stay unchanged");
+  });
+
   /* Reported live: on a pivot mixing a native measure (Headcount) with
      calculated ones (Full-Time, Part-Time, % Full-Time), only Headcount's
      per-measure format override took effect. Root cause, confirmed by

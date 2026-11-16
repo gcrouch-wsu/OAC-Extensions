@@ -383,7 +383,7 @@ define(['jquery',
       PRINT_MIXED_ORIENTATION: L("GLOSSARYPIVOT_LBL_PRINT_MIXED_ORIENTATION", "Tables use different page orientations; Print Canvas uses the orientation of the table whose button you clicked.")
    };
 
-   GlossaryPivotViz.VERSION = "0.20.7";
+   GlossaryPivotViz.VERSION = "0.21.0";
 
    /**
     * @constructor
@@ -409,6 +409,7 @@ define(['jquery',
          // Format
          numberFormat: "auto",             // auto | number | percent | currency | compact
          decimalPlaces: "auto",            // auto | "0" | "1" | "2" | "3" | "4"
+         roundingMethod: "nearest",        // nearest (ties away from zero) | half-even | ceiling | floor; display only
          measureFormatOverrides: "",        // "MEASURE_ID:format:decimals; MEASURE_ID:format:decimals; ..." — wins over the two switches above for the named measure
          // Header — the field stays in the layout either way. Hidden columns
          // still order and group; display labels change the text, not the
@@ -1110,8 +1111,9 @@ define(['jquery',
    }
 
    function resolveFormat(Config, overrides, measureId, measureName) {
-      return lookupByName(overrides, measureId, measureName) ||
-         { numberFormat: Config.numberFormat, decimalPlaces: Config.decimalPlaces };
+      var spec = lookupByName(overrides, measureId, measureName) || Config;
+      return { numberFormat: spec.numberFormat, decimalPlaces: spec.decimalPlaces,
+               roundingMethod: Config.roundingMethod };
    }
 
    /* =========================================================================
@@ -1406,17 +1408,58 @@ define(['jquery',
       return parseFloat(n.toPrecision(12));
    }
 
-   function formatLike(n, spec) {
+   /* Round the Number's shortest decimal representation, rather than n *
+      10^dp plus an epsilon. Thus 1.005 is a decimal tie, a value just below
+      it stays below it, and percentage/compact scaling introduces no extra
+      binary multiplication error. Existing source precision is not restored.
+      shift is a decimal power: 2 for %, -3/-6/-9 for K/M/B. ES5 only. */
+   function roundDecimal(n, dp, method, shift) {
+      if (!isFinite(n)) return String(n);
+      method = pickOption(method, ["nearest", "half-even", "ceiling", "floor"], "nearest");
+      var parts = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(String(n));
+      if (!parts) return String(n);
+      var negative = parts[1] === "-";
+      var digits = parts[2] + (parts[3] || "");
+      var cut = parts[2].length + Number(parts[4] || 0) + (shift || 0) + dp;
+      var kept = cut > 0 ? digits.slice(0, cut) : "";
+      if (cut > digits.length) kept += new Array(cut - digits.length + 1).join("0");
+      var rest = cut < 0 ? new Array(1 - cut).join("0") + digits : digits.slice(Math.max(0, cut));
+      var hasRest = /[1-9]/.test(rest);
+      var increment = false;
+      if (method === "ceiling") increment = !negative && hasRest;
+      else if (method === "floor") increment = negative && hasRest;
+      else {
+         var first = rest.charAt(0);
+         var aboveHalf = first > "5" || (first === "5" && /[1-9]/.test(rest.slice(1)));
+         var tie = first === "5" && !/[1-9]/.test(rest.slice(1));
+         increment = aboveHalf || (tie && (method === "nearest" || Number(kept.slice(-1) || "0") % 2 === 1));
+      }
+      kept = kept.replace(/^0+/, "") || "0";
+      if (increment) {
+         var chars = kept.split(""), i = chars.length - 1;
+         while (i >= 0 && chars[i] === "9") { chars[i] = "0"; i--; }
+         if (i < 0) chars.unshift("1");
+         else chars[i] = String(Number(chars[i]) + 1);
+         kept = chars.join("");
+      }
+      var sign = negative && /[1-9]/.test(kept) ? "-" : "";
+      while (kept.length <= dp) kept = "0" + kept;
+      return sign + (dp ? kept.slice(0, -dp) + "." + kept.slice(-dp) : kept);
+   }
+
+   function formatLike(n, spec, method, decimals) {
       if (n == null) return "";
+      var dp = /^[0-4]$/.test(String(decimals)) ? parseInt(decimals, 10) : null;
       if (!spec) {
+         if (dp != null) return groupThousands(roundDecimal(n, dp, method));
          var t = tidyNumber(n);
          return (t < 0 ? "-" : "") + groupThousands(String(Math.abs(t)));
       }
-      if (spec.compact) return compactNumber(n, spec.dp);
-      var x = n * spec.scale;
-      var body = Math.abs(x).toFixed(spec.dp);
+      if (spec.compact) return compactNumber(n, dp == null ? spec.dp : dp, method);
+      var body = roundDecimal(n, dp == null ? spec.dp : dp, method, spec.scale === 100 ? 2 : 0);
+      var negative = body.charAt(0) === "-";
+      if (negative) body = body.slice(1);
       if (spec.group) body = groupThousands(body);
-      var negative = x < 0 && Number(body.replace(/,/g, "")) !== 0;
       return (negative ? "-" : "") + spec.prefix + body + spec.suffix;
    }
 
@@ -1480,13 +1523,13 @@ define(['jquery',
       return { cls: cls, style: style };
    }
 
-   function compactNumber(n, dp) {
-      var abs = Math.abs(n), sign = n < 0 ? "-" : "", suffix = "", scaled = abs;
-      if (abs >= 1e9) { scaled = abs / 1e9; suffix = "B"; }
-      else if (abs >= 1e6) { scaled = abs / 1e6; suffix = "M"; }
-      else if (abs >= 1e3) { scaled = abs / 1e3; suffix = "K"; }
+   function compactNumber(n, dp, method) {
+      var abs = Math.abs(n), suffix = "", shift = 0;
+      if (abs >= 1e9) { shift = -9; suffix = "B"; }
+      else if (abs >= 1e6) { shift = -6; suffix = "M"; }
+      else if (abs >= 1e3) { shift = -3; suffix = "K"; }
       var places = dp == null ? (suffix ? 1 : 0) : dp;
-      return sign + scaled.toFixed(places) + suffix;
+      return roundDecimal(n, places, method, shift) + suffix;
    }
 
    function formatValue(raw, fmtSpec) {
@@ -1495,26 +1538,24 @@ define(['jquery',
       if (isNaN(n)) return raw;   // not numeric — leave as OAC formatted it
       var dp = /^[0-4]$/.test(String(fmtSpec.decimalPlaces)) ? parseInt(fmtSpec.decimalPlaces, 10) : null;
       switch (fmtSpec.numberFormat) {
-         case "percent":  return (n * 100).toFixed(dp == null ? 1 : dp) + "%";
+         case "percent":  return roundDecimal(n, dp == null ? 1 : dp, fmtSpec.roundingMethod, 2) + "%";
          case "currency":
             /* Group the integer part only — the previous regex required a
                literal "." after the digit groups, which toFixed(0) never
                produces, so 0-decimal currency lost its thousands separator
                entirely. Sign goes before the $, not after it. */
-            var sign = n < 0 ? "-" : "";
-            var parts = Math.abs(n).toFixed(dp == null ? 2 : dp).split(".");
+            var body = roundDecimal(n, dp == null ? 2 : dp, fmtSpec.roundingMethod);
+            var sign = body.charAt(0) === "-" ? "-" : "";
+            var parts = (sign ? body.slice(1) : body).split(".");
             parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
             return sign + "$" + parts.join(".");
-         case "compact":  return compactNumber(n, dp);
+         case "compact":  return compactNumber(n, dp, fmtSpec.roundingMethod);
          case "number":
             /* Same thousands grouping as currency, without the $. Auto
                decimals keep the number's own fraction (float noise
-               trimmed); an explicit count uses toFixed. */
-            var nSign = n < 0 ? "-" : "";
-            var nBody = dp == null ? String(Math.abs(tidyNumber(n))) : Math.abs(n).toFixed(dp);
-            var nParts = nBody.split(".");
-            nParts[0] = nParts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-            return nSign + nParts.join(".");
+               trimmed); an explicit count uses the selected rounding rule. */
+            var nText = dp == null ? String(tidyNumber(n)) : roundDecimal(n, dp, fmtSpec.roundingMethod);
+            return groupThousands(nText);
          default:         return raw;   // "auto" — leave OAC's own formatting alone
       }
    }
@@ -3282,7 +3323,8 @@ define(['jquery',
       function fmtFor(mId) {
          var id = mId === "__single__" ? null : mId;
          if (shareMeasure[mId] && !lookupByName(overrides, id, measureNameById[mId])) {
-            return { numberFormat: "percent", decimalPlaces: self.Config.decimalPlaces };
+            return { numberFormat: "percent", decimalPlaces: self.Config.decimalPlaces,
+                     roundingMethod: self.Config.roundingMethod };
          }
          return resolveFormat(self.Config, overrides, id, measureNameById[mId]);
       }
@@ -3330,7 +3372,7 @@ define(['jquery',
       function totalText(val, fmt, cc) {
          if (val == null) return "";
          if (fmt.numberFormat !== "auto") return formatValue(val, fmt);
-         return formatLike(val, sampleSpec(cc));
+         return formatLike(val, sampleSpec(cc), fmt.roundingMethod, fmt.decimalPlaces);
       }
       function totalFor(rStart, rEnd, cols, mId) {
          var rule = ruleFor(mId);
@@ -3365,9 +3407,20 @@ define(['jquery',
          return lookupByName(barMap, mId, measureNameById[mId]);
       }
 
-      /* What a value cell prints: Auto shows OAC's own string, an explicit
-         format works from the raw number. */
+      /* Auto reuses OAC's recognizable numeric style, rounding the raw
+         value at the displayed precision. Unrecognized/text formats stay
+         as supplied. This touches text only, never the row buffer. */
       function cellText(vRaw, vFormatted, fmt) {
+         if (fmt.numberFormat === "auto") {
+            var n = cellNumber(vRaw);
+            var autoSpec = n == null ? null : inferAutoFormat(n, vFormatted);
+            if (autoSpec && !/[0-9]/.test((autoSpec.prefix || "") + (autoSpec.suffix || ""))) {
+               return formatLike(n, autoSpec, fmt.roundingMethod, fmt.decimalPlaces);
+            }
+            if (n != null && (vFormatted == null || vFormatted === "") && /^[0-4]$/.test(String(fmt.decimalPlaces))) {
+               return formatLike(n, null, fmt.roundingMethod, fmt.decimalPlaces);
+            }
+         }
          var displayVal = fmt.numberFormat === "auto"
             ? (vFormatted != null && vFormatted !== "" ? vFormatted : vRaw)
             : (vRaw != null && vRaw !== "" ? vRaw : vFormatted);
@@ -4226,6 +4279,11 @@ define(['jquery',
       addSwitcher(pGen, "decimalPlacesGadget", "Format: Decimal Places", C.decimalPlaces,
          [{ value: "auto", label: "Auto" }, { value: "0", label: "0" }, { value: "1", label: "1" },
           { value: "2", label: "2" }, { value: "3", label: "3" }, { value: "4", label: "4" }], nx());
+      addSwitcher(pGen, "roundingMethodGadget", "Format: Rounding Method", C.roundingMethod,
+         [{ value: "nearest", label: "Nearest (halves away from zero)" },
+          { value: "half-even", label: "Nearest (half to even)" },
+          { value: "ceiling", label: "Ceiling (toward positive infinity)" },
+          { value: "floor", label: "Floor (toward negative infinity)" }], nx());
       addText(pGen, factory, "measureFormatOverridesGadget",
          "Format: Per-Measure Override (id:format:decimals; ...)", C.measureFormatOverrides, nx());
       // Values
@@ -4302,6 +4360,7 @@ define(['jquery',
       var map = {
          numberFormatGadget: "numberFormat",
          decimalPlacesGadget: "decimalPlaces",
+         roundingMethodGadget: "roundingMethod",
          measureFormatOverridesGadget: "measureFormatOverrides",
          percentOfTotalGadget: "percentOfTotal",
          headerLabelsGadget: "headerLabels",
@@ -4499,6 +4558,7 @@ define(['jquery',
       _fitPrintedReport: fitPrintedReport,
       _parseMeasureFormatOverrides: parseMeasureFormatOverrides,
       _formatValue: formatValue,
+      _roundDecimal: roundDecimal,
       _headerPaint: headerPaint,
       _interpolateColor: interpolateColor,
       _buildGlossary: buildGlossary,

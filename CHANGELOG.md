@@ -22,6 +22,42 @@ The 1.x commits they describe are on `main`.
 
 Glossary Pivot versions on its own line, not on the 1.x tags.
 
+## 2026-11-09 — WSU Glossary Pivot 0.21.0 — display rounding methods
+
+Release checks repeated 2026-11-16: 125 tests, plugin JavaScript syntax, and both
+manifests passed. SDK clean packaging passed using JDK 17 and the Gradle entry
+point directly. The packaged renderer matches the source and the retained
+November 9 package. No OAC upload or new live-host verification was performed.
+
+User reported installation in OAC Dev. On 2026-11-09, all four rounding choices
+were exercised in Chrome on `Copy of New first year` / `Data Checking - adding
+subtotal`, using temporary two-decimal percentage overrides. For 307 / 4,163,
+nearest and half-even gave 7.37%, ceiling 7.38%, floor 7.37%; the detail
+13 / 4,163 gave 0.31%, 0.31%, 0.32%, 0.31% respectively. Original nearest
+rounding and one-decimal overrides were restored without saving; grand total
+4,163 / 100.0%. The served version string, other browser sessions, exact ties,
+negative values, print output, and save/reopen persistence were not checked live.
+
+- Add **Format: Rounding Method**: Nearest (halves away from zero, default),
+  Nearest (half to even), Ceiling (toward positive infinity), and Floor
+  (toward negative infinity). Per-measure format overrides inherit the choice.
+- Round decimal digits after scaling into the displayed units. This handles
+  1.005 -> 1.01 and 0.07245 -> 7.25% at two decimals without epsilon-based
+  tie detection. Negative directions and negative-zero suppression apply
+  consistently to Number, Percent, Currency, Compact, and inferred Auto styles.
+- Rounding changes rendered text only. Detail cells, subtotals, collapsed
+  groups, grand totals, and generated print content use the same rule;
+  calculations still use unrounded inputs.
+- **Default behavior change:** existing workbooks with no rounding setting
+  use nearest with ties away from zero. Recognizable Auto numeric styles now
+  round from raw values, honoring explicit Decimal Places; unrecognized/text
+  styles retain OAC's strings. Explicit decimal formats can change at ties
+  previously affected by binary `toFixed` behavior. Decimal Places stays Auto
+  unless the author changes it.
+- Update the property spec and `docs/guides/pivot-table-syntax.html` with
+  examples, negative-number behavior, display/calculation boundaries, and
+  local-versus-live verification status.
+
 ## 2026-10-20 — WSU picker row and icons (all six plugins); Glossary Pivot 0.20.7 — Hide Measure Row
 
 Installed in OAC Dev and verified there on 2026-10-20: the WSU picker row, the icons, and Hide Measure Row. Uploads took a while to reach every browser; see the README warning. Versions: Network 1.2.3, Line 1.2.3, Sankey 1.1.3, Dumbbell 1.1.3, Lattice Scatter 1.1.3, Glossary Pivot 0.20.7.

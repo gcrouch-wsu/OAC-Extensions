@@ -16,13 +16,29 @@ Six Oracle Analytics custom visualization plugins, each a folder under
 | WSU Sankey | 1.1.3 | `main`; installed in OAC Dev |
 | WSU Dumbbell | 1.1.3 | `main`; installed in OAC Dev |
 | WSU Lattice Scatter | 1.1.3 | `main`; installed in OAC Dev |
-| WSU Glossary Pivot | 0.20.7 | `main`; installed in OAC Dev |
+| WSU Glossary Pivot | 0.21.0 | `main` source; SDK build verified 2026-11-16; user reports installed in OAC Dev; rounding controls checked in Chrome 2026-11-09 (served version string not read) |
 
 Glossary Pivot versions on its own line. Spec:
 `docs/plugins/project_spec_wsu_glossary_pivot.md`. The newest git tag is
 `v1.1.1`, which is behind this table and has no Glossary Pivot. `README.md`
 explains the build/install cycle. A source edit is not in
 `build/distributions/customviz_<root id>.zip` until `.\build-sdk.ps1` runs.
+
+2026-11-09 live check: on `Copy of New first year` / `Data Checking - adding
+subtotal`, all four rounding choices were present and exercised. With temporary
+two-decimal percent overrides, 13 / 4,163 displayed 0.31% nearest, 0.32% ceiling,
+0.31% floor; 307 / 4,163 displayed 7.37%, 7.38%, 7.37%. Half-even agreed with
+nearest for these non-midpoints. Restored the original nearest setting and
+one-decimal overrides without saving; grand total 4,163 / 100.0%. This was a
+single Chrome session, not served-source/version or cross-browser verification.
+Exact ties, negatives, print output, and save/reopen persistence were not checked
+live. See the syntax guide's evidence table for local test coverage.
+
+2026-11-16 release checks: 125 tests passed; both plugin JavaScript files passed
+syntax checks and both manifests parsed. The SDK clean build passed through
+`gradlew.bat --offline clean build` with JDK 17. The packaged renderer matches
+the current 0.21.0 source and the retained November 9 package. OAC was not
+retested or updated during these release checks.
 
 ## Where things are
 

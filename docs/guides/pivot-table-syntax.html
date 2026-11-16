@@ -16,7 +16,7 @@
 <p class="eyebrow">WSU Glossary Pivot · Author reference</p>
 <h1>Properties and calculation syntax</h1>
 <p class="intro">Use this guide when building a Glossary Pivot workbook. Find the property, copy its syntax, and check that the calculation uses the population you intend.</p>
-<div class="meta"><span>Extension reference: 0.20.7</span><span>Guide revision: 2026-10-20</span><span>Live distinct-total example verified: 2026-10-20</span></div>
+<div class="meta"><span>Extension reference: 0.21.0</span><span>Guide revision: 2026-11-09</span><span>Rounding controls checked in OAC: 2026-11-09</span><span>Live distinct-total example verified: 2026-10-20</span></div>
 </header>
 <div class="shell">
 <nav aria-label="Guide sections">
@@ -25,6 +25,7 @@
 <a href="#syntax">2. Syntax at a glance</a>
 <a href="#properties">3. Properties page reference</a>
 <a href="#format">4. Number formats</a>
+<a href="#rounding">Rounding methods</a>
 <a href="#totals">5. Total calculations</a>
 <a href="#shares">6. Percentage of total</a>
 <a href="#distinct">7. Overlapping distinct counts</a>
@@ -75,6 +76,7 @@
 <tbody>
 <tr><th scope="row">Format: Number Format</th><td>Format for measures without an override.</td><td>Auto; Number; Percent (×100); Currency (USD); Compact (K/M/B).</td></tr>
 <tr><th scope="row">Format: Decimal Places</th><td>Decimals for extension-formatted numbers.</td><td>Auto, or 0–4.</td></tr>
+<tr><th scope="row">Format: Rounding Method</th><td>How numeric display values are rounded, including totals and print output. Applies to every measure, including per-measure format overrides.</td><td>Nearest (halves away from zero), default; Nearest (half to even); Ceiling (toward positive infinity); Floor (toward negative infinity).</td></tr>
 <tr><th scope="row">Format: Per-Measure Override</th><td>Set a separate format and decimal count for each named measure.</td><td>Blank. <code>NAME:format:decimals; ...</code></td></tr>
 <tr><th scope="row">Values: Show as % of Total</th><td>Convert named measures to shares of the sums of queried cells.</td><td>Blank. <code>NAME[: by ROW_FIELD]; ...</code></td></tr>
 <tr><th scope="row">Header: Display Label</th><td>Change a field title; optionally use parameter text. Member values stay unchanged.</td><td>Blank. <code>NAME:label; ...</code></td></tr>
@@ -149,7 +151,27 @@ Volume:compact:1</code></pre>
 <tr><td>37.5</td><td><code>Rate:number:1</code></td><td>37.5</td></tr>
 <tr><td>37.5</td><td><code>Rate:percent:1</code></td><td>3750.0% — the value is multiplied by 100 again. Do not use this combination for a rate already scaled to 100.</td></tr>
 </tbody></table></div>
-<p><strong>Auto</strong> preserves OAC's formatted cell text. Explicit formats use the numeric value. A format changes presentation; it does not choose a denominator or fix an incorrect total.</p>
+<p><strong>Auto</strong> reuses a recognizable OAC numeric style, including its precision, grouping, currency or percentage sign, but rounds from the raw value. Explicit Decimal Places overrides the inferred precision. Text and unrecognized host styles remain as supplied by OAC; select an explicit numeric format when you need a predictable rounding result. A format does not choose a denominator or fix an incorrect total.</p>
+<h3 id="rounding">Rounding methods</h3>
+<p>Choose <strong>Format: Rounding Method</strong> and set <strong>Format: Decimal Places</strong> separately. For the familiar nearest-hundredth behavior, choose <strong>Nearest (halves away from zero)</strong> and <strong>2</strong> decimal places. There is no formula to type into the rounding-method control.</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Method at two decimals</th><th scope="col">7.231</th><th scope="col">7.245</th><th scope="col">−7.231</th><th scope="col">−7.245</th></tr></thead><tbody>
+<tr><th scope="row">Nearest (halves away from zero) — default</th><td>7.23</td><td>7.25</td><td>−7.23</td><td>−7.25</td></tr>
+<tr><th scope="row">Nearest (half to even)</th><td>7.23</td><td>7.24</td><td>−7.23</td><td>−7.24</td></tr>
+<tr><th scope="row">Ceiling (toward positive infinity)</th><td>7.24</td><td>7.25</td><td>−7.23</td><td>−7.24</td></tr>
+<tr><th scope="row">Floor (toward negative infinity)</th><td>7.23</td><td>7.24</td><td>−7.24</td><td>−7.25</td></tr>
+</tbody></table></div>
+<p>Nearest chooses the closer result. Its two options differ only at an exact midpoint: half-to-even keeps an even last digit, so 7.245 becomes 7.24 while 7.255 becomes 7.26. Ceiling and Floor always follow their fixed direction. A value rounded to zero is shown without a minus sign.</p>
+<p><strong>Rounding uses the displayed units.</strong> With Percent and two decimals, a raw fraction of 0.07245 is rounded as 7.245%, giving 7.25% under the default rule. Compact format rounds in K/M/B units; for example, 7245 becomes 7.25K with the default rule or 7.24K with half-to-even.</p>
+<p><strong>Calculations keep full precision.</strong> Rounding changes the displayed text. Detail values, each subtotal, each collapsed group, grand totals, and generated print content round their own result. Totals do not add already-rounded detail text. For example, three raw values of 1.004 display as 1.00 each with Floor at two decimals; their raw total is 3.012 and displays as 3.01, even though the three displayed details add to 3.00.</p>
+<p class="small">With Number and Auto decimal places, the extension keeps the available decimals instead of imposing a fixed rounding position. Percent, Currency, and Compact keep their existing Auto precisions. Per-measure format overrides can choose a different precision but inherit the visualization's rounding method. Set 0–4 decimals for a specific rounding position.</p>
+<div class="note"><p><strong>Upgrade behavior:</strong> workbooks without a saved rounding method use nearest with exact halves away from zero. Decimal Places remains Auto unless changed. Numeric Auto text and explicit formats can change at decimal midpoints: the formatter treats the received number's decimal representation as decimal, so 1.005 becomes 1.01 at two decimals. It cannot restore precision already lost in the source or earlier calculations.</p></div>
+<h3>Live workbook example: percentage rounding</h3>
+<p>Checked in OAC Dev on 2026-11-09 in <strong>Copy of New first year</strong>, <strong>Data Checking - adding subtotal</strong>, with 2013 Fall selected. The installed control initially showed Nearest (halves away from zero). Its percentage override used one decimal; changing the per-measure override temporarily to <code>College Share of Distinct Selected Headcount:percent:2</code> allowed a two-decimal comparison. A per-measure decimal override takes precedence over the global Decimal Places setting.</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Headcount / 4,163 × 100</th><th scope="col">Nearest, halves away from zero</th><th scope="col">Nearest, half to even</th><th scope="col">Ceiling</th><th scope="col">Floor</th></tr></thead><tbody>
+<tr><th scope="row">13 students (detail): 0.312274…%</th><td>0.31%</td><td>0.31%</td><td>0.32%</td><td>0.31%</td></tr>
+<tr><th scope="row">307 students (college subtotal): 7.374489…%</th><td>7.37%</td><td>7.37%</td><td>7.38%</td><td>7.37%</td></tr>
+</tbody></table></div>
+<p class="small">These live values are positive and are not exact midpoints, so the two nearest methods agree. Negative values and exact midpoint differences are covered by local tests, not this workbook check. The original nearest method and all one-decimal overrides were restored without saving. The restored grand total was 4,163 and 100.0%. Live print output and save/reopen persistence were not tested; the served version string was not independently read.</p>
 </section>
 <section id="totals">
 <h2>5. Total calculations</h2>
@@ -313,7 +335,9 @@ Rate: #981e32: 100%</code></pre>
 <h2>11. Updates and verification</h2>
 <p><strong>Keep this file current when the extension changes.</strong> Update property names, accepted syntax, defaults, examples, and limitations together. Record the extension version and verification date at the top. Do not label a requested feature as available until it has been implemented and checked.</p>
 <div class="table-wrap"><table><thead><tr><th scope="col">Evidence</th><th scope="col">What has been established</th></tr></thead><tbody>
-<tr><th scope="row">Current source and specification</th><td>All 42 custom controls covered against version 0.20.7, including the defaults in section 3. Rate, weighted-average, <code>level</code>, and <code>ratio(level(…))</code> arithmetic checked in the regression suite. Numerical teaching examples use synthetic values.</td></tr>
+<tr><th scope="row">Current source and specification</th><td>All 43 custom controls covered against version 0.21.0, including rounding defaults. Rate, weighted-average, <code>level</code>, and <code>ratio(level(…))</code> arithmetic checked in the regression suite. Numerical teaching examples use synthetic values.</td></tr>
+<tr><th scope="row">Local rounding checks, 2026-11-09</th><td>Positive/negative values, decimal ties, values just below and above a tie, zero, percentage/compact scaling, inferred Auto styles, format overrides, subtotal/collapse/grand-total rendering, and generated print content checked. 3,200 rounding results matched independent Python Decimal arithmetic. Live print behavior remains unverified.</td></tr>
+<tr><th scope="row">Live workbook, 2026-11-09: rounding controls</th><td>User reported the 0.21.0 installation. In Chrome on OAC Dev, all four choices were present and exercised with two-decimal percentage overrides. Detail 13 / 4,163 and subtotal 307 / 4,163 matched the table in section 4. Visible headcounts matched the adjacent standard pivot. Original formatting was restored without saving; grand total 4,163 / 100.0%. This confirms the observed controls and positive non-midpoint results in this session, not the served version string or propagation to other browsers.</td></tr>
 <tr><th scope="row">Live workbook, 2026-10-20: subtotals (0.20.6)</th><td>“Data Checking – adding subtotal” canvas, College × IPEDS Ethnic Origin Desc rows, Term columns, with subtotals and grand total, using the section 7 rules. All 12 college subtotals and the grand total matched the standard pivot for 2013 Fall. All 14 college subtotals and both grand-total columns matched for 2013 Fall + 2014 Fall. The two-term filter was a temporary test and was not saved.</td></tr>
 <tr><th scope="row">Live workbook, 2026-10-20: College rows only (0.20.4)</th><td>The older ratio setup, compared with the standard pivot: 26 populated numeric cells matched for one term; 54 for two terms; 12 for a two-college, two-term filtered selection.</td></tr>
 <tr><th scope="row">Live workbook, 2026-10-20: Hide Measure Row (0.20.7)</th><td>Checked on the tenant by the guide maintainer: with the switch on and one visible measure, the repeated measure header row is gone, as on the standard pivot.</td></tr>
@@ -330,7 +354,7 @@ Rate: #981e32: 100%</code></pre>
 <footer>
 <p><strong>Sources for maintaining this guide:</strong> <a href="../plugins/project_spec_wsu_glossary_pivot.md">Glossary Pivot specification</a>; <a href="../../oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/glossaryPivotViz.js">renderer and property parsers</a>; <a href="../../oac-sdk-dev/src/customviz/com-wsu-glossary-pivot/extensions/oracle.bi.tech.plugin.visualizationDatamodelHandler/com-wsu-glossary-pivot.visualizationDatamodelHandler.json">grammar manifest</a>.</p>
 <p>Oracle documents the general <code>AGGREGATE(measure BY column)</code> form in <a href="https://docs.oracle.com/en/cloud/paas/analytics-cloud/acubi/aggregate-functions.html">Aggregate Functions</a>. The empty-BY formula and the workbook recipe above are supported here by the recorded live workbook check, not by an assumption that every source will behave identically.</p>
-<p>Revision history: 2026-10-20 — initial properties reference and distinct-total recipe. Same day — <code>level</code> totals and the data-header glossary switch. Same day — 0.20.6 <code>ratio(level(…))</code>; section 7 rewritten around the verified subtotal setup, with Selected Distinct HC as the percentage denominator. Same day — 0.20.7 Hide Measure Row.</p>
+<p>Revision history: 2026-11-09 — 0.21.0 rounding methods, examples, display/calculation boundaries, and Auto formatting behavior; live OAC percentage-rounding check and per-measure precision example. 2026-10-20 — initial properties reference and distinct-total recipe. Same day — <code>level</code> totals and the data-header glossary switch. Same day — 0.20.6 <code>ratio(level(…))</code>; section 7 rewritten around the verified subtotal setup, with Selected Distinct HC as the percentage denominator. Same day — 0.20.7 Hide Measure Row.</p>
 </footer>
 </section>
 </main>
